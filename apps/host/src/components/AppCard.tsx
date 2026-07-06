@@ -3,20 +3,17 @@ import { Link } from 'react-router';
 
 import { cn } from '~/helpers/cn';
 
-export interface AppCard {
-  id: string;
+export interface AppCardProps {
   title: string;
   description: string;
   icon: string;
   color: 'pink' | 'blue' | 'orange' | 'green' | 'purple';
   href: string;
   badge?: string;
+  isFeatured?: boolean;
 }
 
-const CARD_BASE =
-  'tw:group tw:flex tw:rounded-[14px] tw:border tw:bg-background tw:p-4 tw:transition-colors tw:hover:bg-muted/50';
-
-const HOVER_COLOR_MAP: Record<AppCard['color'], string> = {
+const HOVER_COLOR_MAP: Record<AppCardProps['color'], string> = {
   pink: 'tw:group-hover:text-pink-500',
   blue: 'tw:group-hover:text-blue-600',
   orange: 'tw:group-hover:text-orange-500',
@@ -31,7 +28,7 @@ function CardIcon({
   ...props
 }: React.ComponentPropsWithoutRef<'div'> & {
   icon: string;
-  color: AppCard['color'];
+  color: AppCardProps['color'];
 }) {
   return (
     <div
@@ -52,10 +49,6 @@ function CardIcon({
   );
 }
 
-type AppCardProps = Pick<AppCard, 'title' | 'description' | 'icon' | 'color' | 'href' | 'badge'> & {
-  isFeatured?: boolean;
-};
-
 export function AppCard({
   title,
   description,
@@ -66,9 +59,10 @@ export function AppCard({
   isFeatured,
 }: AppCardProps) {
   const className = cn(
-    CARD_BASE,
+    'tw:group tw:flex tw:rounded-[14px] tw:border tw:bg-background tw:p-4 tw:transition-colors tw:hover:bg-muted/50',
     'tw:flex-col tw:gap-4',
-    isFeatured && 'tw:border-[#C8C8C8] tw:bg-white tw:sm:flex-row tw:sm:items-center',
+    isFeatured &&
+      'tw:border-[#C8C8C8] tw:bg-white tw:sm:h-[132px] tw:sm:flex-row tw:sm:items-center',
   );
 
   const content = (
