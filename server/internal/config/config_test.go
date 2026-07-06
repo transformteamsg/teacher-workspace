@@ -2,8 +2,6 @@ package config_test
 
 import (
 	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,93 +9,55 @@ import (
 	"github.com/String-sg/teacher-workspace/server/pkg/require"
 )
 
-// chdir switches to dir for the duration of the test, restoring the original
-// working directory in t.Cleanup. Required for tests that write a .env file,
-// since config.Load reads .env from the working directory.
-func chdir(t *testing.T, dir string) {
-	t.Helper()
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("get cwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir %s: %v", dir, err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(orig) })
+func TestDefault(t *testing.T) {
+	cfg := config.Default()
+
+	require.Equal(t, config.EnvDevelopment, cfg.Env)
+	require.Equal(t, slog.LevelInfo, cfg.LogLevel)
+	require.Equal(t, 3000, cfg.Server.Port)
+	require.Equal(t, 2*time.Second, cfg.Server.ReadHeaderTimeout)
+	require.Equal(t, 15*time.Second, cfg.Server.ReadTimeout)
+	require.Equal(t, 30*time.Second, cfg.Server.WriteTimeout)
+	require.Equal(t, 60*time.Second, cfg.Server.IdleTimeout)
 }
 
-// writeDotEnv writes content to a .env file in dir.
-func writeDotEnv(t *testing.T, dir, content string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(content), 0o644); err != nil {
-		t.Fatalf("write .env: %v", err)
-	}
-}
-
-func TestLoad_Defaults(t *testing.T) {
-	t.Run("returns built-in defaults when nothing is configured", func(t *testing.T) {
-		chdir(t, t.TempDir())
-
-		cfg, err := config.Load()
-
-		require.NoError(t, err)
-		require.Equal(t, config.EnvDevelopment, cfg.Env)
-		require.Equal(t, slog.LevelInfo, cfg.LogLevel)
-		require.Equal(t, 3000, cfg.Server.Port)
-		require.Equal(t, 2*time.Second, cfg.Server.ReadHeaderTimeout)
-		require.Equal(t, 15*time.Second, cfg.Server.ReadTimeout)
-		require.Equal(t, 30*time.Second, cfg.Server.WriteTimeout)
-		require.Equal(t, 60*time.Second, cfg.Server.IdleTimeout)
-	})
-}
-
-func TestLoad_ProcessEnvPrecedence(t *testing.T) {
-	t.Run("real env var takes precedence over .env file", func(t *testing.T) {
-		dir := t.TempDir()
-		writeDotEnv(t, dir, "TW_SERVER_PORT=8080")
-		chdir(t, dir)
-		t.Setenv("TW_SERVER_PORT", "9090")
-
-		cfg, err := config.Load()
-
-		require.NoError(t, err)
-		require.Equal(t, 9090, cfg.Server.Port)
-	})
-}
-
-func TestLoad_DotEnvApplied(t *testing.T) {
-	t.Run("value from .env file is applied when variable is unset", func(t *testing.T) {
-		dir := t.TempDir()
-		writeDotEnv(t, dir, "TW_LOG_LEVEL=debug")
-		chdir(t, dir)
-		t.Cleanup(func() { _ = os.Unsetenv("TW_LOG_LEVEL") })
-
-		cfg, err := config.Load()
-
-		require.NoError(t, err)
-		require.Equal(t, slog.LevelDebug, cfg.LogLevel)
-	})
-}
-
-func TestLoad_InvalidConfig(t *testing.T) {
+func TestValidate(t *testing.T) {
 	tests := []struct {
-		name string
-		key  string
-		val  string
+		name   string
+		mutate func(*config.Config)
 	}{
-		{name: "unparseable port", key: "TW_SERVER_PORT", val: "abc"},
-		{name: "invalid env value", key: "TW_ENV", val: "staging"},
-		{name: "out-of-range port", key: "TW_SERVER_PORT", val: "70000"},
+		{
+			name: "invalid env",
+			mutate: func(c *config.Config) {
+				c.Env = "staging"
+			},
+		},
+		{
+			name: "port too high",
+			mutate: func(c *config.Config) {
+				c.Server.Port = 70000
+			},
+		},
+		{
+			name: "port too low",
+			mutate: func(c *config.Config) {
+				c.Server.Port = 0
+			},
+		},
+		{
+			name: "negative read timeout",
+			mutate: func(c *config.Config) {
+				c.Server.ReadTimeout = -1
+			},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			chdir(t, t.TempDir())
-			t.Setenv(tc.key, tc.val)
+			cfg := config.Default()
+			tc.mutate(&cfg)
 
-			_, err := config.Load()
-
-			require.HasError(t, err)
+			require.HasError(t, cfg.Validate())
 		})
 	}
 }

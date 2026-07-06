@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
-
-	"github.com/String-sg/teacher-workspace/server/pkg/dotenv"
 )
 
 type Environment string
@@ -30,7 +28,8 @@ type ServerConfig struct {
 	IdleTimeout       time.Duration `dotenv:"TW_SERVER_IDLE_TIMEOUT"`
 }
 
-func defaults() Config {
+// Default returns a Config populated with built-in defaults.
+func Default() Config {
 	return Config{
 		Env:      EnvDevelopment,
 		LogLevel: slog.LevelInfo,
@@ -42,17 +41,6 @@ func defaults() Config {
 			IdleTimeout:       60 * time.Second,
 		},
 	}
-}
-
-// Load resolves configuration from built-in defaults, an optional .env file,
-// and real process environment variables (highest precedence). Returns an error
-// if any value fails to parse or fails validation.
-func Load() (*Config, error) {
-	cfg := defaults()
-	if err := dotenv.Load(&cfg); err != nil {
-		return nil, err
-	}
-	return &cfg, cfg.Validate()
 }
 
 func (c Config) Validate() error {

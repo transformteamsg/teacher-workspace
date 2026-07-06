@@ -14,14 +14,19 @@ import (
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/handler"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
+	"github.com/String-sg/teacher-workspace/server/pkg/dotenv"
 )
 
 const shutdownTimeout = 30 * time.Second
 
 func main() {
-	cfg, err := config.Load()
-	if err != nil {
+	cfg := config.Default()
+	if err := dotenv.Load(&cfg); err != nil {
 		slog.Error("failed to load config", "err", err)
+		os.Exit(1)
+	}
+	if err := cfg.Validate(); err != nil {
+		slog.Error("invalid config", "err", err)
 		os.Exit(1)
 	}
 
