@@ -13,12 +13,10 @@ export default defineConfig({
       shared: {
         react: {
           singleton: true,
-          eager: true,
           requiredVersion: '^19.2.7',
         },
         'react-dom': {
           singleton: true,
-          eager: true,
           requiredVersion: '^19.2.7',
         },
       },
