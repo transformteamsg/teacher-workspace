@@ -35,7 +35,7 @@ func main() {
 	})))
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	mux := handler.NewMux()
+	mux := handler.NewMux(&cfg)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           middleware.RequestID(middleware.RequestLog(mux)),

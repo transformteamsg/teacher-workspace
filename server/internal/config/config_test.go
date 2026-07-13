@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"log/slog"
+	"net/url"
 	"testing"
 	"time"
 
@@ -19,6 +20,8 @@ func TestDefault(t *testing.T) {
 	require.Equal(t, 15*time.Second, cfg.Server.ReadTimeout)
 	require.Equal(t, 30*time.Second, cfg.Server.WriteTimeout)
 	require.Equal(t, 60*time.Second, cfg.Server.IdleTimeout)
+	require.Equal(t, "http://127.0.0.1:3001", cfg.Host.DevServerURL.String())
+	require.Equal(t, "apps/host/dist", cfg.Host.BuildDir)
 }
 
 func TestValidate(t *testing.T) {
@@ -48,6 +51,32 @@ func TestValidate(t *testing.T) {
 			name: "negative read timeout",
 			mutate: func(c *config.Config) {
 				c.Server.ReadTimeout = -1
+			},
+		},
+		{
+			name: "dev server url missing scheme",
+			mutate: func(c *config.Config) {
+				c.Host.DevServerURL = &url.URL{Host: "localhost:3001"}
+			},
+		},
+		{
+			name: "dev server url missing host",
+			mutate: func(c *config.Config) {
+				c.Host.DevServerURL = &url.URL{Scheme: "http"}
+			},
+		},
+		{
+			name: "production build dir empty",
+			mutate: func(c *config.Config) {
+				c.Env = config.EnvProduction
+				c.Host.BuildDir = ""
+			},
+		},
+		{
+			name: "production build dir does not exist",
+			mutate: func(c *config.Config) {
+				c.Env = config.EnvProduction
+				c.Host.BuildDir = "/nonexistent/does-not-exist"
 			},
 		},
 	}
