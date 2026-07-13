@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
 import { defineConfig } from '@rsbuild/core';
 import { pluginReact } from '@rsbuild/plugin-react';
@@ -28,10 +26,5 @@ export default defineConfig({
   ],
   html: {
     template: './index.html',
-  },
-  source: {
-    alias: {
-      '~': path.resolve(import.meta.dirname, 'src'),
-    },
   },
 });
