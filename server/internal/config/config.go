@@ -16,11 +16,18 @@ const (
 	EnvProduction  Environment = "production"
 )
 
+// Config is the server's configuration. Host-serving fields (DevServerURL,
+// BuildDir) live directly on Config, not a nested struct, since this server
+// only ever serves the one apps/host frontend.
 type Config struct {
 	Env      Environment  `dotenv:"TW_ENV"`
 	LogLevel slog.Level   `dotenv:"TW_LOG_LEVEL"`
 	Server   ServerConfig `dotenv:",squash"`
-	Host     HostConfig   `dotenv:",squash"`
+
+	// DevServerURL is where the Go server proxies to in development.
+	DevServerURL *url.URL `dotenv:"TW_HOST_DEV_SERVER_URL"`
+	// BuildDir is where the Go server reads apps/host's build output from in production.
+	BuildDir string `dotenv:"TW_HOST_BUILD_DIR"`
 }
 
 type ServerConfig struct {
@@ -29,14 +36,6 @@ type ServerConfig struct {
 	ReadTimeout       time.Duration `dotenv:"TW_SERVER_READ_TIMEOUT"`
 	WriteTimeout      time.Duration `dotenv:"TW_SERVER_WRITE_TIMEOUT"`
 	IdleTimeout       time.Duration `dotenv:"TW_SERVER_IDLE_TIMEOUT"`
-}
-
-// HostConfig configures how the apps/host frontend is served: proxied from
-// the rsbuild dev server in development, or served from its build output
-// directory in production.
-type HostConfig struct {
-	DevServerURL *url.URL `dotenv:"TW_HOST_DEV_SERVER_URL"`
-	BuildDir     string   `dotenv:"TW_HOST_BUILD_DIR"`
 }
 
 // Default returns a Config populated with built-in defaults.
@@ -51,10 +50,8 @@ func Default() Config {
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       60 * time.Second,
 		},
-		Host: HostConfig{
-			DevServerURL: must(url.Parse("http://127.0.0.1:3001")),
-			BuildDir:     "apps/host/dist",
-		},
+		DevServerURL: must(url.Parse("http://127.0.0.1:3001")),
+		BuildDir:     "apps/host/dist",
 	}
 }
 
@@ -74,17 +71,17 @@ func (c Config) Validate() error {
 
 	switch c.Env {
 	case EnvDevelopment:
-		if c.Host.DevServerURL.Scheme != "http" && c.Host.DevServerURL.Scheme != "https" {
-			errs = append(errs, fmt.Errorf("TW_HOST_DEV_SERVER_URL must use scheme http or https; got %q", c.Host.DevServerURL))
+		if c.DevServerURL.Scheme != "http" && c.DevServerURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("TW_HOST_DEV_SERVER_URL must use scheme http or https; got %q", c.DevServerURL))
 		}
-		if c.Host.DevServerURL.Host == "" {
-			errs = append(errs, fmt.Errorf("TW_HOST_DEV_SERVER_URL must include host[:port]; got %q", c.Host.DevServerURL))
+		if c.DevServerURL.Host == "" {
+			errs = append(errs, fmt.Errorf("TW_HOST_DEV_SERVER_URL must include host[:port]; got %q", c.DevServerURL))
 		}
 	case EnvProduction:
-		if c.Host.BuildDir == "" {
+		if c.BuildDir == "" {
 			errs = append(errs, errors.New("TW_HOST_BUILD_DIR is required"))
-		} else if _, err := os.Stat(c.Host.BuildDir); os.IsNotExist(err) {
-			errs = append(errs, fmt.Errorf("TW_HOST_BUILD_DIR does not exist: %q", c.Host.BuildDir))
+		} else if _, err := os.Stat(c.BuildDir); os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("TW_HOST_BUILD_DIR does not exist: %q", c.BuildDir))
 		}
 	}
 

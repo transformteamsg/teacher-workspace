@@ -18,31 +18,24 @@ type Handler struct {
 	assets http.Handler
 }
 
-// New builds a Handler for the given config.
-func New(cfg *config.Config) *Handler {
+// New returns an http.Handler with all application routes registered.
+func New(cfg *config.Config) http.Handler {
 	h := &Handler{cfg: cfg}
 
 	switch cfg.Env {
 	case config.EnvDevelopment:
-		h.proxy = httputil.NewSingleHostReverseProxy(cfg.Host.DevServerURL)
+		h.proxy = httputil.NewSingleHostReverseProxy(cfg.DevServerURL)
 	case config.EnvProduction:
-		h.assets = http.FileServer(http.Dir(cfg.Host.BuildDir))
+		h.assets = http.FileServer(http.Dir(cfg.BuildDir))
 	}
 
-	return h
-}
-
-// NewMux returns a ServeMux with all application routes registered.
-func NewMux(cfg *config.Config) *http.ServeMux {
-	h := New(cfg)
-
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", h.ServeHost)
+	mux.HandleFunc("/", h.ServeHost)
 	return mux
 }
 
-// ServeHost serves the host app for any GET request: proxying to the rsbuild
-// dev server in development, or serving the build output (falling back to
+// ServeHost serves the host app for any request: proxying to the rsbuild dev
+// server in development, or serving the build output (falling back to
 // index.html for unknown non-asset routes so client-side routing works) in
 // production.
 func (h *Handler) ServeHost(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +47,6 @@ func (h *Handler) ServeHost(w http.ResponseWriter, r *http.Request) {
 			h.assets.ServeHTTP(w, r)
 			return
 		}
-		http.ServeFile(w, r, filepath.Join(h.cfg.Host.BuildDir, "index.html"))
+		http.ServeFile(w, r, filepath.Join(h.cfg.BuildDir, "index.html"))
 	}
 }

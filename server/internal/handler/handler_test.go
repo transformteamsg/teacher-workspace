@@ -14,7 +14,7 @@ import (
 	"github.com/String-sg/teacher-workspace/server/pkg/require"
 )
 
-func TestNewMux_Development(t *testing.T) {
+func TestNew_Development(t *testing.T) {
 	devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = io.WriteString(w, "dev-server:"+r.URL.Path)
@@ -25,8 +25,8 @@ func TestNewMux_Development(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := config.Default()
-	cfg.Host.DevServerURL = devServerURL
-	mux := handler.NewMux(&cfg)
+	cfg.DevServerURL = devServerURL
+	mux := handler.New(&cfg)
 
 	t.Run("GET / is proxied to the dev server", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -46,16 +46,17 @@ func TestNewMux_Development(t *testing.T) {
 		require.Equal(t, "dev-server:/static/js/index.js", w.Body.String())
 	})
 
-	t.Run("POST / returns 405", func(t *testing.T) {
+	t.Run("POST / is proxied to the dev server", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/", nil)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusMethodNotAllowed, w.Code)
+		require.Equal(t, http.StatusOK, w.Code)
+		require.Equal(t, "dev-server:/", w.Body.String())
 	})
 }
 
-func TestNewMux_Production(t *testing.T) {
+func TestNew_Production(t *testing.T) {
 	buildDir := t.TempDir()
 
 	if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>index</html>"), 0o644); err != nil {
@@ -70,8 +71,8 @@ func TestNewMux_Production(t *testing.T) {
 
 	cfg := config.Default()
 	cfg.Env = config.EnvProduction
-	cfg.Host.BuildDir = buildDir
-	mux := handler.NewMux(&cfg)
+	cfg.BuildDir = buildDir
+	mux := handler.New(&cfg)
 
 	t.Run("GET / serves index.html", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -108,11 +109,12 @@ func TestNewMux_Production(t *testing.T) {
 		require.Equal(t, "<html>index</html>", w.Body.String())
 	})
 
-	t.Run("POST / returns 405", func(t *testing.T) {
+	t.Run("POST / falls back to index.html", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/", nil)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusMethodNotAllowed, w.Code)
+		require.Equal(t, http.StatusOK, w.Code)
+		require.Equal(t, "<html>index</html>", w.Body.String())
 	})
 }
