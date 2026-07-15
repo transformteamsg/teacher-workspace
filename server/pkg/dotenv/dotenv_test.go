@@ -142,7 +142,7 @@ func TestDecode(t *testing.T) {
 		}
 	})
 
-	t.Run("url", func(t *testing.T) {
+	t.Run("url (pointer)", func(t *testing.T) {
 		type TestConfig struct {
 			BaseURL *url.URL `dotenv:"TEST_BASE_URL"`
 		}
@@ -168,6 +168,53 @@ func TestDecode(t *testing.T) {
 				initial: func() *url.URL {
 					u, _ := url.Parse("http://default:1234")
 					return u
+				}(),
+				value: "http://override:5678",
+				want:  "http://override:5678",
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				content := "TEST_BASE_URL=" + tc.value
+
+				cfg := TestConfig{BaseURL: tc.initial}
+				err := decode([]byte(content), &cfg)
+
+				t.Cleanup(func() { _ = os.Unsetenv("TEST_BASE_URL") })
+
+				require.NoError(t, err)
+				require.Equal(t, tc.want, cfg.BaseURL.String())
+			})
+		}
+	})
+
+	t.Run("url (value)", func(t *testing.T) {
+		type TestConfig struct {
+			BaseURL url.URL `dotenv:"TEST_BASE_URL"`
+		}
+
+		tests := []struct {
+			name    string
+			initial url.URL
+			value   string
+			want    string
+		}{
+			{
+				name:  "http",
+				value: "http://localhost:8080",
+				want:  "http://localhost:8080",
+			},
+			{
+				name:  "empty string",
+				value: "",
+				want:  "",
+			},
+			{
+				name: "overrides prepopulated value",
+				initial: func() url.URL {
+					u, _ := url.Parse("http://default:1234")
+					return *u
 				}(),
 				value: "http://override:5678",
 				want:  "http://override:5678",
