@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router';
 import { AppSidebar } from '~/components/Sidebar';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '~/components/ui/sidebar';
 import { TooltipProvider } from '~/components/ui/tooltip';
+import { GroupsGatewayView } from '~/containers/GroupsGatewayView';
 import { HomeView } from '~/containers/HomeView';
 import { NotFoundView } from '~/containers/NotFoundView';
 import { ParentsGatewayView } from '~/containers/ParentsGatewayView';
@@ -22,6 +23,7 @@ export default function App() {
               <Route path="/" element={<HomeView />} />
               <Route path="/students/*" element={<StudentsView />} />
               <Route path="/posts/*" element={<ParentsGatewayView />} />
+              <Route path="/groups/*" element={<GroupsGatewayView />} />
               <Route path="*" element={<NotFoundView />} />
             </Routes>
           </SidebarInset>
