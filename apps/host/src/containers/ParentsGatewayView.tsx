@@ -1,3 +1,3 @@
-import { createParentsGatewayRemoteView } from '~/containers/parents-gateway-remote';
+import { createParentsGatewayRemoteView } from '~/containers/createParentsGatewayRemoteView';
 
 export const ParentsGatewayView = createParentsGatewayRemoteView('pg/Posts', 'Parents Gateway');
