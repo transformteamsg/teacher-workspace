@@ -1,4 +1,4 @@
-import { CircleHelp, Home, Mail, Users } from 'lucide-react';
+import { CircleHelp, Home, Mail, Users, UsersRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { NavLink } from 'react-router';
 
@@ -28,7 +28,10 @@ const navItems: NavItem[] = [
   { title: 'Student Insights', icon: Users, to: '/students' },
 ];
 
-const communicationsItems: NavItem[] = [{ title: 'Posts', icon: Mail, to: '/posts' }];
+const communicationsItems: NavItem[] = [
+  { title: 'Posts', icon: Mail, to: '/posts' },
+  { title: 'Groups', icon: UsersRound, to: '/groups' },
+];
 
 function NavMenuItems({ items }: { items: NavItem[] }) {
   return (
