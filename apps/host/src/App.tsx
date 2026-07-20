@@ -6,7 +6,7 @@ import { TooltipProvider } from '~/components/ui/tooltip';
 import { GroupsView } from '~/containers/GroupsView';
 import { HomeView } from '~/containers/HomeView';
 import { NotFoundView } from '~/containers/NotFoundView';
-import { ParentsGatewayView } from '~/containers/ParentsGatewayView';
+import { PostsView } from '~/containers/PostsView';
 import { StudentsView } from '~/containers/StudentsView';
 
 export default function App() {
@@ -22,7 +22,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<HomeView />} />
               <Route path="/students/*" element={<StudentsView />} />
-              <Route path="/posts/*" element={<ParentsGatewayView />} />
+              <Route path="/posts/*" element={<PostsView />} />
               <Route path="/groups/*" element={<GroupsView />} />
               <Route path="*" element={<NotFoundView />} />
             </Routes>
