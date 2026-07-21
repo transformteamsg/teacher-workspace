@@ -24,7 +24,7 @@ function Fallback() {
   return (
     <div className="tw:flex tw:flex-1 tw:items-center tw:justify-center tw:p-8">
       <h1 className="tw:text-2xl tw:font-semibold tw:text-muted-foreground">
-        Parents Gateway is unavailable right now
+        Posts is unavailable right now
       </h1>
     </div>
   );
