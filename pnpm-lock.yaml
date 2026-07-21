@@ -26,6 +26,9 @@ importers:
       '@fontsource/inter':
         specifier: ^5.2.8
         version: 5.2.8
+      '@module-federation/enhanced':
+        specifier: ^2.5.1
+        version: 2.5.1(@rspack/core@2.0.8(@module-federation/runtime-tools@2.5.1(node-fetch@2.7.0(encoding@0.1.13)))(@swc/helpers@0.5.23))(node-fetch@2.7.0(encoding@0.1.13))(typescript@6.0.3)(webpack@5.107.2)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1

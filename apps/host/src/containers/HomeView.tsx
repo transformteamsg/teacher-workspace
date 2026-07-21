@@ -208,7 +208,7 @@ function getGreeting(): string {
   return 'Good evening';
 }
 
-export function HomeView() {
+export default function HomeView() {
   return (
     <main className="tw:mx-auto tw:flex tw:max-w-3xl tw:flex-col tw:gap-8 tw:px-4 tw:py-8">
       <h1 className="tw:text-center tw:text-2xl tw:font-semibold tw:text-foreground">
