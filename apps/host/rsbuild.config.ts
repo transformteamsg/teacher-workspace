@@ -21,7 +21,7 @@ export default defineConfig({
         },
         'react-router': {
           singleton: true,
-          requiredVersion: '^7.17.0',
+          requiredVersion: '^8.2.0',
         },
       },
     }),
