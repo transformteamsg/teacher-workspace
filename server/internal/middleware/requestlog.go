@@ -6,38 +6,34 @@ import (
 	"time"
 )
 
-// responseRecorder wraps http.ResponseWriter to capture the response status
-// code so RequestLog can include it in the access log. RequestLog seeds
-// status as 200 OK before the handler runs; the first WriteHeader call
-// overwrites it, matching typical net/http wire semantics when no status is set.
-type responseRecorder struct {
+// requestLogResponseWriter captures the response status code so RequestLog can
+// include it in the access log.
+type requestLogResponseWriter struct {
 	http.ResponseWriter
 
 	status      int
 	wroteHeader bool
 }
 
-// WriteHeader records the status code on the first call and forwards it to
-// the underlying ResponseWriter. Subsequent calls are forwarded but not
-// re-recorded, matching net/http's behavior.
-func (rr *responseRecorder) WriteHeader(status int) {
-	if !rr.wroteHeader {
-		rr.status = status
-		rr.wroteHeader = true
+// WriteHeader records the status on the first call and forwards every call to
+// the underlying ResponseWriter, matching net/http's behavior.
+func (rw *requestLogResponseWriter) WriteHeader(status int) {
+	if !rw.wroteHeader {
+		rw.status = status
+		rw.wroteHeader = true
 	}
-	rr.ResponseWriter.WriteHeader(status)
+	rw.ResponseWriter.WriteHeader(status)
 }
 
 // Write forwards to the underlying ResponseWriter.
-func (rr *responseRecorder) Write(b []byte) (int, error) {
-	return rr.ResponseWriter.Write(b)
+func (rw *requestLogResponseWriter) Write(b []byte) (int, error) {
+	return rw.ResponseWriter.Write(b)
 }
 
 // Unwrap returns the underlying ResponseWriter so http.ResponseController can
-// reach optional interfaces (Flush, Hijack, SetWriteDeadline, etc.) on the real
-// writer instead of stopping at this wrapper.
-func (rr *responseRecorder) Unwrap() http.ResponseWriter {
-	return rr.ResponseWriter
+// reach optional interfaces (Flush, Hijack, SetWriteDeadline, etc.) on the real writer.
+func (rw *requestLogResponseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
 }
 
 // RequestLog is an HTTP middleware that emits one structured access-log entry
@@ -49,14 +45,16 @@ func RequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rec, r)
+		// Seeded with 200 OK, which net/http sends for handlers that never call
+		// WriteHeader.
+		rw := &requestLogResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rw, r)
 
 		logger := LoggerFromContext(r.Context())
 		logger.LogAttrs(r.Context(), slog.LevelInfo, "request",
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
-			slog.Int("status", rec.status),
+			slog.Int("status", rw.status),
 			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
 		)
 	})

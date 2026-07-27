@@ -142,7 +142,7 @@ func TestRequestLog(t *testing.T) {
 		require.Equal(t, http.StatusOK, entry.Status)
 	})
 
-	t.Run("unwraps responseRecorder for ResponseController", func(t *testing.T) {
+	t.Run("unwraps requestLogResponseWriter for ResponseController", func(t *testing.T) {
 		var buf bytes.Buffer
 		ctx := newCtxWithLogger(&buf)
 
