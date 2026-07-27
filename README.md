@@ -22,7 +22,7 @@ All future front-end apps live under `apps/` and are scoped `@teacher-workspace/
 | ---- | ------- |
 | Node | 24      |
 | pnpm | 11      |
-| Go   | 1.26    |
+| Go   | 1.26.5  |
 
 Node and pnpm versions are enforced via the `engines` field in the root `package.json`. No `.nvmrc` is used; use a version manager that respects `engines` (e.g. [Volta](https://volta.sh/), `fnm`).
 
