@@ -1,10 +1,12 @@
-// Package memstore implements session.Store with an in-process map. Entries
-// are evicted lazily on read once their TTL elapses. It is intended for
+// Package memstore implements session.Store with an in-process map. Snapshots
+// are stored as JSON, so callers share no state with the store or each other.
+// Entries are evicted lazily on read once their TTL elapses. It is intended for
 // development and tests; production deployments should use a shared store.
 package memstore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -31,7 +33,7 @@ type Store struct {
 }
 
 type entry struct {
-	snap      *session.Snapshot
+	data      []byte
 	expiresAt time.Time
 }
 
@@ -64,7 +66,12 @@ func (s *Store) Prepare(_ context.Context, id string) (*session.Snapshot, error)
 		return nil, nil
 	}
 
-	return e.snap, nil
+	var snap session.Snapshot
+	if err := json.Unmarshal(e.data, &snap); err != nil {
+		return nil, fmt.Errorf("memstore: unmarshal snapshot: %w", err)
+	}
+
+	return &snap, nil
 }
 
 // Commit implements [session.Store.Commit].
@@ -79,10 +86,15 @@ func (s *Store) Commit(_ context.Context, snap *session.Snapshot, ttl time.Durat
 		return fmt.Errorf("memstore: ttl must be positive, got %v", ttl)
 	}
 
+	data, err := json.Marshal(snap)
+	if err != nil {
+		return fmt.Errorf("memstore: marshal snapshot: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.entries[snap.ID] = entry{snap: snap, expiresAt: s.now().Add(ttl)}
+	s.entries[snap.ID] = entry{data: data, expiresAt: s.now().Add(ttl)}
 
 	return nil
 }

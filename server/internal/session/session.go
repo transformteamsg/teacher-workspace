@@ -17,8 +17,7 @@ type Store interface {
 	Prepare(ctx context.Context, id string) (*Snapshot, error)
 
 	// Commit writes snap with the given TTL. Returns an error when snap is
-	// nil, snap.ID is empty, or ttl is non-positive. snap.Data must not be
-	// mutated by the caller after Commit returns.
+	// nil, snap.ID is empty, or ttl is non-positive.
 	Commit(ctx context.Context, snap *Snapshot, ttl time.Duration) error
 
 	// Drop removes the entry stored under id. It is a no-op when id is
@@ -32,8 +31,7 @@ type User struct {
 }
 
 // Snapshot is the wire/storage form of a Session. The Data map is shared with
-// the Session that produced (or consumed) it; callers must not mutate a
-// snapshot after handing it to a Store.
+// the Session that produced (or consumed) it.
 type Snapshot struct {
 	ID        string         `json:"id"`
 	CSRFToken string         `json:"csrf_token"`
@@ -75,8 +73,7 @@ func FromSnapshot(snap *Snapshot) *Session {
 }
 
 // Snapshot returns the current state of the session for storage. The returned
-// snapshot shares its Data map with the session; the caller must not mutate
-// the snapshot or its Data after passing it to Store.Commit.
+// snapshot shares its Data map with the session.
 func (s *Session) Snapshot() *Snapshot {
 	return &Snapshot{
 		ID:        s.id,
