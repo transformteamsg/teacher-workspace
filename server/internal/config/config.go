@@ -81,16 +81,16 @@ func (c Config) Validate() error {
 	switch c.Env {
 	case EnvDevelopment:
 		if c.DevServerURL.Scheme != "http" && c.DevServerURL.Scheme != "https" {
-			errs = append(errs, fmt.Errorf("TW_HOST_DEV_SERVER_URL must use scheme http or https; got %q", c.DevServerURL))
+			errs = append(errs, fmt.Errorf("TW_DEV_SERVER_URL must use scheme http or https; got %q", c.DevServerURL))
 		}
 		if c.DevServerURL.Host == "" {
-			errs = append(errs, fmt.Errorf("TW_HOST_DEV_SERVER_URL must include host[:port]; got %q", c.DevServerURL))
+			errs = append(errs, fmt.Errorf("TW_DEV_SERVER_URL must include host[:port]; got %q", c.DevServerURL))
 		}
 	case EnvProduction:
 		if c.BuildDir == "" {
-			errs = append(errs, errors.New("TW_HOST_BUILD_DIR is required"))
+			errs = append(errs, errors.New("TW_BUILD_DIR is required"))
 		} else if _, err := os.Stat(c.BuildDir); os.IsNotExist(err) {
-			errs = append(errs, fmt.Errorf("TW_HOST_BUILD_DIR does not exist: %q", c.BuildDir))
+			errs = append(errs, fmt.Errorf("TW_BUILD_DIR does not exist: %q", c.BuildDir))
 		}
 	}
 
