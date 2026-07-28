@@ -1,49 +1,18 @@
-# teacher-workspace
+# Teacher Workspace
 
-Monorepo for the Teacher Workspace platform. Contains a Module Federation host shell (Rsbuild) and a Go API server.
+A unified platform that consolidates teacher-facing applications into day-to-day workflows.
 
-## Repository layout
+## Quick start
 
-```
-teacher-workspace/
-├── apps/
-│   └── host/          # MF host shell — Rsbuild, React 19
-├── server/            # Go HTTP server
-├── go.mod             # Go module root (github.com/String-sg/teacher-workspace)
-├── package.json       # pnpm workspace root
-└── pnpm-workspace.yaml
-```
-
-All future front-end apps live under `apps/` and are scoped `@teacher-workspace/<name>`.
-
-## Toolchain
-
-| Tool | Version |
-| ---- | ------- |
-| Node | 24      |
-| pnpm | 11      |
-| Go   | 1.26.5  |
-
-Node and pnpm versions are enforced via the `engines` field in the root `package.json`. No `.nvmrc` is used; use a version manager that respects `engines` (e.g. [Volta](https://volta.sh/), `fnm`).
-
-## Getting started
+Make sure you've completed the [development setup](./CONTRIBUTING.md#development-setup), then start both processes in separate terminals:
 
 ```bash
-# Install JS dependencies
-pnpm install
-
-# Start the host shell dev server
-pnpm dev
-
-# Build the host shell
-pnpm build
+pnpm dev                 # host dev server on :3001
+go run ./server/cmd/tw   # Go server on :3000
 ```
 
-```bash
-# Run the Go server
-go run ./server/...
-```
+Open <http://localhost:3000>. See [running locally](./CONTRIBUTING.md#running-locally) for details.
 
-## Package naming convention
+## Contributing
 
-Front-end apps follow the `@teacher-workspace/<name>` scope. The host shell is `@teacher-workspace/host`.
+Contributions to Teacher Workspace are welcome. Before opening a pull request, please review our [contribution guidelines](./CONTRIBUTING.md) so the process goes smoothly for everyone.

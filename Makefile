@@ -14,6 +14,10 @@ $(GOLANGCI_LINT): | $(BIN)
 .PHONY: install-tools
 install-tools: $(GOLANGCI_LINT)
 
+.PHONY: fmt
+fmt: $(GOLANGCI_LINT)
+	$(GOLANGCI_LINT) fmt
+
 .PHONY: lint
 lint: $(GOLANGCI_LINT)
 	$(GOLANGCI_LINT) run
