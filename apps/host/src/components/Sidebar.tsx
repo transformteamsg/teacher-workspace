@@ -15,6 +15,7 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
   SidebarTrigger,
+  useSidebar,
 } from '~/components/ui/sidebar';
 
 interface NavItem {
@@ -34,11 +35,13 @@ const communicationsItems: NavItem[] = [
 ];
 
 function NavMenuItems({ items }: { items: NavItem[] }) {
+  const { setOpenMobile } = useSidebar();
+
   return (
     <SidebarMenu>
       {items.map((item) => (
         <SidebarMenuItem key={item.title}>
-          <NavLink to={item.to} end={item.to === '/'}>
+          <NavLink to={item.to} end={item.to === '/'} onClick={() => setOpenMobile(false)}>
             {({ isActive }) => (
               <SidebarMenuButton tooltip={item.title} isActive={isActive}>
                 <item.icon className="tw:size-4" />
