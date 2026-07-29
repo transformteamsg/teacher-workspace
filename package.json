@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @teacher-workspace/host dev",
+    "dev:mock-edupass": "pnpm --filter @teacher-workspace/mock-edupass dev",
     "build": "pnpm --filter @teacher-workspace/host build",
     "preview": "pnpm --filter @teacher-workspace/host preview",
+    "test": "pnpm -r --if-present test",
     "lint": "oxlint",
     "format": "oxfmt \"**/*.{js,jsx,ts,tsx,md,html,css,json,jsonc,yaml,toml}\"",
     "prepare": "lefthook install"
