@@ -45,6 +45,13 @@ pnpm dev
 go run ./server/cmd/tw
 ```
 
+Sign-in work also needs the local Edupass stand-in, which is otherwise optional:
+
+```bash
+# Terminal 3: mock Edupass OIDC provider on http://127.0.0.1:3002
+pnpm dev:mock-edupass
+```
+
 Open <http://localhost:3000>. The Go server is the entry point: in development it proxies every request to the Rsbuild dev server, so hot reload still works.
 
 To check a production build, where the server serves `apps/host/dist` instead of proxying:
@@ -72,6 +79,7 @@ Web:
 ```bash
 pnpm format                            # oxfmt, rewrites files in place
 pnpm lint                              # oxlint, reports without fixing
+pnpm test                              # node --test in every package that defines it
 pnpm build                             # production bundle
 ```
 
@@ -86,12 +94,15 @@ A Go module at the root, plus a pnpm workspace covering `apps/*`.
 │   ├── internal/              Private packages, scoped to this module
 │   └── pkg/                   Exported, reusable packages
 └── apps/
-    └── host/                  React frontend (Module Federation host shell)
-        └── src/
-            ├── components/    Reusable UI primitives
-            ├── containers/    Route-level components
-            ├── helpers/       Pure utility functions
-            └── hooks/         Custom React hooks
+    ├── host/                  React frontend (Module Federation host shell)
+    │   └── src/
+    │       ├── components/    Reusable UI primitives
+    │       ├── containers/    Route-level components
+    │       ├── helpers/       Pure utility functions
+    │       └── hooks/         Custom React hooks
+    └── mock-edupass/          Local OIDC provider standing in for Edupass
+        ├── src/               Provider configuration and the login interaction
+        └── test/              node:test suites driving the flow over HTTP
 ```
 
 A few conventions worth knowing:
