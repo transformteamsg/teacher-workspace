@@ -1,0 +1,19 @@
+{
+  "name": "@teacher-workspace/mock-edupass",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node src/main.ts",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "oidc-provider": "^9.10.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.3",
+    "@types/oidc-provider": "^9.5.0"
+  }
+}
