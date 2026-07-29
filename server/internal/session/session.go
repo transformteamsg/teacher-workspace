@@ -125,12 +125,15 @@ func (s *Session) Delete(key string) {
 }
 
 // SetUser attaches u to the session. Transitioning from unauthenticated to
-// authenticated rotates the session ID and CSRF token to defend against
-// session fixation. Subsequent SetUser calls (auth->auth) leave the ID and
-// CSRF token untouched.
+// authenticated rotates the ID and CSRF token to defend against session
+// fixation, and discards the data so nothing seeded into the anonymous session
+// crosses the privilege boundary. Read a value before the call and set it after
+// to carry it across. Subsequent SetUser calls (auth->auth) change nothing but
+// the user.
 func (s *Session) SetUser(u *User) {
 	if s.user == nil {
 		s.Rotate()
+		clear(s.data)
 	}
 	s.user = u
 }

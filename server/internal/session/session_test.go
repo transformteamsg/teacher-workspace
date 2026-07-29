@@ -233,6 +233,20 @@ func TestSession_SetUser(t *testing.T) {
 		}
 	})
 
+	t.Run("discards the data on unauth->auth", func(t *testing.T) {
+		sess := &Session{
+			id:        "id-1",
+			csrfToken: "csrf-1",
+			data:      map[string]any{"oauth_state": "attacker-chosen"},
+		}
+
+		sess.SetUser(&User{Email: "alice@example.com"})
+
+		if got := len(sess.data); got != 0 {
+			t.Errorf("want: 0 entries; got: %d (%+v)", got, sess.data)
+		}
+	})
+
 	t.Run("does not rotate on auth->auth", func(t *testing.T) {
 		sess := &Session{
 			id:        "id-1",
@@ -247,6 +261,21 @@ func TestSession_SetUser(t *testing.T) {
 		}
 		if want, got := "csrf-1", sess.csrfToken; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("preserves the data on auth->auth", func(t *testing.T) {
+		sess := &Session{
+			id:        "id-1",
+			csrfToken: "csrf-1",
+			user:      &User{Email: "alice@example.com"},
+			data:      map[string]any{"k": "v"},
+		}
+
+		sess.SetUser(&User{Email: "bob@example.com"})
+
+		if want, got := "v", sess.data["k"]; want != got {
+			t.Errorf("want: %q; got: %v", want, got)
 		}
 	})
 }
