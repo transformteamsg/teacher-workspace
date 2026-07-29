@@ -71,8 +71,8 @@ type SessionOptions struct {
 }
 
 // Session is a middleware that loads the session identified by the request
-// cookie into the context, then refreshes the cookie and commits the session to
-// the store once the handler is done. Handlers never touch the cookie.
+// cookie into the context, then commits the session to the store and refreshes
+// the cookie once the handler is done. Handlers never touch the cookie.
 //
 // The save runs on the handler's first write, so a session must be mutated
 // before anything is written to the response.
@@ -113,8 +113,18 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 					ttl = opts.AuthenticatedTTL
 				}
 
-				// Refresh the cookie on every request so its Max-Age slides
-				// with the store TTL.
+				ctx := context.WithoutCancel(r.Context())
+
+				// A failed commit is logged, not surfaced: the handler's
+				// response stands.
+				if err := store.Commit(ctx, sess.Snapshot(), ttl); err != nil {
+					logger.Error("failed to commit session", "err", err)
+					return
+				}
+
+				// Refresh the cookie every request so its Max-Age slides with
+				// the store TTL. After Commit, so the client is never handed an
+				// ID the store never took.
 				http.SetCookie(w, &http.Cookie{
 					Name:     opts.Name,
 					Value:    sess.ID(),
@@ -125,20 +135,9 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 					SameSite: http.SameSiteLaxMode,
 				})
 
-				// The save can outlive the request context, which a client that
-				// disconnects mid-response cancels.
-				ctx := context.WithoutCancel(r.Context())
-
-				// The response is already in flight, so the status code cannot
-				// be changed here. Log failures and return.
-				//
-				// Commit before Drop: a failed commit must not leave the client
-				// holding a cookie for an entry that no longer exists.
-				if err := store.Commit(ctx, sess.Snapshot(), ttl); err != nil {
-					logger.Error("failed to commit session", "err", err)
-					return
-				}
-
+				// Clearing the superseded entry is best effort. A failure leaves
+				// it to expire by TTL, which is better than withholding the
+				// cookie for a session that is already committed.
 				if sess.ID() != initialID {
 					if err := store.Drop(ctx, initialID); err != nil {
 						logger.Error("failed to drop rotated session", "err", err)

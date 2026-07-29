@@ -388,9 +388,10 @@ func TestSession(t *testing.T) {
 			dropErr:     errors.New("drop failed"),
 		}
 
+		var gotSess *session.Session
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			sess, _ := SessionFromContext(r.Context())
-			sess.SetUser(&session.User{Email: "teacher@example.com"})
+			gotSess, _ = SessionFromContext(r.Context())
+			gotSess.SetUser(&session.User{Email: "teacher@example.com"})
 			w.WriteHeader(http.StatusNoContent)
 		})
 
@@ -406,6 +407,14 @@ func TestSession(t *testing.T) {
 		}
 		if !strings.Contains(buf.String(), "failed to drop rotated session") {
 			t.Errorf("want drop failure to be logged, got: %q", buf.String())
+		}
+
+		cookie := findCookie(rec.Result().Cookies(), testCookieName)
+		if cookie == nil {
+			t.Fatal("want session cookie to be set")
+		}
+		if cookie.Value != gotSess.ID() {
+			t.Errorf("want cookie value: %q, got: %q", gotSess.ID(), cookie.Value)
 		}
 	})
 
@@ -523,6 +532,9 @@ func TestSession(t *testing.T) {
 		}
 		if !strings.Contains(buf.String(), "failed to commit session") {
 			t.Errorf("want commit failure to be logged, got: %q", buf.String())
+		}
+		if cookie := findCookie(rec.Result().Cookies(), testCookieName); cookie != nil {
+			t.Errorf("want no session cookie, got: %q", cookie.Value)
 		}
 	})
 }
