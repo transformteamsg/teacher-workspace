@@ -131,11 +131,13 @@ func (c SessionConfig) validate() error {
 	case (&http.Cookie{Name: c.Name}).String() == "":
 		errs = append(errs, fmt.Errorf("TW_SESSION_NAME must be a valid cookie name; got %q", c.Name))
 	}
-	if c.DefaultTTL <= 0 {
-		errs = append(errs, fmt.Errorf("TW_SESSION_DEFAULT_TTL must be positive duration; got %v", c.DefaultTTL))
+	// A sub-second TTL truncates to Max-Age=0, which net/http omits rather than
+	// expires, shipping a cookie that outlives its store entry.
+	if c.DefaultTTL < time.Second {
+		errs = append(errs, fmt.Errorf("TW_SESSION_DEFAULT_TTL must be at least 1s; got %v", c.DefaultTTL))
 	}
-	if c.AuthenticatedTTL <= 0 {
-		errs = append(errs, fmt.Errorf("TW_SESSION_AUTHENTICATED_TTL must be positive duration; got %v", c.AuthenticatedTTL))
+	if c.AuthenticatedTTL < time.Second {
+		errs = append(errs, fmt.Errorf("TW_SESSION_AUTHENTICATED_TTL must be at least 1s; got %v", c.AuthenticatedTTL))
 	}
 
 	return errors.Join(errs...)

@@ -252,22 +252,32 @@ func TestSessionConfig_validate(t *testing.T) {
 			{
 				name:   "zero default TTL",
 				mutate: func(c *SessionConfig) { c.DefaultTTL = 0 },
-				want:   "TW_SESSION_DEFAULT_TTL must be positive duration; got 0s",
+				want:   "TW_SESSION_DEFAULT_TTL must be at least 1s; got 0s",
 			},
 			{
 				name:   "negative default TTL",
 				mutate: func(c *SessionConfig) { c.DefaultTTL = -time.Second },
-				want:   "TW_SESSION_DEFAULT_TTL must be positive duration; got -1s",
+				want:   "TW_SESSION_DEFAULT_TTL must be at least 1s; got -1s",
+			},
+			{
+				name:   "sub-second default TTL",
+				mutate: func(c *SessionConfig) { c.DefaultTTL = 500 * time.Millisecond },
+				want:   "TW_SESSION_DEFAULT_TTL must be at least 1s; got 500ms",
 			},
 			{
 				name:   "zero authenticated TTL",
 				mutate: func(c *SessionConfig) { c.AuthenticatedTTL = 0 },
-				want:   "TW_SESSION_AUTHENTICATED_TTL must be positive duration; got 0s",
+				want:   "TW_SESSION_AUTHENTICATED_TTL must be at least 1s; got 0s",
 			},
 			{
 				name:   "negative authenticated TTL",
 				mutate: func(c *SessionConfig) { c.AuthenticatedTTL = -time.Second },
-				want:   "TW_SESSION_AUTHENTICATED_TTL must be positive duration; got -1s",
+				want:   "TW_SESSION_AUTHENTICATED_TTL must be at least 1s; got -1s",
+			},
+			{
+				name:   "sub-second authenticated TTL",
+				mutate: func(c *SessionConfig) { c.AuthenticatedTTL = 500 * time.Millisecond },
+				want:   "TW_SESSION_AUTHENTICATED_TTL must be at least 1s; got 500ms",
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
