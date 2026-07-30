@@ -235,6 +235,21 @@ func TestSessionConfig_validate(t *testing.T) {
 				want:   "TW_SESSION_NAME is required",
 			},
 			{
+				name:   "name with a space",
+				mutate: func(c *SessionConfig) { c.Name = "tw session" },
+				want:   `TW_SESSION_NAME must be a valid cookie name; got "tw session"`,
+			},
+			{
+				name:   "name with an equals sign",
+				mutate: func(c *SessionConfig) { c.Name = "tw=session" },
+				want:   `TW_SESSION_NAME must be a valid cookie name; got "tw=session"`,
+			},
+			{
+				name:   "name with a semicolon",
+				mutate: func(c *SessionConfig) { c.Name = "tw;session" },
+				want:   `TW_SESSION_NAME must be a valid cookie name; got "tw;session"`,
+			},
+			{
 				name:   "zero default TTL",
 				mutate: func(c *SessionConfig) { c.DefaultTTL = 0 },
 				want:   "TW_SESSION_DEFAULT_TTL must be positive duration; got 0s",

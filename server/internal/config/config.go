@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"time"
@@ -122,8 +123,13 @@ func (c ServerConfig) validate() error {
 func (c SessionConfig) validate() error {
 	var errs []error
 
-	if c.Name == "" {
+	switch {
+	case c.Name == "":
 		errs = append(errs, errors.New("TW_SESSION_NAME is required"))
+	// http.SetCookie drops a cookie whose name falls outside the token charset
+	// of RFC 6265, section 4.1.1, serializing it to "" instead.
+	case (&http.Cookie{Name: c.Name}).String() == "":
+		errs = append(errs, fmt.Errorf("TW_SESSION_NAME must be a valid cookie name; got %q", c.Name))
 	}
 	if c.DefaultTTL <= 0 {
 		errs = append(errs, fmt.Errorf("TW_SESSION_DEFAULT_TTL must be positive duration; got %v", c.DefaultTTL))
