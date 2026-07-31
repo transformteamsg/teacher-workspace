@@ -30,11 +30,10 @@ func New(cfg *config.Config) *Handler {
 	return h
 }
 
-// Register registers all application routes on the given HTTP server mux. The
-// session middleware is applied to the application routes but not to static
-// assets, so asset responses carry no session cookie and skip the session store.
+// Register registers all application routes on the given HTTP server mux.
+// Application routes are wrapped in the session middleware; static asset routes
+// are not.
 func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
-	// Static assets bypass the session middleware entirely.
 	mux.HandleFunc("/static/", h.static)
 
 	// Session-scoped routes: everything registered on this sub-mux runs
