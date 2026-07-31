@@ -162,6 +162,7 @@ Tests aim for clear, actionable failure messages and isolation from implementati
 
 - Prefer `t.Setenv`, `t.TempDir`, and `t.Chdir` to manual save/restore. They restore the previous state automatically, including on failure.
 - Register `t.Cleanup` immediately after the state is mutated, not further down the test body.
+- A failing setup call is not an assertion: `t.Fatalf("os.WriteFile: %v", err)`, naming the operation, never a `want`/`got` message. Use `t.Fatal`, not `t.Error`: the case can't run.
 
 #### Assertions
 
