@@ -108,6 +108,10 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 
 			rw := &sessionResponseWriter{ResponseWriter: w}
 			rw.save = func(w http.ResponseWriter) {
+				// Session-scoped responses carry user-specific state.
+				// Set before the commit so it stands if that fails.
+				w.Header().Set("Cache-Control", "no-store")
+
 				ttl := opts.DefaultTTL
 				if sess.IsAuthenticated() {
 					ttl = opts.AuthenticatedTTL

@@ -58,15 +58,6 @@ func (f *fakeStore) Drop(_ context.Context, id string) error {
 	return f.dropErr
 }
 
-func findCookie(cookies []*http.Cookie, name string) *http.Cookie {
-	for _, c := range cookies {
-		if c.Name == name {
-			return c
-		}
-	}
-	return nil
-}
-
 func TestSession(t *testing.T) {
 	t.Run("creates a new session and sets the cookie when no cookie is present", func(t *testing.T) {
 		store := &fakeStore{}
@@ -91,6 +82,11 @@ func TestSession(t *testing.T) {
 		// No cookie on the request, so an empty ID is forwarded to the store.
 		if store.preparedID != "" {
 			t.Errorf("want prepared ID: %q, got: %q", "", store.preparedID)
+		}
+
+		// Session-scoped responses must not be cached.
+		if want, got := "no-store", rec.Header().Get("Cache-Control"); want != got {
+			t.Errorf("want Cache-Control: %q, got: %q", want, got)
 		}
 
 		cookie := findCookie(rec.Result().Cookies(), testCookieName)
@@ -536,10 +532,24 @@ func TestSession(t *testing.T) {
 		if cookie := findCookie(rec.Result().Cookies(), testCookieName); cookie != nil {
 			t.Errorf("want no session cookie, got: %q", cookie.Value)
 		}
+		// The header is set ahead of the commit, so it survives the failure.
+		if want, got := "no-store", rec.Header().Get("Cache-Control"); want != got {
+			t.Errorf("want Cache-Control: %q, got: %q", want, got)
+		}
 	})
 }
 
 // okHandler is a no-op next handler for tests that only exercise the middleware.
 func okHandler() http.Handler {
 	return http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+}
+
+// findCookie returns the cookie with the given name, or nil when none matches.
+func findCookie(cookies []*http.Cookie, name string) *http.Cookie {
+	for _, c := range cookies {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
 }
