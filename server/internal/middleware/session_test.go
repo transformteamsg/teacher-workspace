@@ -443,6 +443,53 @@ func TestSession(t *testing.T) {
 		}
 	})
 
+	t.Run("defers the save when the handler writes an informational status", func(t *testing.T) {
+		store := &fakeStore{}
+
+		// A 1xx leaves the headers uncommitted, so the save has to wait for
+		// the status that commits them. Sampling the store mid-handler is the
+		// only way to see the deferral: by the time the request is over, an
+		// eager save and a deferred one leave the same trace behind.
+		var commitsAt1xx int
+		next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusContinue)
+			commitsAt1xx = store.commitCalls
+			w.WriteHeader(http.StatusOK)
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		Session(store, testOptions())(next).ServeHTTP(rec, req)
+
+		if commitsAt1xx != 0 {
+			t.Errorf("want commit calls at the 1xx: %d, got: %d", 0, commitsAt1xx)
+		}
+		if store.commitCalls != 1 {
+			t.Errorf("want commit calls: %d, got: %d", 1, store.commitCalls)
+		}
+	})
+
+	t.Run("saves when the handler writes 101 Switching Protocols", func(t *testing.T) {
+		store := &fakeStore{}
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusSwitchingProtocols)
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		Session(store, testOptions())(next).ServeHTTP(rec, req)
+
+		if store.commitCalls != 1 {
+			t.Errorf("want commit calls: %d, got: %d", 1, store.commitCalls)
+		}
+		if findCookie(rec.Result().Cookies(), testCookieName) == nil {
+			t.Error("want session cookie to be set")
+		}
+	})
+
 	t.Run("ignores session changes made after the response is written", func(t *testing.T) {
 		existing := session.New()
 		store := &fakeStore{prepareSnap: existing.Snapshot()}

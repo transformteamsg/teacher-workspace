@@ -28,8 +28,13 @@ func (rw *sessionResponseWriter) saveOnce() {
 }
 
 // WriteHeader saves the session, then forwards to the underlying ResponseWriter.
+// Informational statuses other than 101 leave the save for the final status.
 func (rw *sessionResponseWriter) WriteHeader(status int) {
-	rw.saveOnce()
+	// A 1xx does not commit the headers, so the save waits for the status that
+	// does. 101 is the exception: it is the final response on the connection.
+	if status >= 200 || status == http.StatusSwitchingProtocols {
+		rw.saveOnce()
+	}
 	rw.ResponseWriter.WriteHeader(status)
 }
 
