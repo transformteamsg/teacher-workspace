@@ -3,14 +3,12 @@ package handler
 import (
 	"net/http"
 	"net/http/httputil"
-	"path/filepath"
-	"strings"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
+	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 )
 
-// Handler serves the apps/host frontend: proxied from the rsbuild dev server
-// in development, or served from its build output directory in production.
+// Handler represents a handler for the application.
 type Handler struct {
 	cfg *config.Config
 
@@ -18,8 +16,8 @@ type Handler struct {
 	assets http.Handler
 }
 
-// New returns an http.Handler with all application routes registered.
-func New(cfg *config.Config) http.Handler {
+// New creates a new Handler.
+func New(cfg *config.Config) *Handler {
 	h := &Handler{cfg: cfg}
 
 	switch cfg.Env {
@@ -29,24 +27,19 @@ func New(cfg *config.Config) http.Handler {
 		h.assets = http.FileServer(http.Dir(cfg.BuildDir))
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", h.ServeHost)
-	return mux
+	return h
 }
 
-// ServeHost serves the host app for any request: proxying to the rsbuild dev
-// server in development, or serving the build output (falling back to
-// index.html for unknown non-asset routes so client-side routing works) in
-// production.
-func (h *Handler) ServeHost(w http.ResponseWriter, r *http.Request) {
-	switch h.cfg.Env {
-	case config.EnvDevelopment:
-		h.proxy.ServeHTTP(w, r)
-	case config.EnvProduction:
-		if strings.HasPrefix(r.URL.Path, "/static/") {
-			h.assets.ServeHTTP(w, r)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(h.cfg.BuildDir, "index.html"))
-	}
+// Register registers all application routes on the given HTTP server mux.
+// Application routes are wrapped in the session middleware; static asset routes
+// are not.
+func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
+	mux.HandleFunc("/static/", h.static)
+
+	// Session-scoped routes: everything registered on this sub-mux runs
+	// through the session middleware, which is applied a single time.
+	app := http.NewServeMux()
+	app.HandleFunc("/", h.index)
+
+	mux.Handle("/", session(app))
 }

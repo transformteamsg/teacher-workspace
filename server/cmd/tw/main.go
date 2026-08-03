@@ -14,6 +14,7 @@ import (
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/handler"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
+	"github.com/String-sg/teacher-workspace/server/internal/session/memstore"
 	"github.com/String-sg/teacher-workspace/server/pkg/dotenv"
 )
 
@@ -34,8 +35,17 @@ func main() {
 		Level: cfg.LogLevel,
 	})))
 
+	store := memstore.New()
+	session := middleware.Session(store, middleware.SessionOptions{
+		Name:             cfg.Session.Name,
+		DefaultTTL:       cfg.Session.DefaultTTL,
+		AuthenticatedTTL: cfg.Session.AuthenticatedTTL,
+		Secure:           cfg.Env == config.EnvProduction,
+	})
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	mux := handler.New(&cfg)
+	mux := http.NewServeMux()
+	handler.New(&cfg).Register(mux, session)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           middleware.RequestID(middleware.RequestLog(mux)),

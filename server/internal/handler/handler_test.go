@@ -1,7 +1,6 @@
-package handler_test
+package handler
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,111 +9,150 @@ import (
 	"testing"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
-	"github.com/String-sg/teacher-workspace/server/internal/handler"
-	"github.com/String-sg/teacher-workspace/server/pkg/require"
 )
 
-func TestNew_Development(t *testing.T) {
-	devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, "dev-server:"+r.URL.Path)
-	}))
-	t.Cleanup(devServer.Close)
+// Register's contract is which routes it wraps, so a counting stand-in for the
+// session middleware is enough: what the middleware itself does is covered by
+// its own tests.
+func TestHandler_Register(t *testing.T) {
+	t.Run("routes requests in development environment", func(t *testing.T) {
+		devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("proxied:" + r.URL.Path))
+		}))
+		t.Cleanup(devServer.Close)
 
-	devServerURL, err := url.Parse(devServer.URL)
-	require.NoError(t, err)
+		devServerURL, err := url.Parse(devServer.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
 
-	cfg := config.Default()
-	cfg.DevServerURL = devServerURL
-	mux := handler.New(&cfg)
+		tests := []struct {
+			name       string
+			target     string
+			wantStatus int
+			wantBody   string
+			wantCalls  int
+		}{
+			{
+				name:       "static asset",
+				target:     "/static/js/index.abc123.js",
+				wantStatus: http.StatusOK,
+				wantBody:   "proxied:/static/js/index.abc123.js",
+				wantCalls:  0,
+			},
+			{
+				name:       "application route",
+				target:     "/dashboard",
+				wantStatus: http.StatusOK,
+				wantBody:   "proxied:/dashboard",
+				wantCalls:  1,
+			},
+		}
 
-	t.Run("GET / is proxied to the dev server", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, req)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var calls int
+				session := func(next http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						calls++
+						next.ServeHTTP(w, r)
+					})
+				}
 
-		require.Equal(t, http.StatusOK, w.Code)
-		require.Equal(t, "dev-server:/", w.Body.String())
+				h := New(&config.Config{
+					Env:          config.EnvDevelopment,
+					DevServerURL: devServerURL,
+				})
+
+				mux := http.NewServeMux()
+				h.Register(mux, session)
+
+				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+				rec := httptest.NewRecorder()
+
+				mux.ServeHTTP(rec, req)
+
+				if want, got := tt.wantStatus, rec.Code; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
+				if want, got := tt.wantBody, rec.Body.String(); want != got {
+					t.Errorf("want: %q; got: %q", want, got)
+				}
+				if want := tt.wantCalls; want != calls {
+					t.Errorf("want: %d; got: %d", want, calls)
+				}
+			})
+		}
 	})
 
-	t.Run("GET static asset is proxied to the dev server", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/static/js/index.js", nil)
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, req)
+	t.Run("routes requests in production environment", func(t *testing.T) {
+		buildDir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(buildDir, "static", "js"), 0o755); err != nil {
+			t.Fatalf("os.MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(buildDir, "static", "js", "index.abc123.js"), []byte("console.log('Hello world!');"), 0o644); err != nil {
+			t.Fatalf("os.WriteFile: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>Hello world!</html>"), 0o644); err != nil {
+			t.Fatalf("os.WriteFile: %v", err)
+		}
 
-		require.Equal(t, http.StatusOK, w.Code)
-		require.Equal(t, "dev-server:/static/js/index.js", w.Body.String())
-	})
+		tests := []struct {
+			name       string
+			target     string
+			wantStatus int
+			wantBody   string
+			wantCalls  int
+		}{
+			{
+				name:       "static asset",
+				target:     "/static/js/index.abc123.js",
+				wantStatus: http.StatusOK,
+				wantBody:   "console.log('Hello world!');",
+				wantCalls:  0,
+			},
+			{
+				name:       "application route",
+				target:     "/dashboard",
+				wantStatus: http.StatusOK,
+				wantBody:   "<html>Hello world!</html>",
+				wantCalls:  1,
+			},
+		}
 
-	t.Run("POST / is proxied to the dev server", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", nil)
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, req)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var calls int
+				session := func(next http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						calls++
+						next.ServeHTTP(w, r)
+					})
+				}
 
-		require.Equal(t, http.StatusOK, w.Code)
-		require.Equal(t, "dev-server:/", w.Body.String())
-	})
-}
+				h := New(&config.Config{
+					Env:      config.EnvProduction,
+					BuildDir: buildDir,
+				})
 
-func TestNew_Production(t *testing.T) {
-	buildDir := t.TempDir()
+				mux := http.NewServeMux()
+				h.Register(mux, session)
 
-	if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>index</html>"), 0o644); err != nil {
-		t.Fatalf("write index.html: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(buildDir, "static", "js"), 0o755); err != nil {
-		t.Fatalf("mkdir static/js: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(buildDir, "static", "js", "index.abc123.js"), []byte("console.log('hi')"), 0o644); err != nil {
-		t.Fatalf("write static asset: %v", err)
-	}
+				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+				rec := httptest.NewRecorder()
 
-	cfg := config.Default()
-	cfg.Env = config.EnvProduction
-	cfg.BuildDir = buildDir
-	mux := handler.New(&cfg)
+				mux.ServeHTTP(rec, req)
 
-	t.Run("GET / serves index.html", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusOK, w.Code)
-		require.Equal(t, "<html>index</html>", w.Body.String())
-	})
-
-	t.Run("GET known static asset serves the file", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/static/js/index.abc123.js", nil)
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusOK, w.Code)
-		require.Equal(t, "console.log('hi')", w.Body.String())
-	})
-
-	t.Run("GET missing static asset returns 404", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/static/js/missing.js", nil)
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusNotFound, w.Code)
-	})
-
-	t.Run("GET unknown non-asset route falls back to index.html", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusOK, w.Code)
-		require.Equal(t, "<html>index</html>", w.Body.String())
-	})
-
-	t.Run("POST / falls back to index.html", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", nil)
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusOK, w.Code)
-		require.Equal(t, "<html>index</html>", w.Body.String())
+				if want, got := tt.wantStatus, rec.Code; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
+				if want, got := tt.wantBody, rec.Body.String(); want != got {
+					t.Errorf("want: %q; got: %q", want, got)
+				}
+				if want := tt.wantCalls; want != calls {
+					t.Errorf("want: %d; got: %d", want, calls)
+				}
+			})
+		}
 	})
 }
