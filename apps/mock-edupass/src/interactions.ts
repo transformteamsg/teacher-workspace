@@ -1,5 +1,6 @@
 import express from 'express';
 import type { Request, Response, Router } from 'express';
+import { errors } from 'oidc-provider';
 import type Provider from 'oidc-provider';
 
 import { FAKE_ACCOUNTS, findFakeAccount } from './accounts.ts';
@@ -74,6 +75,17 @@ function sendHtml(res: Response, status: number, html: string): void {
   res.status(status).type('html').send(html);
 }
 
+const EXPIRED_MESSAGE = 'This sign-in request is unknown or has expired.';
+
+/**
+ * isExpiredInteraction reports whether the error is the expected "no such interaction" case.
+ * Anything else is rethrown rather than reported as an expired sign-in: this is a debugging
+ * tool, so turning a real failure into a misleading message is the costliest thing it can do.
+ */
+function isExpiredInteraction(err: unknown): boolean {
+  return err instanceof errors.SessionNotFound;
+}
+
 /**
  * createInteractionRouter serves the login interaction: an account picker and the form post
  * that completes it. It is the only hand-written HTTP surface; oidc-provider owns the rest.
@@ -89,8 +101,11 @@ export function createInteractionRouter(provider: Provider): Router {
     let uid: string;
     try {
       ({ uid } = await provider.interactionDetails(req, res));
-    } catch {
-      sendHtml(res, 400, renderMessage('This sign-in request is unknown or has expired.'));
+    } catch (err: unknown) {
+      if (!isExpiredInteraction(err)) {
+        throw err;
+      }
+      sendHtml(res, 400, renderMessage(EXPIRED_MESSAGE));
       return;
     }
 
@@ -105,8 +120,11 @@ export function createInteractionRouter(provider: Provider): Router {
       try {
         const details = await provider.interactionDetails(req, res);
         clientId = String(details.params.client_id);
-      } catch {
-        sendHtml(res, 400, renderMessage('This sign-in request is unknown or has expired.'));
+      } catch (err: unknown) {
+        if (!isExpiredInteraction(err)) {
+          throw err;
+        }
+        sendHtml(res, 400, renderMessage(EXPIRED_MESSAGE));
         return;
       }
 
