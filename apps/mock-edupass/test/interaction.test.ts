@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
-import http from 'node:http';
 import { after, before, describe, test } from 'node:test';
 
 import express from 'express';
 
 import { FAKE_ACCOUNTS } from '../src/accounts.ts';
 import { createInteractionRouter } from '../src/interactions.ts';
-import { createProvider } from '../src/provider.ts';
 import { startProvider } from '../src/server.ts';
 import type { RunningProvider } from '../src/server.ts';
 import {
@@ -124,39 +122,25 @@ describe('server lifecycle', () => {
 
 describe('mount order', () => {
   /**
-   * startMiswired builds the application with a body parser ahead of the provider, the wiring
-   * the real application avoids. oidc-provider tolerates it: when the raw stream has already
-   * been drained it falls back to `req.body` and warns that an upstream parser is not
-   * recommended. This characterises that fallback, so its removal in a future release shows up
-   * here rather than as a broken token endpoint.
+   * startMiswired reuses the real socket lifecycle and swaps only the handler, so this stays a
+   * test of wiring rather than a second copy of the server that can drift from it.
+   *
+   * The arrangement it builds puts a body parser ahead of the provider, which the real
+   * application avoids. oidc-provider tolerates it: when the raw stream has already been
+   * drained it falls back to `req.body` and warns that an upstream parser is not recommended.
+   * This characterises that fallback, so its removal in a future release shows up here rather
+   * than as a broken token endpoint.
    */
-  async function startMiswired(): Promise<RunningProvider> {
-    const server = http.createServer();
-    await new Promise<void>((resolve) => {
-      server.listen(0, '127.0.0.1', resolve);
+  function startMiswired(): Promise<RunningProvider> {
+    return startProvider({
+      buildHandler: (provider) => {
+        const app = express();
+        app.use(express.urlencoded({ extended: false }));
+        app.use(createInteractionRouter(provider));
+        app.use(provider.callback());
+        return app;
+      },
     });
-
-    const address = server.address();
-    if (address === null || typeof address === 'string') {
-      throw new Error('want: a bound TCP address; got: none');
-    }
-
-    const url = `http://127.0.0.1:${address.port}`;
-    const provider = createProvider(url);
-
-    const app = express();
-    app.use(express.urlencoded({ extended: false }));
-    app.use(createInteractionRouter(provider));
-    app.use(provider.callback());
-    server.on('request', app);
-
-    return {
-      url,
-      close: () =>
-        new Promise<void>((resolve, reject) => {
-          server.close((err) => (err === undefined ? resolve() : reject(err)));
-        }),
-    };
   }
 
   test('tolerates an application-wide body parser by falling back to req.body', async () => {

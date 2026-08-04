@@ -3,7 +3,14 @@ import { after, before, describe, test } from 'node:test';
 
 import { startProvider } from '../src/server.ts';
 import type { RunningProvider } from '../src/server.ts';
-import { discoveryUrl, getJson } from './helpers/client.ts';
+import {
+  discoveryUrl,
+  exchangeCode,
+  getJson,
+  parseFormPost,
+  pkcePair,
+  signInAs,
+} from './helpers/client.ts';
 
 describe('discovery', () => {
   let provider: RunningProvider;
@@ -71,6 +78,10 @@ describe('discovery', () => {
     }
   });
 
+  test('defaults the issuer to the bound loopback address', () => {
+    assert.equal(provider.url, provider.address);
+  });
+
   test('publishes no private key material', async () => {
     const doc = await getJson(discoveryUrl(provider.url));
     const jwks = (await getJson(doc.jwks_uri as string)) as unknown as { keys: JsonWebKey[] };
@@ -84,5 +95,46 @@ describe('discovery', () => {
         );
       }
     }
+  });
+});
+
+describe('configured issuer', () => {
+  const ISSUER = 'https://mock-edupass.example';
+
+  let running: RunningProvider;
+
+  before(async () => {
+    running = await startProvider({ issuer: ISSUER });
+  });
+
+  after(async () => {
+    await running.close();
+  });
+
+  /**
+   * OIDC Discovery requires the advertised issuer to be identical to the URL the document was
+   * fetched from, and the library derives the other endpoints from the request Host header.
+   * Without a configurable issuer the two disagree the moment the provider is reached under
+   * any name other than its bound address, which is every containerised deployment.
+   */
+  test('advertises the configured issuer rather than the bound address', async () => {
+    const doc = await getJson(discoveryUrl(running.address));
+
+    assert.equal(doc.issuer, ISSUER);
+    assert.notEqual(running.url, running.address);
+  });
+
+  test('signs ID tokens with the configured issuer', async () => {
+    const { challenge, verifier } = pkcePair();
+    const { html } = await signInAs(running.address, 'teacher-001', { codeChallenge: challenge });
+    const { code } = parseFormPost(html).fields;
+
+    const res = await exchangeCode(running.address, { code, codeVerifier: verifier });
+    const body = (await res.json()) as { id_token: string };
+    const payload = JSON.parse(
+      Buffer.from(body.id_token.split('.')[1], 'base64url').toString(),
+    ) as Record<string, unknown>;
+
+    assert.equal(payload.iss, ISSUER);
   });
 });

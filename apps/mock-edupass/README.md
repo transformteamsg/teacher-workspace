@@ -16,8 +16,21 @@ pnpm dev:mock-edupass
 ```
 
 It listens on <http://127.0.0.1:3002> and serves its discovery document at
-<http://127.0.0.1:3002/.well-known/openid-configuration>. Set `PORT` to use a different port.
-That is the only environment variable it reads.
+<http://127.0.0.1:3002/.well-known/openid-configuration>.
+
+Two environment variables, both optional:
+
+| Variable              | Default           | Purpose                                                                                                               |
+| --------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                | `3002`            | Port to bind. Must be decimal digits: blank falls back to the default, anything else is rejected rather than coerced. |
+| `MOCK_EDUPASS_ISSUER` | the bound address | Issuer advertised in discovery and carried as the `iss` claim.                                                        |
+
+Set `MOCK_EDUPASS_ISSUER` whenever the provider is reached under a name other than its bound
+address, such as `localhost` or a container service name. OIDC Discovery requires the issuer in
+the document to be identical to the URL the document was fetched from, and the library derives
+every other endpoint URL from the request's `Host` header. Leave the issuer at its default while
+reaching the provider as `localhost` and the document contradicts itself, which a conforming
+relying party rejects outright.
 
 ## Signing in
 
