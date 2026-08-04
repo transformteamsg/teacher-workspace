@@ -8,6 +8,8 @@ import {
   CookieJar,
   authorizeUrl,
   follow,
+  followChain,
+  interactionUid,
   parseFormPost,
   pkcePair,
   signInAs,
@@ -60,39 +62,27 @@ describe('authorization', () => {
         authorizeUrl(provider.url, { codeChallenge: challenge, state: 'state-abc' }),
         jar,
       );
-      const uid = /action="\/interaction\/([^/"]+)\/login"/.exec(await picker.text())?.[1];
-      assert.ok(uid !== undefined, 'want: an interaction uid; got: none');
+      const uid = interactionUid(await picker.text());
 
-      // Walk the redirect chain by hand so every intermediate URL can be inspected.
-      const visited: string[] = [];
-      let current = `${provider.url}/interaction/${uid}/login`;
-      let res = await fetch(current, {
+      const { res, visited } = await followChain(`${provider.url}/interaction/${uid}/login`, jar, {
         method: 'POST',
-        headers: {
-          cookie: jar.header(),
-          'content-type': 'application/x-www-form-urlencoded',
-        },
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ sub: 'teacher-001' }).toString(),
-        redirect: 'manual',
       });
-      jar.store(res);
 
-      for (let hop = 0; hop < 10 && res.status >= 300 && res.status < 400; hop += 1) {
-        const location = res.headers.get('location');
-        if (location === null) {
-          break;
-        }
-        current = new URL(location, current).toString();
-        visited.push(current);
-        res = await fetch(current, { headers: { cookie: jar.header() }, redirect: 'manual' });
-        jar.store(res);
-      }
-
+      // The code must arrive in the form body, so it must appear in none of the URLs that
+      // carried the browser there.
+      assert.ok(visited.length > 0, 'want: at least one redirect; got: none');
       for (const url of visited) {
         for (const param of ['code=', 'state=', 'id_token=', 'access_token='] as const) {
           assert.ok(!url.includes(param), `want URL: free of ${param}; got: ${url}`);
         }
       }
+
+      assert.ok(
+        typeof parseFormPost(await res.text()).fields.code === 'string',
+        'want code: delivered in the form body; got: none',
+      );
     });
 
     test('honours the selected account rather than defaulting to the first', async () => {

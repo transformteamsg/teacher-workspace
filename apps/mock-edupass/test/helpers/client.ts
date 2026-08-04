@@ -47,31 +47,52 @@ async function request(url: string, jar: CookieJar, init: RequestInit = {}): Pro
   return res;
 }
 
-/** follow issues the request and walks Location headers until the response is not a redirect. */
+export interface FollowResult {
+  res: Response;
+  /** contains every URL navigated to after a redirect, in order, excluding the first request. */
+  visited: string[];
+}
+
+/**
+ * followChain issues the request and walks Location headers until the response is not a
+ * redirect, reporting the URLs it passed through so a caller can assert on them.
+ */
+export async function followChain(
+  url: string,
+  jar: CookieJar,
+  init: RequestInit = {},
+  max = 10,
+): Promise<FollowResult> {
+  const visited: string[] = [];
+  let current = url;
+  let res = await request(current, jar, init);
+
+  for (let hop = 0; hop < max; hop += 1) {
+    if (res.status < 300 || res.status >= 400) {
+      return { res, visited };
+    }
+
+    const location = res.headers.get('location');
+    if (location === null) {
+      return { res, visited };
+    }
+
+    current = new URL(location, current).toString();
+    visited.push(current);
+    res = await request(current, jar);
+  }
+
+  throw new Error(`want: a terminal response; got: more than ${max} redirects`);
+}
+
+/** follow is followChain for callers that only need the terminal response. */
 export async function follow(
   url: string,
   jar: CookieJar,
   init: RequestInit = {},
   max = 10,
 ): Promise<Response> {
-  let current = url;
-  let res = await request(current, jar, init);
-
-  for (let hop = 0; hop < max; hop += 1) {
-    if (res.status < 300 || res.status >= 400) {
-      return res;
-    }
-
-    const location = res.headers.get('location');
-    if (location === null) {
-      return res;
-    }
-
-    current = new URL(location, current).toString();
-    res = await request(current, jar);
-  }
-
-  throw new Error(`want: a terminal response; got: more than ${max} redirects`);
+  return (await followChain(url, jar, init, max)).res;
 }
 
 /** pkcePair returns a fresh verifier and its S256 challenge. */
