@@ -21,11 +21,12 @@ docs
 node_modules
 **/node_modules
 
-# Ignore cache/output directories.
-bin
-build
-out
-tmp
+# Ignore cache/output directories. These use **/ so they match at any depth,
+# matching how .gitignore treats them.
+**/bin
+**/build
+**/out
+**/tmp
 **/dist
 **/@mf-types
 

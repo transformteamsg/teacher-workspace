@@ -5,9 +5,13 @@
 # ----------------------------------------
 FROM node:24-alpine3.23 AS host-build
 
+# Keep in sync with the pnpm/action-setup version in .github/workflows/ci.yml,
+# so the image and CI resolve dependencies identically.
+ARG PNPM_VERSION=11.11.0
+
 WORKDIR /src
 
-RUN npm install --global pnpm@11.11.0
+RUN npm install --global pnpm@${PNPM_VERSION}
 
 # Fetch all dependencies for better layer caching. Every workspace package
 # matched by pnpm-workspace.yaml needs its manifest copied here, otherwise the
@@ -30,6 +34,11 @@ RUN pnpm build
 # ----------------------------------------
 FROM golang:1.26.5-alpine3.23 AS server-build
 
+# BuildKit populates TARGETARCH from the platform being built. Hardcoding it
+# would emit a binary for the wrong architecture whenever the build host is not
+# arm64, which fails at run time rather than at build time.
+ARG TARGETARCH
+
 WORKDIR /src
 
 # Fetch all dependencies for better layer caching.
@@ -40,7 +49,7 @@ COPY server/ server/
 
 # Build the binary. CGO_ENABLED=0 keeps it static so it does not depend on the
 # runtime stage's libc.
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /src/tw ./server/cmd/tw
 
 # ----------------------------------------

@@ -56,7 +56,7 @@ TW_ENV=production go run ./server/cmd/tw
 
 ### Container image
 
-The repository-root `Dockerfile` builds the frontend and the server into a single `linux/arm64` image, so running Teacher Workspace needs only a container runtime instead of the Go, Node, and pnpm toolchains:
+The repository-root `Dockerfile` builds the frontend and the server into a single image, so running Teacher Workspace needs only a container runtime instead of the Go, Node, and pnpm toolchains. A local build targets your own machine's architecture; CI builds `linux/arm64`:
 
 ```bash
 docker build -t teacher-workspace .
