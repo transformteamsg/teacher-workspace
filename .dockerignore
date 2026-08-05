@@ -1,0 +1,34 @@
+.DS_Store
+
+# Ignore docker files.
+.dockerignore
+**/Dockerfile
+
+# Ignore git directory and files.
+.git
+.github
+.gitignore
+
+# Ignore editor directories and files.
+.idea
+.vscode
+
+# Ignore worktrees and documentation.
+.worktrees
+docs
+
+# Ignore node modules.
+node_modules
+**/node_modules
+
+# Ignore cache/output directories. These use **/ so they match at any depth,
+# matching how .gitignore treats them.
+**/bin
+**/build
+**/out
+**/tmp
+**/dist
+**/@mf-types
+
+# Ignore environment variables.
+**/*.env*
