@@ -12,13 +12,29 @@ import (
 type Handler struct {
 	cfg *config.Config
 
-	proxy  *httputil.ReverseProxy
-	assets http.Handler
+	proxy                *httputil.ReverseProxy
+	studentInsightsProxy *httputil.ReverseProxy
+	postsProxy           *httputil.ReverseProxy
+	assets               http.Handler
 }
 
 // New creates a new Handler.
 func New(cfg *config.Config) *Handler {
-	h := &Handler{cfg: cfg}
+	h := &Handler{
+		cfg: cfg,
+		studentInsightsProxy: &httputil.ReverseProxy{
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.SetURL(cfg.APIProxy.StudentInsightsBaseURL)
+			},
+			ErrorHandler: handleProxyError,
+		},
+		postsProxy: &httputil.ReverseProxy{
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.SetURL(cfg.APIProxy.PostsBaseURL)
+			},
+			ErrorHandler: handleProxyError,
+		},
+	}
 
 	switch cfg.Env {
 	case config.EnvDevelopment:
