@@ -51,20 +51,31 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
 
-		if got := cfg.APIProxy.StudentInsightsBaseURL; got != nil {
-			t.Errorf("want: nil; got: %v", got)
+		if want, got := "http://127.0.0.1:3002", cfg.APIProxy.StudentInsightsBaseURL.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if got := cfg.APIProxy.PostsBaseURL; got != nil {
-			t.Errorf("want: nil; got: %v", got)
+		if want, got := "http://127.0.0.1:3003", cfg.APIProxy.PostsBaseURL.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})
 }
 
 func TestConfig_Validate(t *testing.T) {
+	t.Run("accepts http and https dev server urls", func(t *testing.T) {
+		for _, scheme := range []string{"http", "https"} {
+			t.Run(scheme, func(t *testing.T) {
+				cfg := Default()
+				cfg.DevServerURL = &url.URL{Scheme: scheme, Host: "127.0.0.1:3001"}
+
+				if err := cfg.Validate(); err != nil {
+					t.Errorf("want err: nil; got: %v", err)
+				}
+			})
+		}
+	})
+
 	t.Run("accepts production pointing at an existing build dir", func(t *testing.T) {
 		cfg := Default()
-		cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
-		cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
 
@@ -83,6 +94,11 @@ func TestConfig_Validate(t *testing.T) {
 				name:   "unknown env",
 				mutate: func(c *Config) { c.Env = "staging" },
 				want:   `TW_ENV must be "development" or "production"; got "staging"`,
+			},
+			{
+				name:   "missing dev server url",
+				mutate: func(c *Config) { c.DevServerURL = nil },
+				want:   "TW_DEV_SERVER_URL is required",
 			},
 			{
 				name:   "dev server url with a non-http scheme",
@@ -110,16 +126,9 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				want: `TW_BUILD_DIR does not exist: "testdata/does-not-exist"`,
 			},
-			{
-				name:   "missing posts base url",
-				mutate: func(c *Config) { c.APIProxy.PostsBaseURL = nil },
-				want:   "TW_API_PROXY_POSTS_BASE_URL is required",
-			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				cfg := Default()
-				cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
-				cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
 				tt.mutate(&cfg)
 
 				err := cfg.Validate()
@@ -136,8 +145,6 @@ func TestConfig_Validate(t *testing.T) {
 
 	t.Run("skips the dev server url outside development", func(t *testing.T) {
 		cfg := Default()
-		cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
-		cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
 		cfg.DevServerURL = &url.URL{}
@@ -149,8 +156,6 @@ func TestConfig_Validate(t *testing.T) {
 
 	t.Run("skips the build dir outside production", func(t *testing.T) {
 		cfg := Default()
-		cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
-		cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
 		cfg.BuildDir = "testdata/does-not-exist"
 
 		if err := cfg.Validate(); err != nil {
@@ -163,13 +168,14 @@ func TestConfig_Validate(t *testing.T) {
 		cfg.Env = "staging"
 		cfg.Server.Port = 0
 		cfg.Session.Name = ""
+		cfg.APIProxy.PostsBaseURL = nil
 
 		err := cfg.Validate()
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		for _, want := range []string{"TW_ENV", "TW_SERVER_PORT", "TW_SESSION_NAME"} {
+		for _, want := range []string{"TW_ENV", "TW_SERVER_PORT", "TW_SESSION_NAME", "TW_API_PROXY_POSTS_BASE_URL"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("want err: containing %q; got: %q", want, err)
 			}
@@ -318,18 +324,22 @@ func TestSessionConfig_validate(t *testing.T) {
 }
 
 func TestAPIProxyConfig_validate(t *testing.T) {
-	t.Run("accepts base urls that are set", func(t *testing.T) {
-		cfg := APIProxyConfig{
-			StudentInsightsBaseURL: &url.URL{Scheme: "http", Host: "127.0.0.1:3002"},
-			PostsBaseURL:           &url.URL{Scheme: "http", Host: "127.0.0.1:3003"},
-		}
+	t.Run("accepts http and https base urls", func(t *testing.T) {
+		for _, scheme := range []string{"http", "https"} {
+			t.Run(scheme, func(t *testing.T) {
+				cfg := APIProxyConfig{
+					StudentInsightsBaseURL: &url.URL{Scheme: scheme, Host: "student-insights.example.com"},
+					PostsBaseURL:           &url.URL{Scheme: scheme, Host: "posts.example.com"},
+				}
 
-		if err := cfg.validate(); err != nil {
-			t.Errorf("want err: nil; got: %v", err)
+				if err := cfg.validate(); err != nil {
+					t.Errorf("want err: nil; got: %v", err)
+				}
+			})
 		}
 	})
 
-	t.Run("rejects an unset base url", func(t *testing.T) {
+	t.Run("rejects invalid values", func(t *testing.T) {
 		for _, tt := range []struct {
 			name   string
 			mutate func(*APIProxyConfig)
@@ -341,16 +351,33 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 				want:   "TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL is required",
 			},
 			{
+				name:   "student insights with a non-http scheme",
+				mutate: func(c *APIProxyConfig) { c.StudentInsightsBaseURL = &url.URL{Scheme: "ftp", Host: "127.0.0.1:3002"} },
+				want:   `TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL must use scheme http or https; got "ftp://127.0.0.1:3002"`,
+			},
+			{
+				name:   "student insights without a host",
+				mutate: func(c *APIProxyConfig) { c.StudentInsightsBaseURL = &url.URL{Scheme: "http"} },
+				want:   `TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL must include host[:port]; got "http:"`,
+			},
+			{
 				name:   "missing posts",
 				mutate: func(c *APIProxyConfig) { c.PostsBaseURL = nil },
 				want:   "TW_API_PROXY_POSTS_BASE_URL is required",
 			},
+			{
+				name:   "posts with a non-http scheme",
+				mutate: func(c *APIProxyConfig) { c.PostsBaseURL = &url.URL{Scheme: "ftp", Host: "127.0.0.1:3003"} },
+				want:   `TW_API_PROXY_POSTS_BASE_URL must use scheme http or https; got "ftp://127.0.0.1:3003"`,
+			},
+			{
+				name:   "posts without a host",
+				mutate: func(c *APIProxyConfig) { c.PostsBaseURL = &url.URL{Scheme: "http"} },
+				want:   `TW_API_PROXY_POSTS_BASE_URL must include host[:port]; got "http:"`,
+			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
-				cfg := APIProxyConfig{
-					StudentInsightsBaseURL: &url.URL{Scheme: "http", Host: "127.0.0.1:3002"},
-					PostsBaseURL:           &url.URL{Scheme: "http", Host: "127.0.0.1:3003"},
-				}
+				cfg := Default().APIProxy
 				tt.mutate(&cfg)
 
 				err := cfg.validate()
@@ -362,21 +389,6 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 					t.Errorf("want err: containing %q; got: %q", tt.want, err)
 				}
 			})
-		}
-	})
-
-	t.Run("reports both missing base urls", func(t *testing.T) {
-		cfg := Default().APIProxy
-
-		err := cfg.validate()
-
-		if err == nil {
-			t.Fatal("want err: non-nil; got: nil")
-		}
-		for _, want := range []string{"TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL", "TW_API_PROXY_POSTS_BASE_URL"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("want err: containing %q; got: %q", want, err)
-			}
 		}
 	})
 }

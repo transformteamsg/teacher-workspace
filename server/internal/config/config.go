@@ -75,6 +75,10 @@ func Default() Config {
 			DefaultTTL:       3 * time.Hour,
 			AuthenticatedTTL: 30 * time.Minute,
 		},
+		APIProxy: APIProxyConfig{
+			StudentInsightsBaseURL: must(url.Parse("http://127.0.0.1:3002")),
+			PostsBaseURL:           must(url.Parse("http://127.0.0.1:3003")),
+		},
 	}
 }
 
@@ -88,11 +92,15 @@ func (c Config) Validate() error {
 
 	switch c.Env {
 	case EnvDevelopment:
-		if c.DevServerURL.Scheme != "http" && c.DevServerURL.Scheme != "https" {
-			errs = append(errs, fmt.Errorf("TW_DEV_SERVER_URL must use scheme http or https; got %q", c.DevServerURL))
-		}
-		if c.DevServerURL.Host == "" {
-			errs = append(errs, fmt.Errorf("TW_DEV_SERVER_URL must include host[:port]; got %q", c.DevServerURL))
+		if c.DevServerURL == nil {
+			errs = append(errs, errors.New("TW_DEV_SERVER_URL is required"))
+		} else {
+			if c.DevServerURL.Scheme != "http" && c.DevServerURL.Scheme != "https" {
+				errs = append(errs, fmt.Errorf("TW_DEV_SERVER_URL must use scheme http or https; got %q", c.DevServerURL))
+			}
+			if c.DevServerURL.Host == "" {
+				errs = append(errs, fmt.Errorf("TW_DEV_SERVER_URL must include host[:port]; got %q", c.DevServerURL))
+			}
 		}
 	case EnvProduction:
 		if c.BuildDir == "" {
@@ -155,9 +163,23 @@ func (c APIProxyConfig) validate() error {
 
 	if c.StudentInsightsBaseURL == nil {
 		errs = append(errs, errors.New("TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL is required"))
+	} else {
+		if c.StudentInsightsBaseURL.Scheme != "http" && c.StudentInsightsBaseURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL must use scheme http or https; got %q", c.StudentInsightsBaseURL))
+		}
+		if c.StudentInsightsBaseURL.Host == "" {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL must include host[:port]; got %q", c.StudentInsightsBaseURL))
+		}
 	}
 	if c.PostsBaseURL == nil {
 		errs = append(errs, errors.New("TW_API_PROXY_POSTS_BASE_URL is required"))
+	} else {
+		if c.PostsBaseURL.Scheme != "http" && c.PostsBaseURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_POSTS_BASE_URL must use scheme http or https; got %q", c.PostsBaseURL))
+		}
+		if c.PostsBaseURL.Host == "" {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_POSTS_BASE_URL must include host[:port]; got %q", c.PostsBaseURL))
+		}
 	}
 
 	return errors.Join(errs...)
