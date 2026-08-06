@@ -50,12 +50,21 @@ func TestDefault(t *testing.T) {
 		if want, got := 30*time.Minute, cfg.Session.AuthenticatedTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
+
+		if got := cfg.APIProxy.StudentInsightsBaseURL; got != nil {
+			t.Errorf("want: nil; got: %v", got)
+		}
+		if got := cfg.APIProxy.PostsBaseURL; got != nil {
+			t.Errorf("want: nil; got: %v", got)
+		}
 	})
 }
 
 func TestConfig_Validate(t *testing.T) {
 	t.Run("accepts production pointing at an existing build dir", func(t *testing.T) {
 		cfg := Default()
+		cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
+		cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
 
@@ -101,9 +110,16 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				want: `TW_BUILD_DIR does not exist: "testdata/does-not-exist"`,
 			},
+			{
+				name:   "missing posts base url",
+				mutate: func(c *Config) { c.APIProxy.PostsBaseURL = nil },
+				want:   "TW_API_PROXY_POSTS_BASE_URL is required",
+			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				cfg := Default()
+				cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
+				cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
 				tt.mutate(&cfg)
 
 				err := cfg.Validate()
@@ -120,6 +136,8 @@ func TestConfig_Validate(t *testing.T) {
 
 	t.Run("skips the dev server url outside development", func(t *testing.T) {
 		cfg := Default()
+		cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
+		cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
 		cfg.DevServerURL = &url.URL{}
@@ -131,6 +149,8 @@ func TestConfig_Validate(t *testing.T) {
 
 	t.Run("skips the build dir outside production", func(t *testing.T) {
 		cfg := Default()
+		cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
+		cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
 		cfg.BuildDir = "testdata/does-not-exist"
 
 		if err := cfg.Validate(); err != nil {
@@ -293,6 +313,70 @@ func TestSessionConfig_validate(t *testing.T) {
 					t.Errorf("want err: containing %q; got: %q", tt.want, err)
 				}
 			})
+		}
+	})
+}
+
+func TestAPIProxyConfig_validate(t *testing.T) {
+	t.Run("accepts base urls that are set", func(t *testing.T) {
+		cfg := APIProxyConfig{
+			StudentInsightsBaseURL: &url.URL{Scheme: "http", Host: "127.0.0.1:3002"},
+			PostsBaseURL:           &url.URL{Scheme: "http", Host: "127.0.0.1:3003"},
+		}
+
+		if err := cfg.validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("rejects an unset base url", func(t *testing.T) {
+		for _, tt := range []struct {
+			name   string
+			mutate func(*APIProxyConfig)
+			want   string
+		}{
+			{
+				name:   "missing student insights",
+				mutate: func(c *APIProxyConfig) { c.StudentInsightsBaseURL = nil },
+				want:   "TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL is required",
+			},
+			{
+				name:   "missing posts",
+				mutate: func(c *APIProxyConfig) { c.PostsBaseURL = nil },
+				want:   "TW_API_PROXY_POSTS_BASE_URL is required",
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				cfg := APIProxyConfig{
+					StudentInsightsBaseURL: &url.URL{Scheme: "http", Host: "127.0.0.1:3002"},
+					PostsBaseURL:           &url.URL{Scheme: "http", Host: "127.0.0.1:3003"},
+				}
+				tt.mutate(&cfg)
+
+				err := cfg.validate()
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if !strings.Contains(err.Error(), tt.want) {
+					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				}
+			})
+		}
+	})
+
+	t.Run("reports both missing base urls", func(t *testing.T) {
+		cfg := Default().APIProxy
+
+		err := cfg.validate()
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		for _, want := range []string{"TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL", "TW_API_PROXY_POSTS_BASE_URL"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("want err: containing %q; got: %q", want, err)
+			}
 		}
 	})
 }

@@ -27,8 +27,9 @@ type Config struct {
 	// BuildDir is used in production to serve the frontend build output.
 	BuildDir string `dotenv:"TW_BUILD_DIR"`
 
-	Server  ServerConfig  `dotenv:",squash"`
-	Session SessionConfig `dotenv:",squash"`
+	Server   ServerConfig   `dotenv:",squash"`
+	Session  SessionConfig  `dotenv:",squash"`
+	APIProxy APIProxyConfig `dotenv:",squash"`
 }
 
 // ServerConfig represents the configuration for the HTTP server.
@@ -45,6 +46,12 @@ type SessionConfig struct {
 	Name             string        `dotenv:"TW_SESSION_NAME"`
 	DefaultTTL       time.Duration `dotenv:"TW_SESSION_DEFAULT_TTL"`
 	AuthenticatedTTL time.Duration `dotenv:"TW_SESSION_AUTHENTICATED_TTL"`
+}
+
+// APIProxyConfig represents the configuration for the backend proxies.
+type APIProxyConfig struct {
+	StudentInsightsBaseURL *url.URL `dotenv:"TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL"`
+	PostsBaseURL           *url.URL `dotenv:"TW_API_PROXY_POSTS_BASE_URL"`
 }
 
 // Default returns the default configuration for the application.
@@ -95,7 +102,7 @@ func (c Config) Validate() error {
 		}
 	}
 
-	return errors.Join(append(errs, c.Server.validate(), c.Session.validate())...)
+	return errors.Join(append(errs, c.Server.validate(), c.Session.validate(), c.APIProxy.validate())...)
 }
 
 func (c ServerConfig) validate() error {
@@ -138,6 +145,19 @@ func (c SessionConfig) validate() error {
 	}
 	if c.AuthenticatedTTL < time.Second {
 		errs = append(errs, fmt.Errorf("TW_SESSION_AUTHENTICATED_TTL must be at least 1s; got %v", c.AuthenticatedTTL))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (c APIProxyConfig) validate() error {
+	var errs []error
+
+	if c.StudentInsightsBaseURL == nil {
+		errs = append(errs, errors.New("TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL is required"))
+	}
+	if c.PostsBaseURL == nil {
+		errs = append(errs, errors.New("TW_API_PROXY_POSTS_BASE_URL is required"))
 	}
 
 	return errors.Join(errs...)
