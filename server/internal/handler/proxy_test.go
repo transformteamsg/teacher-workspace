@@ -278,3 +278,17 @@ func TestHandleProxyError(t *testing.T) {
 		}
 	})
 }
+
+func TestHandleProxyNotFound(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/unknown-app/hello", nil)
+	rec := httptest.NewRecorder()
+
+	handleProxyNotFound(rec, req)
+
+	if want, got := http.StatusNotFound, rec.Code; want != got {
+		t.Errorf("want: %d; got: %d", want, got)
+	}
+	if want, got := "Not Found", rec.Body.String(); want != got {
+		t.Errorf("want: %q; got: %q", want, got)
+	}
+}

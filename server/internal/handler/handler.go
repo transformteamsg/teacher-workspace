@@ -56,6 +56,9 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
 	// through the session middleware, which is applied a single time.
 	app := http.NewServeMux()
 	app.HandleFunc("/", h.index)
+	app.HandleFunc("/api/", handleProxyNotFound)
+	app.HandleFunc("/api/student-insights/", h.studentInsights)
+	app.HandleFunc("/api/posts/", h.posts)
 
 	mux.Handle("/", session(app))
 }

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 )
 
@@ -31,4 +32,9 @@ func handleProxyError(w http.ResponseWriter, r *http.Request, err error) {
 	)
 
 	http.Error(w, "Bad Gateway", http.StatusBadGateway)
+}
+
+// Answers 404 for an /api/ path with no proxy behind it.
+func handleProxyNotFound(w http.ResponseWriter, r *http.Request) {
+	httputil.RenderPlain(w, middleware.LoggerFromContext(r.Context()), http.StatusNotFound)
 }
