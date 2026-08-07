@@ -42,11 +42,22 @@ type ServerConfig struct {
 	IdleTimeout       time.Duration `dotenv:"TW_SERVER_IDLE_TIMEOUT"`
 }
 
+type StoreProvider string
+
+const (
+	StoreProviderMemory StoreProvider = "memory"
+	StoreProviderValkey StoreProvider = "valkey"
+)
+
 // SessionConfig represents the configuration for the session.
 type SessionConfig struct {
-	Name             string        `dotenv:"TW_SESSION_NAME"`
-	DefaultTTL       time.Duration `dotenv:"TW_SESSION_DEFAULT_TTL"`
-	AuthenticatedTTL time.Duration `dotenv:"TW_SESSION_AUTHENTICATED_TTL"`
+	Name              string        `dotenv:"TW_SESSION_NAME"`
+	DefaultTTL        time.Duration `dotenv:"TW_SESSION_DEFAULT_TTL"`
+	AuthenticatedTTL  time.Duration `dotenv:"TW_SESSION_AUTHENTICATED_TTL"`
+	StoreProvider     StoreProvider `dotenv:"TW_SESSION_STORE_PROVIDER"`
+	ValkeyURL         *url.URL      `dotenv:"TW_SESSION_VALKEY_URL"`
+	ValkeyPrefix      string        `dotenv:"TW_SESSION_VALKEY_PREFIX"`
+	ValkeyDialTimeout time.Duration `dotenv:"TW_SESSION_VALKEY_DIAL_TIMEOUT"`
 }
 
 // APIProxyConfig represents the configuration for the backend proxies.
@@ -75,9 +86,12 @@ func Default() Config {
 			IdleTimeout:       60 * time.Second,
 		},
 		Session: SessionConfig{
-			Name:             "tw_session",
-			DefaultTTL:       3 * time.Hour,
-			AuthenticatedTTL: 30 * time.Minute,
+			Name:              "tw_session",
+			DefaultTTL:        3 * time.Hour,
+			AuthenticatedTTL:  30 * time.Minute,
+			StoreProvider:     StoreProviderMemory,
+			ValkeyPrefix:      "session:",
+			ValkeyDialTimeout: 5 * time.Second,
 		},
 		APIProxy: APIProxyConfig{
 			StudentInsightsBaseURL:    must(url.Parse("http://127.0.0.1:3002")),
@@ -162,7 +176,53 @@ func (c SessionConfig) validate() error {
 		errs = append(errs, fmt.Errorf("TW_SESSION_AUTHENTICATED_TTL must be at least 1s; got %v", c.AuthenticatedTTL))
 	}
 
+	switch c.StoreProvider {
+	case StoreProviderMemory:
+	case StoreProviderValkey:
+		errs = append(errs, c.validateValkey()...)
+	default:
+		errs = append(errs, fmt.Errorf("TW_SESSION_STORE_PROVIDER must be %q or %q; got %q",
+			StoreProviderMemory, StoreProviderValkey, c.StoreProvider))
+	}
+
 	return errors.Join(errs...)
+}
+
+func (c SessionConfig) validateValkey() []error {
+	var errs []error
+
+	if c.ValkeyDialTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_DIAL_TIMEOUT must be positive; got %v", c.ValkeyDialTimeout))
+	}
+	if c.ValkeyPrefix == "" {
+		errs = append(errs, errors.New("TW_SESSION_VALKEY_PREFIX is required"))
+	}
+
+	if c.ValkeyURL == nil {
+		return append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL is required when TW_SESSION_STORE_PROVIDER is %q", StoreProviderValkey))
+	}
+
+	if c.ValkeyURL.Scheme != "valkey" {
+		errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL must use scheme "valkey"; got %q`, c.ValkeyURL.Scheme))
+	}
+	if c.ValkeyURL.Hostname() == "" {
+		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a host; got %q", c.ValkeyURL))
+	}
+	if c.ValkeyURL.Port() == "" {
+		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a port; got %q", c.ValkeyURL))
+	}
+
+	for key, vals := range c.ValkeyURL.Query() {
+		if key != "tls" {
+			errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL has unknown query parameter %q; only \"tls\" is supported", key))
+			continue
+		}
+		if v := vals[len(vals)-1]; v != "true" && v != "false" {
+			errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL tls must be "true" or "false"; got %q`, v))
+		}
+	}
+
+	return errs
 }
 
 func (c APIProxyConfig) validate() error {

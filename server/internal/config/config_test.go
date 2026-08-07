@@ -50,6 +50,18 @@ func TestDefault(t *testing.T) {
 		if want, got := 30*time.Minute, cfg.Session.AuthenticatedTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
+		if want, got := StoreProviderMemory, cfg.Session.StoreProvider; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if cfg.Session.ValkeyURL != nil {
+			t.Errorf("want: nil; got: %q", cfg.Session.ValkeyURL)
+		}
+		if want, got := "session:", cfg.Session.ValkeyPrefix; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := 5*time.Second, cfg.Session.ValkeyDialTimeout; want != got {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
 
 		if want, got := "http://127.0.0.1:3002", cfg.APIProxy.StudentInsightsBaseURL.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
@@ -67,6 +79,21 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
 	})
+}
+
+func valkeyConfig(t *testing.T) Config {
+	t.Helper()
+
+	cfg := Default()
+	cfg.Session.StoreProvider = StoreProviderValkey
+	cfg.Session.ValkeyURL = &url.URL{
+		Scheme:   "valkey",
+		Host:     "cache.example.com:6379",
+		Path:     "/0",
+		RawQuery: "tls=true",
+	}
+
+	return cfg
 }
 
 func TestConfig_Validate(t *testing.T) {
@@ -135,6 +162,16 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				want: `TW_BUILD_DIR does not exist: "testdata/does-not-exist"`,
 			},
+			{
+				name:   "unknown session store provider",
+				mutate: func(c *Config) { c.Session.StoreProvider = "postgres" },
+				want:   `TW_SESSION_STORE_PROVIDER must be "memory" or "valkey"; got "postgres"`,
+			},
+			{
+				name:   "valkey provider without a url",
+				mutate: func(c *Config) { c.Session.StoreProvider = StoreProviderValkey },
+				want:   `TW_SESSION_VALKEY_URL is required when TW_SESSION_STORE_PROVIDER is "valkey"`,
+			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				cfg := Default()
@@ -166,6 +203,92 @@ func TestConfig_Validate(t *testing.T) {
 	t.Run("skips the build dir outside production", func(t *testing.T) {
 		cfg := Default()
 		cfg.BuildDir = "testdata/does-not-exist"
+
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("accepts the valkey provider with the platform url format", func(t *testing.T) {
+		cfg := valkeyConfig(t)
+
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("accepts the valkey provider without credentials or tls", func(t *testing.T) {
+		cfg := valkeyConfig(t)
+		cfg.Session.ValkeyURL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:6379"}
+
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("rejects invalid valkey settings", func(t *testing.T) {
+		for _, tt := range []struct {
+			name   string
+			mutate func(*Config)
+			want   string
+		}{
+			{
+				name:   "non-valkey scheme",
+				mutate: func(c *Config) { c.Session.ValkeyURL.Scheme = "rediss" },
+				want:   `TW_SESSION_VALKEY_URL must use scheme "valkey"; got "rediss"`,
+			},
+			{
+				name:   "missing port",
+				mutate: func(c *Config) { c.Session.ValkeyURL.Host = "cache.example.com" },
+				want:   "TW_SESSION_VALKEY_URL must include a port",
+			},
+			{
+				name:   "missing host",
+				mutate: func(c *Config) { c.Session.ValkeyURL.Host = "" },
+				want:   "TW_SESSION_VALKEY_URL must include a host",
+			},
+			{
+				name:   "unknown query parameter",
+				mutate: func(c *Config) { c.Session.ValkeyURL.RawQuery = "ssl=true" },
+				want:   `TW_SESSION_VALKEY_URL has unknown query parameter "ssl"`,
+			},
+			{
+				name:   "non-boolean tls value",
+				mutate: func(c *Config) { c.Session.ValkeyURL.RawQuery = "tls=1" },
+				want:   `TW_SESSION_VALKEY_URL tls must be "true" or "false"; got "1"`,
+			},
+			{
+				name:   "zero dial timeout",
+				mutate: func(c *Config) { c.Session.ValkeyDialTimeout = 0 },
+				want:   "TW_SESSION_VALKEY_DIAL_TIMEOUT must be positive",
+			},
+			{
+				name:   "empty key prefix",
+				mutate: func(c *Config) { c.Session.ValkeyPrefix = "" },
+				want:   "TW_SESSION_VALKEY_PREFIX is required",
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				cfg := valkeyConfig(t)
+				tt.mutate(&cfg)
+
+				err := cfg.Validate()
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if !strings.Contains(err.Error(), tt.want) {
+					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				}
+			})
+		}
+	})
+
+	t.Run("skips the valkey settings when the provider is memory", func(t *testing.T) {
+		cfg := Default()
+		cfg.Session.ValkeyURL = &url.URL{Scheme: "nonsense"}
+		cfg.Session.ValkeyPrefix = ""
+		cfg.Session.ValkeyDialTimeout = 0
 
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("want err: nil; got: %v", err)
