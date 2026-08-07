@@ -2,9 +2,10 @@ package handler
 
 import (
 	"net/http"
-	"net/http/httputil"
+	stdhttputil "net/http/httputil"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
+	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 )
 
@@ -12,17 +13,33 @@ import (
 type Handler struct {
 	cfg *config.Config
 
-	proxy  *httputil.ReverseProxy
-	assets http.Handler
+	devProxy             *stdhttputil.ReverseProxy
+	studentInsightsProxy *stdhttputil.ReverseProxy
+	postsProxy           *stdhttputil.ReverseProxy
+	assets               http.Handler
 }
 
 // New creates a new Handler.
 func New(cfg *config.Config) *Handler {
-	h := &Handler{cfg: cfg}
+	h := &Handler{
+		cfg: cfg,
+		studentInsightsProxy: &stdhttputil.ReverseProxy{
+			Rewrite: func(pr *stdhttputil.ProxyRequest) {
+				pr.SetURL(cfg.APIProxy.StudentInsightsBaseURL)
+			},
+			ErrorHandler: proxyErrorHandler,
+		},
+		postsProxy: &stdhttputil.ReverseProxy{
+			Rewrite: func(pr *stdhttputil.ProxyRequest) {
+				pr.SetURL(cfg.APIProxy.PostsBaseURL)
+			},
+			ErrorHandler: proxyErrorHandler,
+		},
+	}
 
 	switch cfg.Env {
 	case config.EnvDevelopment:
-		h.proxy = httputil.NewSingleHostReverseProxy(cfg.DevServerURL)
+		h.devProxy = stdhttputil.NewSingleHostReverseProxy(cfg.DevServerURL)
 	case config.EnvProduction:
 		h.assets = http.FileServer(http.Dir(cfg.BuildDir))
 	}
@@ -40,6 +57,14 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
 	// through the session middleware, which is applied a single time.
 	app := http.NewServeMux()
 	app.HandleFunc("/", h.index)
+
+	app.HandleFunc("/api/{app}/", h.proxy)
+	app.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		logger := middleware.LoggerFromContext(r.Context())
+		httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
+			Message: http.StatusText(http.StatusNotFound),
+		})
+	})
 
 	mux.Handle("/", session(app))
 }
