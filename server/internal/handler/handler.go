@@ -2,7 +2,7 @@ package handler
 
 import (
 	"net/http"
-	"net/http/httputil"
+	stdhttputil "net/http/httputil"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
@@ -12,9 +12,9 @@ import (
 type Handler struct {
 	cfg *config.Config
 
-	proxy                *httputil.ReverseProxy
-	studentInsightsProxy *httputil.ReverseProxy
-	postsProxy           *httputil.ReverseProxy
+	devProxy             *stdhttputil.ReverseProxy
+	studentInsightsProxy *stdhttputil.ReverseProxy
+	postsProxy           *stdhttputil.ReverseProxy
 	assets               http.Handler
 }
 
@@ -22,23 +22,23 @@ type Handler struct {
 func New(cfg *config.Config) *Handler {
 	h := &Handler{
 		cfg: cfg,
-		studentInsightsProxy: &httputil.ReverseProxy{
-			Rewrite: func(pr *httputil.ProxyRequest) {
+		studentInsightsProxy: &stdhttputil.ReverseProxy{
+			Rewrite: func(pr *stdhttputil.ProxyRequest) {
 				pr.SetURL(cfg.APIProxy.StudentInsightsBaseURL)
 			},
-			ErrorHandler: handleProxyError,
+			ErrorHandler: proxyErrorHandler,
 		},
-		postsProxy: &httputil.ReverseProxy{
-			Rewrite: func(pr *httputil.ProxyRequest) {
+		postsProxy: &stdhttputil.ReverseProxy{
+			Rewrite: func(pr *stdhttputil.ProxyRequest) {
 				pr.SetURL(cfg.APIProxy.PostsBaseURL)
 			},
-			ErrorHandler: handleProxyError,
+			ErrorHandler: proxyErrorHandler,
 		},
 	}
 
 	switch cfg.Env {
 	case config.EnvDevelopment:
-		h.proxy = httputil.NewSingleHostReverseProxy(cfg.DevServerURL)
+		h.devProxy = stdhttputil.NewSingleHostReverseProxy(cfg.DevServerURL)
 	case config.EnvProduction:
 		h.assets = http.FileServer(http.Dir(cfg.BuildDir))
 	}
@@ -56,9 +56,10 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
 	// through the session middleware, which is applied a single time.
 	app := http.NewServeMux()
 	app.HandleFunc("/", h.index)
-	app.HandleFunc("/api/", handleProxyNotFound)
-	app.HandleFunc("/api/student-insights/", h.studentInsights)
-	app.HandleFunc("/api/posts/", h.posts)
+	app.HandleFunc("/api/{app}/", h.proxy)
+	// app.HandleFunc("/api/", handleProxyNotFound)
+	// app.HandleFunc("/api/student-insights/", h.studentInsights)
+	// app.HandleFunc("/api/posts/", h.posts)
 
 	mux.Handle("/", session(app))
 }

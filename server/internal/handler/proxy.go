@@ -2,39 +2,44 @@ package handler
 
 import (
 	"net/http"
+	stdhttputil "net/http/httputil"
 	"strings"
 
 	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 )
 
-// Forwards /api/posts/<path> to the posts backend.
-func (h *Handler) posts(w http.ResponseWriter, r *http.Request) {
-	http.StripPrefix("/api/posts", h.postsProxy).ServeHTTP(w, r)
+func (h *Handler) proxy(w http.ResponseWriter, r *http.Request) {
+	app := r.PathValue("app")
+
+	var p *stdhttputil.ReverseProxy
+	switch app {
+	case "posts":
+		p = h.postsProxy
+	case "student-insights":
+		p = h.studentInsightsProxy
+	default:
+		httputil.RenderPlain(w, middleware.LoggerFromContext(r.Context()), http.StatusNotFound)
+		return
+	}
+
+	http.StripPrefix("/api/"+app, p).ServeHTTP(w, r)
 }
 
-// Forwards /api/student-insights/<path> to the student-insights backend.
-func (h *Handler) studentInsights(w http.ResponseWriter, r *http.Request) {
-	http.StripPrefix("/api/student-insights", h.studentInsightsProxy).ServeHTTP(w, r)
-}
-
-// Logs the failure when the backend fails.
-func handleProxyError(w http.ResponseWriter, r *http.Request, err error) {
+// Logs the failure and answers 502 when a backend request fails. Query strings
+// are dropped to keep credentials and other sensitive values out of the logs.
+func proxyErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	path, _, _ := strings.Cut(r.RequestURI, "?")
 	backend := *r.URL
 	backend.RawQuery = ""
 
-	middleware.LoggerFromContext(r.Context()).Error("failed to proxy request",
+	logger := middleware.LoggerFromContext(r.Context())
+	logger.Error("failed to proxy request",
 		"method", r.Method,
 		"path", path,
-		"backend", backend,
+		"backend", backend.String(),
 		"err", err,
 	)
 
-	http.Error(w, "Bad Gateway", http.StatusBadGateway)
-}
-
-// Answers 404 for an /api/ path with no proxy behind it.
-func handleProxyNotFound(w http.ResponseWriter, r *http.Request) {
-	httputil.RenderPlain(w, middleware.LoggerFromContext(r.Context()), http.StatusNotFound)
+	httputil.RenderPlain(w, logger, http.StatusBadGateway)
 }

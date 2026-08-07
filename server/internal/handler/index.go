@@ -15,7 +15,7 @@ import (
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 	switch h.cfg.Env {
 	case config.EnvDevelopment:
-		h.proxy.ServeHTTP(w, r)
+		h.devProxy.ServeHTTP(w, r)
 	case config.EnvProduction:
 		http.ServeFile(w, r, filepath.Join(h.cfg.BuildDir, "index.html"))
 	default:
@@ -30,7 +30,7 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) static(w http.ResponseWriter, r *http.Request) {
 	switch h.cfg.Env {
 	case config.EnvDevelopment:
-		h.proxy.ServeHTTP(w, r)
+		h.devProxy.ServeHTTP(w, r)
 	case config.EnvProduction:
 		h.assets.ServeHTTP(w, r)
 	default:
