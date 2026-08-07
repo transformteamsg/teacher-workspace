@@ -108,9 +108,6 @@ func TestHandler_proxy(t *testing.T) {
 		if want, got := http.StatusNotFound, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
-		if want, got := "Not Found", rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
 		if want := 0; want != calls {
 			t.Errorf("want: %d; got: %d", want, calls)
 		}
@@ -164,9 +161,6 @@ func TestProxyErrorHandler(t *testing.T) {
 
 		if want, got := http.StatusBadGateway, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if want, got := "Bad Gateway", rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})
 
