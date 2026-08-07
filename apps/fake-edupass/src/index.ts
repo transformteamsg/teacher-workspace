@@ -1,6 +1,7 @@
 import express from 'express';
 
 import { config } from './config.ts';
+import { interactionRouter } from './interaction.ts';
 import { provider } from './provider.ts';
 
 const app = express();
@@ -9,6 +10,7 @@ app.get('/health', (_req, res) => {
   res.sendStatus(200);
 });
 
+app.use(interactionRouter);
 app.use(provider.callback());
 
 app.listen(config.port, () => {

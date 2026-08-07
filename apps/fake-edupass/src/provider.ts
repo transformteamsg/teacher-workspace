@@ -1,5 +1,6 @@
 import Provider from 'oidc-provider';
 
+import { accounts } from './accounts.ts';
 import { config } from './config.ts';
 
 const issuer = `http://localhost:${config.port}`;
@@ -20,6 +21,8 @@ const provider = new Provider(issuer, {
     openid: ['sub', 'email', 'name'],
   },
 
+  extraParams: ['account'],
+
   pkce: {
     required: () => true,
   },
@@ -36,6 +39,20 @@ const provider = new Provider(issuer, {
 
   interactions: {
     url: (_ctx, interaction) => `/interaction/${interaction.uid}`,
+  },
+
+  findAccount: async (_ctx, id) => {
+    const account = accounts.find((a) => a.sub === id);
+    if (!account) return undefined;
+    return {
+      accountId: id,
+      claims: async () => {
+        const claims: Record<string, string> = { sub: account.sub };
+        if (account.email) claims.email = account.email;
+        if (account.name) claims.name = account.name;
+        return claims;
+      },
+    };
   },
 });
 
