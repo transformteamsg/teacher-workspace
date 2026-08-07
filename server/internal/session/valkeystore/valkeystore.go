@@ -59,6 +59,17 @@ func Dial(ctx context.Context, u *url.URL) (*glide.Client, error) {
 		return nil, err
 	}
 
+	// glide.NewClient takes no context, so ctx alone would bound only the ping
+	// below and leave the connection attempt on glide's own default. Handing
+	// the deadline over as an explicit connection timeout is what makes the
+	// caller's bound apply to an unreachable server, which is the case that
+	// matters at startup.
+	if deadline, ok := ctx.Deadline(); ok {
+		cfg = cfg.WithAdvancedConfiguration(
+			glideconfig.NewAdvancedClientConfiguration().WithConnectionTimeout(time.Until(deadline)),
+		)
+	}
+
 	client, err := glide.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("valkeystore: connect to %s: %w", u.Host, err)
