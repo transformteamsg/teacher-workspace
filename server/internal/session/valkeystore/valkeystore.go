@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -150,7 +151,9 @@ func clientConfig(u *url.URL) (*glideconfig.ClientConfiguration, error) {
 	return cfg, nil
 }
 
-// Prepare implements [session.Store.Prepare].
+// Prepare implements [session.Store.Prepare]. An entry that cannot be decoded
+// is logged and reported as absent, so a session written by an incompatible
+// build starts over rather than failing every request until its TTL elapses.
 func (s *Store) Prepare(ctx context.Context, id string) (*session.Snapshot, error) {
 	if id == "" {
 		return nil, nil
@@ -168,7 +171,12 @@ func (s *Store) Prepare(ctx context.Context, id string) (*session.Snapshot, erro
 
 	var snap session.Snapshot
 	if err := json.Unmarshal([]byte(result.Value()), &snap); err != nil {
-		return nil, fmt.Errorf("valkeystore: unmarshal snapshot: %w", err)
+		// An entry that cannot be decoded outlives the process that wrote it, so
+		// surfacing an error would fail every request carrying this ID until the
+		// TTL elapses, with no cookie issued to escape it. Starting a fresh
+		// session is what expiry already does with an unusable entry.
+		slog.ErrorContext(ctx, "valkeystore: discarding undecodable session", "err", err)
+		return nil, nil
 	}
 
 	return &snap, nil

@@ -361,17 +361,17 @@ func TestStore_Prepare(t *testing.T) {
 		}
 	})
 
-	t.Run("returns an error on an undecodable entry", func(t *testing.T) {
+	t.Run("treats an undecodable entry as absent", func(t *testing.T) {
+		// The entry survives the process that wrote it, so an error here would
+		// fail every request carrying this ID until the TTL elapses, and the
+		// middleware never issues a replacement cookie to escape it.
 		store := newStore(t, client)
 		seed(t, client, store.prefix+"id-1", "not json", time.Minute)
 
 		result, err := store.Prepare(t.Context(), "id-1")
 
-		if err == nil {
-			t.Fatal("want err: non-nil; got: nil")
-		}
-		if want := "unmarshal snapshot"; !strings.Contains(err.Error(), want) {
-			t.Errorf("want err: containing %q; got: %q", want, err)
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
 		}
 		if result != nil {
 			t.Errorf("want: nil; got: %+v", result)
