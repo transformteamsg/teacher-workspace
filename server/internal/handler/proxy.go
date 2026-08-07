@@ -19,7 +19,9 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request) {
 	case "student-insights":
 		p = h.studentInsightsProxy
 	default:
-		httputil.RenderJSON(w, middleware.LoggerFromContext(r.Context()), http.StatusNotFound, nil)
+		httputil.RenderJSON(w, middleware.LoggerFromContext(r.Context()), http.StatusNotFound, &httputil.ErrorResponse{
+			Message: http.StatusText(http.StatusNotFound),
+		})
 		return
 	}
 
@@ -41,5 +43,7 @@ func proxyErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 		"err", err,
 	)
 
-	httputil.RenderJSON(w, logger, http.StatusBadGateway, nil)
+	httputil.RenderJSON(w, logger, http.StatusBadGateway, &httputil.ErrorResponse{
+		Message: http.StatusText(http.StatusBadGateway),
+	})
 }

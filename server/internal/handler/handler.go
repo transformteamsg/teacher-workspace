@@ -60,7 +60,10 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
 
 	app.HandleFunc("/api/{app}/", h.proxy)
 	app.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		httputil.RenderPlain(w, middleware.LoggerFromContext(r.Context()), http.StatusNotFound)
+		logger := middleware.LoggerFromContext(r.Context())
+		httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
+			Message: http.StatusText(http.StatusNotFound),
+		})
 	})
 
 	mux.Handle("/", session(app))

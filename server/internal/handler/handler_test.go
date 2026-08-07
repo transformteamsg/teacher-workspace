@@ -53,7 +53,7 @@ func TestHandler_Register(t *testing.T) {
 			{name: "index", target: "/", wantCode: http.StatusOK, wantBody: "<html>Hello world!</html>"},
 			{name: "static asset", target: "/static/js/index.abc123.js", wantCode: http.StatusOK, wantBody: "console.log('Hello world!');"},
 			{name: "API", target: "/api/posts/hello", wantCode: http.StatusOK, wantBody: "posts:/hello"},
-			{name: "API path naming no app", target: "/api/", wantCode: http.StatusNotFound, wantBody: "Not Found"},
+			{name: "API path naming no app", target: "/api/", wantCode: http.StatusNotFound, wantBody: "{\"message\":\"Not Found\"}\n"},
 		}
 
 		for _, tt := range tests {
