@@ -14,7 +14,9 @@ import (
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/handler"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
+	"github.com/String-sg/teacher-workspace/server/internal/session"
 	"github.com/String-sg/teacher-workspace/server/internal/session/memstore"
+	"github.com/String-sg/teacher-workspace/server/internal/session/valkeystore"
 	"github.com/String-sg/teacher-workspace/server/pkg/dotenv"
 )
 
@@ -35,8 +37,14 @@ func main() {
 		Level: cfg.LogLevel,
 	})))
 
-	store := memstore.New()
-	session := middleware.Session(store, middleware.SessionOptions{
+	store, closeStore, err := newSessionStore(&cfg)
+	if err != nil {
+		slog.Error("failed to create session store", "provider", cfg.Session.StoreProvider, "err", err)
+		os.Exit(1)
+	}
+	defer closeStore()
+
+	sessionMiddleware := middleware.Session(store, middleware.SessionOptions{
 		Name:             cfg.Session.Name,
 		DefaultTTL:       cfg.Session.DefaultTTL,
 		AuthenticatedTTL: cfg.Session.AuthenticatedTTL,
@@ -45,7 +53,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	mux := http.NewServeMux()
-	handler.New(&cfg).Register(mux, session)
+	handler.New(&cfg).Register(mux, sessionMiddleware)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           middleware.RequestID(middleware.RequestLog(mux)),
@@ -59,7 +67,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		slog.Info("listening", "addr", addr, "env", cfg.Env)
+		slog.Info("listening", "addr", addr, "env", cfg.Env, "session_store", cfg.Session.StoreProvider)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("listen failed", "err", err)
 			os.Exit(1)
@@ -75,5 +83,24 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown failed", "err", err)
 		os.Exit(1)
+	}
+}
+
+func newSessionStore(cfg *config.Config) (session.Store, func(), error) {
+	switch cfg.Session.StoreProvider {
+	case config.StoreProviderValkey:
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.Session.ValkeyDialTimeout)
+		defer cancel()
+
+		client, err := valkeystore.Dial(ctx, cfg.Session.ValkeyURL)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return valkeystore.New(client, valkeystore.WithPrefix(cfg.Session.ValkeyPrefix)), client.Close, nil
+	default:
+		// Validate rejects any provider other than memory or valkey, so this
+		// arm is only ever reached for memory.
+		return memstore.New(), func() {}, nil
 	}
 }
