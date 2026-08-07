@@ -11,81 +11,125 @@ import (
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 )
 
-// Register's contract is which routes it wraps, so a counting stand-in for the
-// session middleware is enough: what the middleware itself does is covered by
-// its own tests.
 func TestHandler_Register(t *testing.T) {
-	t.Run("routes requests in development environment", func(t *testing.T) {
-		devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("proxied:" + r.URL.Path))
-		}))
-		t.Cleanup(devServer.Close)
+	t.Run("routes to the handler matching the request path", func(t *testing.T) {
+		buildDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>Hello world!</html>"), 0o644); err != nil {
+			t.Fatalf("os.WriteFile: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(buildDir, "static", "js"), 0o755); err != nil {
+			t.Fatalf("os.MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(buildDir, "static", "js", "index.abc123.js"), []byte("console.log('Hello world!');"), 0o644); err != nil {
+			t.Fatalf("os.WriteFile: %v", err)
+		}
 
-		devServerURL, err := url.Parse(devServer.URL)
+		postsBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("posts:" + r.URL.RequestURI()))
+		}))
+		t.Cleanup(postsBackend.Close)
+
+		postsBackendURL, err := url.Parse(postsBackend.URL)
 		if err != nil {
 			t.Fatalf("url.Parse: %v", err)
 		}
 
+		cfg := config.Default()
+		cfg.Env = config.EnvProduction
+		cfg.BuildDir = buildDir
+		cfg.APIProxy.PostsBaseURL = postsBackendURL
+
+		h := New(&cfg)
+
+		mux := http.NewServeMux()
+		h.Register(mux, func(next http.Handler) http.Handler { return next })
+
 		tests := []struct {
-			name       string
-			target     string
-			wantStatus int
-			wantBody   string
-			wantCalls  int
+			name     string
+			target   string
+			wantCode int
+			wantBody string
 		}{
-			{
-				name:       "static asset",
-				target:     "/static/js/index.abc123.js",
-				wantStatus: http.StatusOK,
-				wantBody:   "proxied:/static/js/index.abc123.js",
-				wantCalls:  0,
-			},
-			{
-				name:       "application route",
-				target:     "/dashboard",
-				wantStatus: http.StatusOK,
-				wantBody:   "proxied:/dashboard",
-				wantCalls:  1,
-			},
+			{name: "index", target: "/", wantCode: http.StatusOK, wantBody: "<html>Hello world!</html>"},
+			{name: "static asset", target: "/static/js/index.abc123.js", wantCode: http.StatusOK, wantBody: "console.log('Hello world!');"},
+			{name: "API", target: "/api/posts/hello", wantCode: http.StatusOK, wantBody: "posts:/hello"},
+			{name: "API path naming no app", target: "/api/", wantCode: http.StatusNotFound, wantBody: "Not Found"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+				rec := httptest.NewRecorder()
+
+				mux.ServeHTTP(rec, req)
+
+				if want, got := tt.wantCode, rec.Code; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
+				if want, got := tt.wantBody, rec.Body.String(); want != got {
+					t.Errorf("want: %q; got: %q", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("runs application routes through the session middleware", func(t *testing.T) {
+		buildDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>Hello world!</html>"), 0o644); err != nil {
+			t.Fatalf("os.WriteFile: %v", err)
+		}
+
+		postsBackend := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		t.Cleanup(postsBackend.Close)
+
+		postsBackendURL, err := url.Parse(postsBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.Env = config.EnvProduction
+		cfg.BuildDir = buildDir
+		cfg.APIProxy.PostsBaseURL = postsBackendURL
+
+		h := New(&cfg)
+
+		tests := []struct {
+			name   string
+			target string
+		}{
+			{name: "index", target: "/"},
+			{name: "API", target: "/api/posts/hello"},
+			{name: "API path naming no app", target: "/api/"},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				var calls int
-				session := func(next http.Handler) http.Handler {
+
+				mux := http.NewServeMux()
+				h.Register(mux, func(next http.Handler) http.Handler {
 					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						calls++
 						next.ServeHTTP(w, r)
 					})
-				}
-
-				h := New(&config.Config{
-					Env:          config.EnvDevelopment,
-					DevServerURL: devServerURL,
 				})
-
-				mux := http.NewServeMux()
-				h.Register(mux, session)
 
 				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
 				rec := httptest.NewRecorder()
 
 				mux.ServeHTTP(rec, req)
 
-				if want, got := tt.wantStatus, rec.Code; want != got {
-					t.Errorf("want: %d; got: %d", want, got)
-				}
-				if want, got := tt.wantBody, rec.Body.String(); want != got {
-					t.Errorf("want: %q; got: %q", want, got)
-				}
-				if want := tt.wantCalls; want != calls {
+				// More than one call means the middleware was layered per route
+				// rather than once around the sub-mux.
+				if want := 1; want != calls {
 					t.Errorf("want: %d; got: %d", want, calls)
 				}
 			})
 		}
 	})
 
-	t.Run("routes requests in production environment", func(t *testing.T) {
+	t.Run("serves static assets without the session middleware", func(t *testing.T) {
 		buildDir := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(buildDir, "static", "js"), 0o755); err != nil {
 			t.Fatalf("os.MkdirAll: %v", err)
@@ -93,66 +137,33 @@ func TestHandler_Register(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(buildDir, "static", "js", "index.abc123.js"), []byte("console.log('Hello world!');"), 0o644); err != nil {
 			t.Fatalf("os.WriteFile: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>Hello world!</html>"), 0o644); err != nil {
-			t.Fatalf("os.WriteFile: %v", err)
-		}
 
-		tests := []struct {
-			name       string
-			target     string
-			wantStatus int
-			wantBody   string
-			wantCalls  int
-		}{
-			{
-				name:       "static asset",
-				target:     "/static/js/index.abc123.js",
-				wantStatus: http.StatusOK,
-				wantBody:   "console.log('Hello world!');",
-				wantCalls:  0,
-			},
-			{
-				name:       "application route",
-				target:     "/dashboard",
-				wantStatus: http.StatusOK,
-				wantBody:   "<html>Hello world!</html>",
-				wantCalls:  1,
-			},
-		}
+		cfg := config.Default()
+		cfg.Env = config.EnvProduction
+		cfg.BuildDir = buildDir
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				var calls int
-				session := func(next http.Handler) http.Handler {
-					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						calls++
-						next.ServeHTTP(w, r)
-					})
-				}
+		h := New(&cfg)
 
-				h := New(&config.Config{
-					Env:      config.EnvProduction,
-					BuildDir: buildDir,
-				})
+		var calls int
 
-				mux := http.NewServeMux()
-				h.Register(mux, session)
-
-				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
-				rec := httptest.NewRecorder()
-
-				mux.ServeHTTP(rec, req)
-
-				if want, got := tt.wantStatus, rec.Code; want != got {
-					t.Errorf("want: %d; got: %d", want, got)
-				}
-				if want, got := tt.wantBody, rec.Body.String(); want != got {
-					t.Errorf("want: %q; got: %q", want, got)
-				}
-				if want := tt.wantCalls; want != calls {
-					t.Errorf("want: %d; got: %d", want, calls)
-				}
+		mux := http.NewServeMux()
+		h.Register(mux, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				next.ServeHTTP(w, r)
 			})
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/static/js/index.abc123.js", nil)
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want := 0; want != calls {
+			t.Errorf("want: %d; got: %d", want, calls)
 		}
 	})
 }

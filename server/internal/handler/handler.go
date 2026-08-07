@@ -5,6 +5,7 @@ import (
 	stdhttputil "net/http/httputil"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
+	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 )
 
@@ -56,10 +57,11 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
 	// through the session middleware, which is applied a single time.
 	app := http.NewServeMux()
 	app.HandleFunc("/", h.index)
+
 	app.HandleFunc("/api/{app}/", h.proxy)
-	// app.HandleFunc("/api/", handleProxyNotFound)
-	// app.HandleFunc("/api/student-insights/", h.studentInsights)
-	// app.HandleFunc("/api/posts/", h.posts)
+	app.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		httputil.RenderPlain(w, middleware.LoggerFromContext(r.Context()), http.StatusNotFound)
+	})
 
 	mux.Handle("/", session(app))
 }
