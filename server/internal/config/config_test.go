@@ -258,6 +258,13 @@ func TestConfig_Validate(t *testing.T) {
 				want:   `TW_SESSION_VALKEY_URL tls must be "true" or "false"; got "1"`,
 			},
 			{
+				// The store reads the first value, so accepting a repeated
+				// parameter would validate one value and connect on another.
+				name:   "repeated tls parameter",
+				mutate: func(c *Config) { c.Session.ValkeyURL.RawQuery = "tls=1&tls=true" },
+				want:   `TW_SESSION_VALKEY_URL has 2 "tls" values; specify it once`,
+			},
+			{
 				name:   "zero dial timeout",
 				mutate: func(c *Config) { c.Session.ValkeyDialTimeout = 0 },
 				want:   "TW_SESSION_VALKEY_DIAL_TIMEOUT must be positive",

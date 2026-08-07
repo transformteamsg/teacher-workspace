@@ -219,7 +219,14 @@ func (c SessionConfig) validateValkey() []error {
 			errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL has unknown query parameter %q; only \"tls\" is supported", key))
 			continue
 		}
-		if v := vals[len(vals)-1]; v != "true" && v != "false" {
+		// The store reads the first value, so a repeated parameter is ambiguous
+		// rather than last-wins: accepting it risks validating "true" while the
+		// connection is made in plaintext.
+		if len(vals) > 1 {
+			errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL has %d "tls" values; specify it once`, len(vals)))
+			continue
+		}
+		if v := vals[0]; v != "true" && v != "false" {
 			errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL tls must be "true" or "false"; got %q`, v))
 		}
 	}
