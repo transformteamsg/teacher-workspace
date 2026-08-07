@@ -47,7 +47,7 @@ export function createProvider(port: number): Provider {
       return {
         accountId: id,
         claims: async () => {
-          const claims: Record<string, string> = { sub: account.sub };
+          const claims: { sub: string; [key: string]: string } = { sub: account.sub };
           if (account.email) claims.email = account.email;
           if (account.name) claims.name = account.name;
           return claims;
