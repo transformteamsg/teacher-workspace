@@ -32,7 +32,7 @@ const provider = new Provider(issuer, {
   },
 
   cookies: {
-    keys: ['fake-edupass-cookie-key'],
+    keys: ['mock-edupass-cookie-key'],
     short: { secure: false },
     long: { secure: false },
   },

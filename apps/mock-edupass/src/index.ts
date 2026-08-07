@@ -15,5 +15,5 @@ app.use(provider.callback());
 
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console
-  console.log(`fake-edupass listening on http://localhost:${config.port}`);
+  console.log(`mock-edupass listening on http://localhost:${config.port}`);
 });
