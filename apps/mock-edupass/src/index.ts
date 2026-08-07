@@ -1,17 +1,7 @@
-import express from 'express';
-
+import { createApp } from './app.ts';
 import { config } from './config.ts';
-import { interactionRouter } from './interaction.ts';
-import { provider } from './provider.ts';
 
-const app = express();
-
-app.get('/health', (_req, res) => {
-  res.sendStatus(200);
-});
-
-app.use(interactionRouter);
-app.use(provider.callback());
+const { app } = createApp(config.port);
 
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console
