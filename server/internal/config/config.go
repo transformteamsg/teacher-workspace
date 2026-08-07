@@ -205,11 +205,13 @@ func (c SessionConfig) validateValkey() []error {
 	if c.ValkeyURL.Scheme != "valkey" {
 		errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL must use scheme "valkey"; got %q`, c.ValkeyURL.Scheme))
 	}
+	// Redacted, not the URL itself: %q on a *url.URL calls String(), which
+	// prints the password, and this error is logged at startup.
 	if c.ValkeyURL.Hostname() == "" {
-		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a host; got %q", c.ValkeyURL))
+		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a host; got %q", c.ValkeyURL.Redacted()))
 	}
 	if c.ValkeyURL.Port() == "" {
-		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a port; got %q", c.ValkeyURL))
+		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a port; got %q", c.ValkeyURL.Redacted()))
 	}
 
 	for key, vals := range c.ValkeyURL.Query() {

@@ -284,6 +284,23 @@ func TestConfig_Validate(t *testing.T) {
 		}
 	})
 
+	t.Run("keeps valkey credentials out of the error", func(t *testing.T) {
+		// The validation error is logged at startup, so a malformed URL must not
+		// carry the password into the logs with it.
+		cfg := valkeyConfig(t)
+		cfg.Session.ValkeyURL.User = url.UserPassword("someone", "s3cret")
+		cfg.Session.ValkeyURL.Host = "cache.example.com"
+
+		err := cfg.Validate()
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if strings.Contains(err.Error(), "s3cret") {
+			t.Errorf("want err: without the password; got: %q", err)
+		}
+	})
+
 	t.Run("skips the valkey settings when the provider is memory", func(t *testing.T) {
 		cfg := Default()
 		cfg.Session.ValkeyURL = &url.URL{Scheme: "nonsense"}
