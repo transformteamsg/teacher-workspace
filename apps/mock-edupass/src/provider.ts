@@ -27,6 +27,10 @@ export function createProvider(port: number): Provider {
       required: () => true,
     },
 
+    routes: {
+      authorization: '/authorize',
+    },
+
     features: {
       devInteractions: { enabled: false },
     },

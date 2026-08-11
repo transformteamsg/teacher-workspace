@@ -36,7 +36,7 @@ async function obtainAuthorizationCode(
   });
   if (account) params.set('account', account);
 
-  const response = await client.followRedirects(`${BASE_URL}/auth?${params.toString()}`);
+  const response = await client.followRedirects(`${BASE_URL}/authorize?${params.toString()}`);
   const html = await response.text();
   const { params: formParams } = parseFormPost(html);
 
@@ -160,7 +160,7 @@ describe('mock-edupass OIDC provider', () => {
         nonce: 'test-nonce',
       });
 
-      const response = await client.followRedirects(`${BASE_URL}/auth?${params.toString()}`);
+      const response = await client.followRedirects(`${BASE_URL}/authorize?${params.toString()}`);
 
       assert.equal(response.status, 200);
       const html = await response.text();
@@ -233,7 +233,7 @@ describe('mock-edupass OIDC provider', () => {
         nonce: 'test-nonce',
       });
 
-      const response = await client.followRedirects(`${BASE_URL}/auth?${params.toString()}`);
+      const response = await client.followRedirects(`${BASE_URL}/authorize?${params.toString()}`);
       const html = await response.text();
       const { params: formParams } = parseFormPost(html);
 
