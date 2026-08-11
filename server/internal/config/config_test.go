@@ -57,6 +57,9 @@ func TestDefault(t *testing.T) {
 		if want, got := "http://127.0.0.1:3003", cfg.APIProxy.PostsBaseURL.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
+		if want, got := time.Minute, cfg.APIProxy.TokenTTL; want != got {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
 	})
 }
 
@@ -65,6 +68,8 @@ func TestConfig_Validate(t *testing.T) {
 		for _, scheme := range []string{"http", "https"} {
 			t.Run(scheme, func(t *testing.T) {
 				cfg := Default()
+				cfg.APIProxy.StudentInsightsSigningKey = "0123456789abcdef0123456789abcdef"
+				cfg.APIProxy.PostsSigningKey = "0123456789abcdef0123456789abcdef"
 				cfg.DevServerURL = &url.URL{Scheme: scheme, Host: "127.0.0.1:3001"}
 
 				if err := cfg.Validate(); err != nil {
@@ -76,6 +81,8 @@ func TestConfig_Validate(t *testing.T) {
 
 	t.Run("accepts production pointing at an existing build dir", func(t *testing.T) {
 		cfg := Default()
+		cfg.APIProxy.PostsSigningKey = "0123456789abcdef0123456789abcdef"
+		cfg.APIProxy.StudentInsightsSigningKey = "0123456789abcdef0123456789abcdef"
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
 
@@ -145,6 +152,8 @@ func TestConfig_Validate(t *testing.T) {
 
 	t.Run("skips the dev server url outside development", func(t *testing.T) {
 		cfg := Default()
+		cfg.APIProxy.StudentInsightsSigningKey = "0123456789abcdef0123456789abcdef"
+		cfg.APIProxy.PostsSigningKey = "0123456789abcdef0123456789abcdef"
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
 		cfg.DevServerURL = &url.URL{}
@@ -156,6 +165,8 @@ func TestConfig_Validate(t *testing.T) {
 
 	t.Run("skips the build dir outside production", func(t *testing.T) {
 		cfg := Default()
+		cfg.APIProxy.PostsSigningKey = "0123456789abcdef0123456789abcdef"
+		cfg.APIProxy.StudentInsightsSigningKey = "0123456789abcdef0123456789abcdef"
 		cfg.BuildDir = "testdata/does-not-exist"
 
 		if err := cfg.Validate(); err != nil {
@@ -328,8 +339,11 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 		for _, scheme := range []string{"http", "https"} {
 			t.Run(scheme, func(t *testing.T) {
 				cfg := APIProxyConfig{
-					StudentInsightsBaseURL: &url.URL{Scheme: scheme, Host: "student-insights.example.com"},
-					PostsBaseURL:           &url.URL{Scheme: scheme, Host: "posts.example.com"},
+					StudentInsightsBaseURL:    &url.URL{Scheme: scheme, Host: "student-insights.example.com"},
+					StudentInsightsSigningKey: "0123456789abcdef0123456789abcdef",
+					PostsBaseURL:              &url.URL{Scheme: scheme, Host: "posts.example.com"},
+					PostsSigningKey:           "0123456789abcdef0123456789abcdef",
+					TokenTTL:                  time.Minute,
 				}
 
 				if err := cfg.validate(); err != nil {
@@ -375,9 +389,46 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 				mutate: func(c *APIProxyConfig) { c.PostsBaseURL = &url.URL{Scheme: "http"} },
 				want:   `TW_API_PROXY_POSTS_BASE_URL must include host[:port]; got "http:"`,
 			},
+			{
+				name:   "missing student insights signing key",
+				mutate: func(c *APIProxyConfig) { c.StudentInsightsSigningKey = "" },
+				want:   "TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY is required",
+			},
+			{
+				name:   "short student insights signing key",
+				mutate: func(c *APIProxyConfig) { c.StudentInsightsSigningKey = "0123456789abcdef0123456789abcde" },
+				want:   "TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least 32 bytes; got 31",
+			},
+			{
+				name:   "missing posts signing key",
+				mutate: func(c *APIProxyConfig) { c.PostsSigningKey = "" },
+				want:   "TW_API_PROXY_POSTS_SIGNING_KEY is required",
+			},
+			{
+				name:   "short posts signing key",
+				mutate: func(c *APIProxyConfig) { c.PostsSigningKey = "0123456789abcdef0123456789abcde" },
+				want:   "TW_API_PROXY_POSTS_SIGNING_KEY must be at least 32 bytes; got 31",
+			},
+			{
+				name:   "zero token TTL",
+				mutate: func(c *APIProxyConfig) { c.TokenTTL = 0 },
+				want:   "TW_API_PROXY_TOKEN_TTL must be at least 1s; got 0s",
+			},
+			{
+				name:   "negative token TTL",
+				mutate: func(c *APIProxyConfig) { c.TokenTTL = -time.Second },
+				want:   "TW_API_PROXY_TOKEN_TTL must be at least 1s; got -1s",
+			},
+			{
+				name:   "sub-second token TTL",
+				mutate: func(c *APIProxyConfig) { c.TokenTTL = 500 * time.Millisecond },
+				want:   "TW_API_PROXY_TOKEN_TTL must be at least 1s; got 500ms",
+			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				cfg := Default().APIProxy
+				cfg.StudentInsightsSigningKey = "0123456789abcdef0123456789abcdef"
+				cfg.PostsSigningKey = "0123456789abcdef0123456789abcdef"
 				tt.mutate(&cfg)
 
 				err := cfg.validate()

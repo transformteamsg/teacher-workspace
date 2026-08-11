@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -50,8 +51,11 @@ type SessionConfig struct {
 
 // APIProxyConfig represents the configuration for the backend proxies.
 type APIProxyConfig struct {
-	StudentInsightsBaseURL *url.URL `dotenv:"TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL"`
-	PostsBaseURL           *url.URL `dotenv:"TW_API_PROXY_POSTS_BASE_URL"`
+	StudentInsightsBaseURL    *url.URL      `dotenv:"TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL"`
+	StudentInsightsSigningKey string        `dotenv:"TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY"`
+	PostsBaseURL              *url.URL      `dotenv:"TW_API_PROXY_POSTS_BASE_URL"`
+	PostsSigningKey           string        `dotenv:"TW_API_PROXY_POSTS_SIGNING_KEY"`
+	TokenTTL                  time.Duration `dotenv:"TW_API_PROXY_TOKEN_TTL"`
 }
 
 // Default returns the default configuration for the application.
@@ -78,6 +82,7 @@ func Default() Config {
 		APIProxy: APIProxyConfig{
 			StudentInsightsBaseURL: must(url.Parse("http://127.0.0.1:3002")),
 			PostsBaseURL:           must(url.Parse("http://127.0.0.1:3003")),
+			TokenTTL:               1 * time.Minute,
 		},
 	}
 }
@@ -171,6 +176,13 @@ func (c APIProxyConfig) validate() error {
 			errs = append(errs, fmt.Errorf("TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL must include host[:port]; got %q", c.StudentInsightsBaseURL))
 		}
 	}
+	if c.StudentInsightsSigningKey == "" {
+		errs = append(errs, errors.New("TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY is required"))
+	} else {
+		if siKeyLength := len(c.StudentInsightsSigningKey); siKeyLength < sha256.Size {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, siKeyLength))
+		}
+	}
 	if c.PostsBaseURL == nil {
 		errs = append(errs, errors.New("TW_API_PROXY_POSTS_BASE_URL is required"))
 	} else {
@@ -180,6 +192,16 @@ func (c APIProxyConfig) validate() error {
 		if c.PostsBaseURL.Host == "" {
 			errs = append(errs, fmt.Errorf("TW_API_PROXY_POSTS_BASE_URL must include host[:port]; got %q", c.PostsBaseURL))
 		}
+	}
+	if c.PostsSigningKey == "" {
+		errs = append(errs, errors.New("TW_API_PROXY_POSTS_SIGNING_KEY is required"))
+	} else {
+		if postKeyLength := len(c.PostsSigningKey); postKeyLength < sha256.Size {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_POSTS_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, postKeyLength))
+		}
+	}
+	if c.TokenTTL < time.Second {
+		errs = append(errs, fmt.Errorf("TW_API_PROXY_TOKEN_TTL must be at least 1s; got %v", c.TokenTTL))
 	}
 
 	return errors.Join(errs...)
