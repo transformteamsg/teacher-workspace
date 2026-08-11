@@ -6,13 +6,17 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestHandler_proxy(t *testing.T) {
@@ -138,6 +142,129 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
+	t.Run("strips the cookie and attaches a signed JWT in Headers", func(t *testing.T) {
+		var forwarded http.Header
+		record := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			forwarded = r.Header.Clone()
+		})
+
+		postsBackend := httptest.NewServer(record)
+		t.Cleanup(postsBackend.Close)
+
+		studentInsightsBackend := httptest.NewServer(record)
+		t.Cleanup(studentInsightsBackend.Close)
+
+		postsBackendURL, err := url.Parse(postsBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+		studentInsightsBackendURL, err := url.Parse(studentInsightsBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.APIProxy.PostsBaseURL = postsBackendURL
+		cfg.APIProxy.PostsSigningKey = "posts-signing-key-0123456789abcdef"
+		cfg.APIProxy.StudentInsightsBaseURL = studentInsightsBackendURL
+		cfg.APIProxy.StudentInsightsSigningKey = "student-insights-key-0123456789abcdef"
+
+		h := New(&cfg)
+
+		tests := []struct {
+			name string
+			app  string
+		}{
+			{name: "posts", app: "posts"},
+			{name: "student insights", app: "student-insights"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, "/api/"+tt.app+"/hello", nil)
+				req.SetPathValue("app", tt.app)
+				req.AddCookie(&http.Cookie{Name: "tw_session", Value: "session-value"})
+				rec := httptest.NewRecorder()
+
+				h.proxy(rec, req)
+
+				if want, got := http.StatusOK, rec.Code; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
+				if want, got := "", forwarded.Get("Cookie"); want != got {
+					t.Errorf("want Cookie: %q; got: %q", want, got)
+				}
+
+				authorization := forwarded.Get("Authorization")
+				if _, ok := strings.CutPrefix(authorization, "Bearer "); !ok {
+					t.Fatalf("want Authorization: a Bearer token; got: %q", authorization)
+				}
+			})
+		}
+	})
+
+}
+
+func TestSignToken(t *testing.T) {
+	tests := []struct {
+		name     string
+		audience string
+		key      string
+		ttl      time.Duration
+	}{
+		{name: "posts", audience: "pg", key: "posts-signing-key-0123456789abcdef", ttl: time.Minute},
+		{name: "student insights", audience: "si", key: "student-insights-key-0123456789abcdef", ttl: time.Hour},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			signed, err := signToken(tt.audience, tt.key, tt.ttl)
+			if err != nil {
+				t.Fatalf("signToken: %v", err)
+			}
+
+			claims := jwt.MapClaims{}
+			token, err := jwt.ParseWithClaims(signed, claims,
+				func(*jwt.Token) (any, error) {
+					return []byte(tt.key), nil
+				},
+			)
+			if err != nil {
+				t.Fatalf("want err: nil; got: %v", err)
+			}
+
+			if want, got := "HS256", token.Method.Alg(); want != got {
+				t.Errorf("want alg: %q; got: %q", want, got)
+			}
+			if want, got := []string{"aud", "exp", "iat", "iss"}, slices.Sorted(maps.Keys(claims)); !slices.Equal(want, got) {
+				t.Errorf("want claims: %q; got: %q", want, got)
+			}
+			if want, got := "TW", claims["iss"]; want != got {
+				t.Errorf("want iss: %v; got: %v", want, got)
+			}
+
+			audience, err := claims.GetAudience()
+			if err != nil {
+				t.Fatalf("claims.GetAudience: %v", err)
+			}
+			if want, got := []string{tt.audience}, []string(audience); !slices.Equal(want, got) {
+				t.Errorf("want aud: %q; got: %q", want, got)
+			}
+
+			issuedAt, err := claims.GetIssuedAt()
+			if err != nil {
+				t.Fatalf("claims.GetIssuedAt: %v", err)
+			}
+
+			expiresAt, err := claims.GetExpirationTime()
+			if err != nil {
+				t.Fatalf("claims.GetExpirationTime: %v", err)
+			}
+			if want, got := tt.ttl, expiresAt.Sub(issuedAt.Time); want != got {
+				t.Errorf("want exp - iat: %v; got: %v", want, got)
+			}
+		})
+	}
 }
 
 func TestProxyErrorHandler(t *testing.T) {
