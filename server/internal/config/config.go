@@ -80,9 +80,11 @@ func Default() Config {
 			AuthenticatedTTL: 30 * time.Minute,
 		},
 		APIProxy: APIProxyConfig{
-			StudentInsightsBaseURL: must(url.Parse("http://127.0.0.1:3002")),
-			PostsBaseURL:           must(url.Parse("http://127.0.0.1:3003")),
-			TokenTTL:               1 * time.Minute,
+			StudentInsightsBaseURL:    must(url.Parse("http://127.0.0.1:3002")),
+			StudentInsightsSigningKey: "secret",
+			PostsBaseURL:              must(url.Parse("http://127.0.0.1:3003")),
+			PostsSigningKey:           "secret",
+			TokenTTL:                  1 * time.Minute,
 		},
 	}
 }
