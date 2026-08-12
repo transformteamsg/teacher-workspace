@@ -11,7 +11,15 @@ export function createInteractionRouter(provider: Provider): Router {
 
     if (details.prompt.name === 'login') {
       const requestedAccount = details.params.account as string | undefined;
-      const account = accounts.find((a) => a.sub === requestedAccount) ?? accounts[0];
+      const account = requestedAccount
+        ? accounts.find((a) => a.sub === requestedAccount)
+        : accounts[0];
+
+      if (!account) {
+        throw new Error(
+          `Unknown account '${requestedAccount}'. Available: ${accounts.map((a) => a.sub).join(', ')}`,
+        );
+      }
 
       await provider.interactionFinished(
         req,
@@ -35,7 +43,10 @@ export function createInteractionRouter(provider: Provider): Router {
         { consent: { grantId } },
         { mergeWithLastSubmission: true },
       );
+      return;
     }
+
+    throw new Error(`Unhandled interaction prompt: ${details.prompt.name}`);
   });
 
   return router;
