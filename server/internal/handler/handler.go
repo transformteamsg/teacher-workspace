@@ -24,11 +24,15 @@ func New(cfg *config.Config) *Handler {
 	h := &Handler{
 		cfg: cfg,
 		studentInsightsProxy: &stdhttputil.ReverseProxy{
-			Rewrite:      proxyRewriter(cfg.APIProxy.StudentInsightsBaseURL),
+			Rewrite: func(pr *stdhttputil.ProxyRequest) {
+				pr.SetURL(cfg.APIProxy.StudentInsightsBaseURL)
+			},
 			ErrorHandler: proxyErrorHandler,
 		},
 		postsProxy: &stdhttputil.ReverseProxy{
-			Rewrite:      proxyRewriter(cfg.APIProxy.PostsBaseURL),
+			Rewrite: func(pr *stdhttputil.ProxyRequest) {
+				pr.SetURL(cfg.APIProxy.PostsBaseURL)
+			},
 			ErrorHandler: proxyErrorHandler,
 		},
 	}
