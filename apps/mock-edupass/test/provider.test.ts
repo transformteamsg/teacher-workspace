@@ -96,7 +96,10 @@ describe('mock-edupass OIDC provider', () => {
   before(async () => {
     const { app } = createApp(TEST_PORT);
     server = app.listen(TEST_PORT);
-    await new Promise<void>((resolve) => server.once('listening', resolve));
+    await new Promise<void>((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    });
   });
 
   after(async () => {
