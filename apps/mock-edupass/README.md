@@ -46,7 +46,7 @@ Configure your relying party with these values:
 There is no login page or consent screen. Authentication and consent complete automatically:
 
 - Defaults to `teacher-1` unless `?account=<id>` is passed to the authorize endpoint
-- Example: `/auth?...&account=teacher-2` logs in as John Smith
+- Example: `/authorize?...&account=teacher-2` logs in as John Smith
 
 ## Environment Variables
 
