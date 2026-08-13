@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestHandler_proxy(t *testing.T) {
@@ -159,7 +162,7 @@ func TestHandler_proxy(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
 		req.SetPathValue("app", "posts")
-		req.AddCookie(&http.Cookie{Name: cfg.Session.Name, Value: "session-value"})
+		req.AddCookie(&http.Cookie{Name: "session-name", Value: "session-value"})
 		rec := httptest.NewRecorder()
 
 		h.proxy(rec, req)
@@ -172,62 +175,59 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
-	t.Run("attaches a signed JWT", func(t *testing.T) {
-		var forwarded http.Header
-		record := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			forwarded = r.Header.Clone()
-		})
-
-		postsBackend := httptest.NewServer(record)
+	t.Run("attaches a signed JWT to outbound request", func(t *testing.T) {
+		var postReceivedReq *http.Request
+		postsBackend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			postReceivedReq = r
+		}))
 		t.Cleanup(postsBackend.Close)
-
-		studentInsightsBackend := httptest.NewServer(record)
-		t.Cleanup(studentInsightsBackend.Close)
-
 		postsBackendURL, err := url.Parse(postsBackend.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-		studentInsightsBackendURL, err := url.Parse(studentInsightsBackend.URL)
 		if err != nil {
 			t.Fatalf("url.Parse: %v", err)
 		}
 
 		cfg := config.Default()
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
-		cfg.APIProxy.StudentInsightsBaseURL = studentInsightsBackendURL
+		cfg.APIProxy.TokenTTL = 2 * time.Minute
 
 		h := New(&cfg)
 
-		tests := []struct {
-			name string
-			app  string
-		}{
-			{name: "posts", app: "posts"},
-			{name: "student insights", app: "student-insights"},
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
+		req.SetPathValue("app", "posts")
+		rec := httptest.NewRecorder()
+
+		h.proxy(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
 		}
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, "/api/"+tt.app+"/hello", nil)
-				req.SetPathValue("app", tt.app)
-				rec := httptest.NewRecorder()
+		token, ok := strings.CutPrefix(postReceivedReq.Header.Get("Authorization"), "Bearer ")
+		if !ok {
+			t.Fatalf("want: %q; got: %q", "Bearer ", postReceivedReq.Header.Get("Authorization"))
+		}
 
-				h.proxy(rec, req)
+		var claims jwt.RegisteredClaims
+		if _, err := jwt.ParseWithClaims(token, &claims,
+			func(*jwt.Token) (any, error) {
+				return []byte(cfg.APIProxy.PostsSigningKey), nil
+			},
+			jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		); err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
 
-				if want, got := http.StatusOK, rec.Code; want != got {
-					t.Errorf("want: %d; got: %d", want, got)
-				}
-
-				authorization := forwarded.Get("Authorization")
-				token, ok := strings.CutPrefix(authorization, "Bearer ")
-				if !ok {
-					t.Fatalf("want: a %q prefix; got: %q", "Bearer ", authorization)
-				}
-				if token == "" {
-					t.Errorf("want: non-empty; got: %q", token)
-				}
-			})
+		if want, got := "TW", claims.Issuer; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := (jwt.ClaimStrings{"pg"}), claims.Audience; !slices.Equal(want, got) {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if claims.IssuedAt == nil || claims.ExpiresAt == nil {
+			t.Fatalf("want iat, exp: non-nil; got: %v, %v", claims.IssuedAt, claims.ExpiresAt)
+		}
+		if want, got := cfg.APIProxy.TokenTTL, claims.ExpiresAt.Sub(claims.IssuedAt.Time); want != got {
+			t.Errorf("want: %v; got: %v", want, got)
 		}
 	})
 }
