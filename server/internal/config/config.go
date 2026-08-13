@@ -42,22 +42,22 @@ type ServerConfig struct {
 	IdleTimeout       time.Duration `dotenv:"TW_SERVER_IDLE_TIMEOUT"`
 }
 
-type StoreProvider string
+type SessionStoreProvider string
 
 const (
-	StoreProviderMemory StoreProvider = "memory"
-	StoreProviderValkey StoreProvider = "valkey"
+	SessionStoreProviderMemory SessionStoreProvider = "memory"
+	SessionStoreProviderValkey SessionStoreProvider = "valkey"
 )
 
 // SessionConfig represents the configuration for the session.
 type SessionConfig struct {
-	Name              string        `dotenv:"TW_SESSION_NAME"`
-	DefaultTTL        time.Duration `dotenv:"TW_SESSION_DEFAULT_TTL"`
-	AuthenticatedTTL  time.Duration `dotenv:"TW_SESSION_AUTHENTICATED_TTL"`
-	StoreProvider     StoreProvider `dotenv:"TW_SESSION_STORE_PROVIDER"`
-	ValkeyURL         *url.URL      `dotenv:"TW_SESSION_VALKEY_URL"`
-	ValkeyPrefix      string        `dotenv:"TW_SESSION_VALKEY_PREFIX"`
-	ValkeyDialTimeout time.Duration `dotenv:"TW_SESSION_VALKEY_DIAL_TIMEOUT"`
+	Name              string               `dotenv:"TW_SESSION_NAME"`
+	DefaultTTL        time.Duration        `dotenv:"TW_SESSION_DEFAULT_TTL"`
+	AuthenticatedTTL  time.Duration        `dotenv:"TW_SESSION_AUTHENTICATED_TTL"`
+	StoreProvider     SessionStoreProvider `dotenv:"TW_SESSION_STORE_PROVIDER"`
+	ValkeyURL         *url.URL             `dotenv:"TW_SESSION_VALKEY_URL"`
+	ValkeyPrefix      string               `dotenv:"TW_SESSION_VALKEY_PREFIX"`
+	ValkeyDialTimeout time.Duration        `dotenv:"TW_SESSION_VALKEY_DIAL_TIMEOUT"`
 }
 
 // APIProxyConfig represents the configuration for the backend proxies.
@@ -89,7 +89,7 @@ func Default() Config {
 			Name:              "tw_session",
 			DefaultTTL:        3 * time.Hour,
 			AuthenticatedTTL:  30 * time.Minute,
-			StoreProvider:     StoreProviderMemory,
+			StoreProvider:     SessionStoreProviderMemory,
 			ValkeyPrefix:      "session:",
 			ValkeyDialTimeout: 5 * time.Second,
 		},
@@ -177,12 +177,12 @@ func (c SessionConfig) validate() error {
 	}
 
 	switch c.StoreProvider {
-	case StoreProviderMemory:
-	case StoreProviderValkey:
+	case SessionStoreProviderMemory:
+	case SessionStoreProviderValkey:
 		errs = append(errs, c.validateValkey()...)
 	default:
 		errs = append(errs, fmt.Errorf("TW_SESSION_STORE_PROVIDER must be %q or %q; got %q",
-			StoreProviderMemory, StoreProviderValkey, c.StoreProvider))
+			SessionStoreProviderMemory, SessionStoreProviderValkey, c.StoreProvider))
 	}
 
 	return errors.Join(errs...)
@@ -199,7 +199,7 @@ func (c SessionConfig) validateValkey() []error {
 	}
 
 	if c.ValkeyURL == nil {
-		return append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL is required when TW_SESSION_STORE_PROVIDER is %q", StoreProviderValkey))
+		return append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL is required when TW_SESSION_STORE_PROVIDER is %q", SessionStoreProviderValkey))
 	}
 
 	if c.ValkeyURL.Scheme != "valkey" {

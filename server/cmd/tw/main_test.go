@@ -51,7 +51,7 @@ func TestNewSessionStore(t *testing.T) {
 		}
 
 		cfg := config.Default()
-		cfg.Session.StoreProvider = config.StoreProviderValkey
+		cfg.Session.StoreProvider = config.SessionStoreProviderValkey
 		cfg.Session.ValkeyURL = address
 		cfg.Session.ValkeyPrefix = "configured:"
 
@@ -93,7 +93,7 @@ func TestNewSessionStore(t *testing.T) {
 		// the attempt falls back to glide's own default of roughly 2s, which
 		// the bound below is set to reject.
 		cfg := config.Default()
-		cfg.Session.StoreProvider = config.StoreProviderValkey
+		cfg.Session.StoreProvider = config.SessionStoreProviderValkey
 		cfg.Session.ValkeyURL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:1"}
 		cfg.Session.ValkeyDialTimeout = 300 * time.Millisecond
 
@@ -111,7 +111,7 @@ func TestNewSessionStore(t *testing.T) {
 
 	t.Run("returns an error when Valkey is unreachable", func(t *testing.T) {
 		cfg := config.Default()
-		cfg.Session.StoreProvider = config.StoreProviderValkey
+		cfg.Session.StoreProvider = config.SessionStoreProviderValkey
 		// Port 1 is reserved and never has a listener.
 		cfg.Session.ValkeyURL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:1"}
 		cfg.Session.ValkeyDialTimeout = 300 * time.Millisecond

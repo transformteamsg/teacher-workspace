@@ -88,7 +88,7 @@ func main() {
 
 func newSessionStore(cfg *config.Config) (session.Store, func(), error) {
 	switch cfg.Session.StoreProvider {
-	case config.StoreProviderValkey:
+	case config.SessionStoreProviderValkey:
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.Session.ValkeyDialTimeout)
 		defer cancel()
 

@@ -50,7 +50,7 @@ func TestDefault(t *testing.T) {
 		if want, got := 30*time.Minute, cfg.Session.AuthenticatedTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
-		if want, got := StoreProviderMemory, cfg.Session.StoreProvider; want != got {
+		if want, got := SessionStoreProviderMemory, cfg.Session.StoreProvider; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 		if cfg.Session.ValkeyURL != nil {
@@ -85,7 +85,7 @@ func valkeyConfig(t *testing.T) Config {
 	t.Helper()
 
 	cfg := Default()
-	cfg.Session.StoreProvider = StoreProviderValkey
+	cfg.Session.StoreProvider = SessionStoreProviderValkey
 	cfg.Session.ValkeyURL = &url.URL{
 		Scheme:   "valkey",
 		Host:     "cache.example.com:6379",
@@ -169,7 +169,7 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			{
 				name:   "valkey provider without a url",
-				mutate: func(c *Config) { c.Session.StoreProvider = StoreProviderValkey },
+				mutate: func(c *Config) { c.Session.StoreProvider = SessionStoreProviderValkey },
 				want:   `TW_SESSION_VALKEY_URL is required when TW_SESSION_STORE_PROVIDER is "valkey"`,
 			},
 		} {
