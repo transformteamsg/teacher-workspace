@@ -11,7 +11,7 @@
   "dependencies": {
     "@base-ui/react": "^1.5.0",
     "@fontsource/inter": "^5.2.8",
-    "@module-federation/enhanced": "^2.5.1",
+    "@module-federation/enhanced": "^2.8.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.17.0",
@@ -21,7 +21,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@module-federation/rsbuild-plugin": "^2.5.1",
+    "@module-federation/rsbuild-plugin": "^2.8.2",
     "@rsbuild/core": "^2.0.12",
     "@rsbuild/plugin-react": "^2.0.1",
     "@rsbuild/plugin-tailwindcss": "^2.0.2",
