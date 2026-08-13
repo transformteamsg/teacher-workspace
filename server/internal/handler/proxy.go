@@ -39,7 +39,7 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request) {
 		IssuedAt:  jwt.NewNumericDate(now),
 		ExpiresAt: jwt.NewNumericDate(now.Add(h.cfg.APIProxy.TokenTTL)),
 	})
-	signedJWT, err := token.SignedString([]byte(signingKey))
+	signedToken, err := token.SignedString([]byte(signingKey))
 	if err != nil {
 		logger.Error("failed to sign JWT", "app", app, "err", err)
 		httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
@@ -49,7 +49,7 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Header.Del("Cookie")
-	r.Header.Set("Authorization", "Bearer "+signedJWT)
+	r.Header.Set("Authorization", "Bearer "+signedToken)
 
 	http.StripPrefix("/api/"+app, p).ServeHTTP(w, r)
 }
