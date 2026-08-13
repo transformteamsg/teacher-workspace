@@ -13,10 +13,6 @@
 .idea
 .vscode
 
-# Ignore worktrees and documentation.
-.worktrees
-docs
-
 # Ignore node modules.
 node_modules
 **/node_modules
