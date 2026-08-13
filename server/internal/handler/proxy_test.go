@@ -3,6 +3,8 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -334,6 +336,123 @@ func TestHandler_proxy(t *testing.T) {
 					t.Errorf("want: non-empty; got: %q", token)
 				}
 			})
+		}
+	})
+}
+
+func TestProxyErrorHandler(t *testing.T) {
+	t.Run("answers 502", func(t *testing.T) {
+		previous := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError})))
+		t.Cleanup(func() { slog.SetDefault(previous) })
+
+		// ReverseProxy calls the error handler with the outbound request: its
+		// RequestURI is still what the client asked for, while its URL has been
+		// rewritten to the backend.
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
+		backendURL, err := url.Parse("http://backend.internal:8080/hello")
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+		req.URL = backendURL
+		rec := httptest.NewRecorder()
+
+		proxyErrorHandler(rec, req, errors.New("connection refused"))
+
+		if want, got := http.StatusBadGateway, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+	})
+
+	t.Run("logs the failure", func(t *testing.T) {
+		type logEntry struct {
+			Level   string `json:"level"`
+			Msg     string `json:"msg"`
+			Method  string `json:"method"`
+			Path    string `json:"path"`
+			Backend string `json:"backend"`
+			Err     string `json:"err"`
+		}
+
+		var logs bytes.Buffer
+
+		previous := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelError})))
+		t.Cleanup(func() { slog.SetDefault(previous) })
+
+		req := httptest.NewRequest(http.MethodPost, "/api/posts/hello", nil)
+		backendURL, err := url.Parse("http://backend.internal:8080/hello")
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+		req.URL = backendURL
+		rec := httptest.NewRecorder()
+
+		proxyErrorHandler(rec, req, errors.New("connection refused"))
+
+		var entry logEntry
+		if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+
+		if want, got := "ERROR", entry.Level; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "failed to proxy request", entry.Msg; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := http.MethodPost, entry.Method; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		// The path the client asked for, not the prefix-stripped one.
+		if want, got := "/api/posts/hello", entry.Path; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		// The rewritten backend URL, not the one the client asked for.
+		if want, got := "http://backend.internal:8080/hello", entry.Backend; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "connection refused", entry.Err; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps the query string out of the logs", func(t *testing.T) {
+		type logEntry struct {
+			Path    string `json:"path"`
+			Backend string `json:"backend"`
+		}
+
+		var logs bytes.Buffer
+
+		previous := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelError})))
+		t.Cleanup(func() { slog.SetDefault(previous) })
+
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello?token=secret", nil)
+		backendURL, err := url.Parse("http://backend.internal:8080/hello?token=secret")
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+		req.URL = backendURL
+		rec := httptest.NewRecorder()
+
+		proxyErrorHandler(rec, req, errors.New("connection refused"))
+
+		if got := logs.String(); strings.Contains(got, "secret") {
+			t.Errorf("want logs: without %q; got: %q", "secret", got)
+		}
+
+		var entry logEntry
+		if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+
+		if want, got := "/api/posts/hello", entry.Path; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "http://backend.internal:8080/hello", entry.Backend; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})
 }
