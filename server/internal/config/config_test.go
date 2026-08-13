@@ -53,13 +53,13 @@ func TestDefault(t *testing.T) {
 		if want, got := SessionStoreProviderMemory, cfg.Session.StoreProvider; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if cfg.Session.ValkeyURL != nil {
-			t.Errorf("want: nil; got: %q", cfg.Session.ValkeyURL)
+		if cfg.Session.Valkey.URL != nil {
+			t.Errorf("want: nil; got: %q", cfg.Session.Valkey.URL)
 		}
-		if want, got := "session:", cfg.Session.ValkeyPrefix; want != got {
+		if want, got := "session:", cfg.Session.Valkey.Prefix; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if want, got := 5*time.Second, cfg.Session.ValkeyDialTimeout; want != got {
+		if want, got := 5*time.Second, cfg.Session.Valkey.DialTimeout; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
 
@@ -86,7 +86,7 @@ func valkeyConfig(t *testing.T) Config {
 
 	cfg := Default()
 	cfg.Session.StoreProvider = SessionStoreProviderValkey
-	cfg.Session.ValkeyURL = &url.URL{
+	cfg.Session.Valkey.URL = &url.URL{
 		Scheme:   "valkey",
 		Host:     "cache.example.com:6379",
 		Path:     "/0",
@@ -219,7 +219,7 @@ func TestConfig_Validate(t *testing.T) {
 
 	t.Run("accepts the valkey provider without credentials or tls", func(t *testing.T) {
 		cfg := valkeyConfig(t)
-		cfg.Session.ValkeyURL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:6379"}
+		cfg.Session.Valkey.URL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:6379"}
 
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("want err: nil; got: %v", err)
@@ -234,44 +234,44 @@ func TestConfig_Validate(t *testing.T) {
 		}{
 			{
 				name:   "non-valkey scheme",
-				mutate: func(c *Config) { c.Session.ValkeyURL.Scheme = "rediss" },
+				mutate: func(c *Config) { c.Session.Valkey.URL.Scheme = "rediss" },
 				want:   `TW_SESSION_VALKEY_URL must use scheme "valkey"; got "rediss"`,
 			},
 			{
 				name:   "missing port",
-				mutate: func(c *Config) { c.Session.ValkeyURL.Host = "cache.example.com" },
+				mutate: func(c *Config) { c.Session.Valkey.URL.Host = "cache.example.com" },
 				want:   "TW_SESSION_VALKEY_URL must include a port",
 			},
 			{
 				name:   "missing host",
-				mutate: func(c *Config) { c.Session.ValkeyURL.Host = "" },
+				mutate: func(c *Config) { c.Session.Valkey.URL.Host = "" },
 				want:   "TW_SESSION_VALKEY_URL must include a host",
 			},
 			{
 				name:   "unknown query parameter",
-				mutate: func(c *Config) { c.Session.ValkeyURL.RawQuery = "ssl=true" },
+				mutate: func(c *Config) { c.Session.Valkey.URL.RawQuery = "ssl=true" },
 				want:   `TW_SESSION_VALKEY_URL has unknown query parameter "ssl"`,
 			},
 			{
 				name:   "non-boolean tls value",
-				mutate: func(c *Config) { c.Session.ValkeyURL.RawQuery = "tls=1" },
+				mutate: func(c *Config) { c.Session.Valkey.URL.RawQuery = "tls=1" },
 				want:   `TW_SESSION_VALKEY_URL tls must be "true" or "false"; got "1"`,
 			},
 			{
 				// The store reads the first value, so accepting a repeated
 				// parameter would validate one value and connect on another.
 				name:   "repeated tls parameter",
-				mutate: func(c *Config) { c.Session.ValkeyURL.RawQuery = "tls=1&tls=true" },
+				mutate: func(c *Config) { c.Session.Valkey.URL.RawQuery = "tls=1&tls=true" },
 				want:   `TW_SESSION_VALKEY_URL has 2 "tls" values; specify it once`,
 			},
 			{
 				name:   "zero dial timeout",
-				mutate: func(c *Config) { c.Session.ValkeyDialTimeout = 0 },
+				mutate: func(c *Config) { c.Session.Valkey.DialTimeout = 0 },
 				want:   "TW_SESSION_VALKEY_DIAL_TIMEOUT must be positive",
 			},
 			{
 				name:   "empty key prefix",
-				mutate: func(c *Config) { c.Session.ValkeyPrefix = "" },
+				mutate: func(c *Config) { c.Session.Valkey.Prefix = "" },
 				want:   "TW_SESSION_VALKEY_PREFIX is required",
 			},
 		} {
@@ -295,8 +295,8 @@ func TestConfig_Validate(t *testing.T) {
 		// The validation error is logged at startup, so a malformed URL must not
 		// carry the password into the logs with it.
 		cfg := valkeyConfig(t)
-		cfg.Session.ValkeyURL.User = url.UserPassword("someone", "s3cret")
-		cfg.Session.ValkeyURL.Host = "cache.example.com"
+		cfg.Session.Valkey.URL.User = url.UserPassword("someone", "s3cret")
+		cfg.Session.Valkey.URL.Host = "cache.example.com"
 
 		err := cfg.Validate()
 
@@ -310,9 +310,9 @@ func TestConfig_Validate(t *testing.T) {
 
 	t.Run("skips the valkey settings when the provider is memory", func(t *testing.T) {
 		cfg := Default()
-		cfg.Session.ValkeyURL = &url.URL{Scheme: "nonsense"}
-		cfg.Session.ValkeyPrefix = ""
-		cfg.Session.ValkeyDialTimeout = 0
+		cfg.Session.Valkey.URL = &url.URL{Scheme: "nonsense"}
+		cfg.Session.Valkey.Prefix = ""
+		cfg.Session.Valkey.DialTimeout = 0
 
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("want err: nil; got: %v", err)

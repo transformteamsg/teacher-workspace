@@ -89,15 +89,15 @@ func main() {
 func newSessionStore(cfg *config.Config) (session.Store, func(), error) {
 	switch cfg.Session.StoreProvider {
 	case config.SessionStoreProviderValkey:
-		ctx, cancel := context.WithTimeout(context.Background(), cfg.Session.ValkeyDialTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.Session.Valkey.DialTimeout)
 		defer cancel()
 
-		client, err := valkeystore.Dial(ctx, cfg.Session.ValkeyURL)
+		client, err := valkeystore.Dial(ctx, cfg.Session.Valkey.URL)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		return valkeystore.New(client, valkeystore.WithPrefix(cfg.Session.ValkeyPrefix)), client.Close, nil
+		return valkeystore.New(client, valkeystore.WithPrefix(cfg.Session.Valkey.Prefix)), client.Close, nil
 	default:
 		// Validate rejects any provider other than memory or valkey, so this
 		// arm is only ever reached for memory.

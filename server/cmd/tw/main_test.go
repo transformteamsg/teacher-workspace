@@ -52,8 +52,8 @@ func TestNewSessionStore(t *testing.T) {
 
 		cfg := config.Default()
 		cfg.Session.StoreProvider = config.SessionStoreProviderValkey
-		cfg.Session.ValkeyURL = address
-		cfg.Session.ValkeyPrefix = "configured:"
+		cfg.Session.Valkey.URL = address
+		cfg.Session.Valkey.Prefix = "configured:"
 
 		store, cleanup, err := newSessionStore(&cfg)
 
@@ -94,8 +94,8 @@ func TestNewSessionStore(t *testing.T) {
 		// the bound below is set to reject.
 		cfg := config.Default()
 		cfg.Session.StoreProvider = config.SessionStoreProviderValkey
-		cfg.Session.ValkeyURL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:1"}
-		cfg.Session.ValkeyDialTimeout = 300 * time.Millisecond
+		cfg.Session.Valkey.URL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:1"}
+		cfg.Session.Valkey.DialTimeout = 300 * time.Millisecond
 
 		start := time.Now()
 		_, _, err := newSessionStore(&cfg)
@@ -113,8 +113,8 @@ func TestNewSessionStore(t *testing.T) {
 		cfg := config.Default()
 		cfg.Session.StoreProvider = config.SessionStoreProviderValkey
 		// Port 1 is reserved and never has a listener.
-		cfg.Session.ValkeyURL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:1"}
-		cfg.Session.ValkeyDialTimeout = 300 * time.Millisecond
+		cfg.Session.Valkey.URL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:1"}
+		cfg.Session.Valkey.DialTimeout = 300 * time.Millisecond
 
 		store, cleanup, err := newSessionStore(&cfg)
 
