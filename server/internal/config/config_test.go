@@ -53,8 +53,8 @@ func TestDefault(t *testing.T) {
 		if want, got := SessionStoreProviderMemory, cfg.Session.StoreProvider; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if cfg.Session.Valkey.URL != nil {
-			t.Errorf("want: nil; got: %q", cfg.Session.Valkey.URL)
+		if want, got := "valkey://127.0.0.1:6379", cfg.Session.Valkey.URL.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
 		}
 		if want, got := "session:", cfg.Session.Valkey.Prefix; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
@@ -168,9 +168,12 @@ func TestConfig_Validate(t *testing.T) {
 				want:   `TW_SESSION_STORE_PROVIDER must be "memory" or "valkey"; got "postgres"`,
 			},
 			{
-				name:   "valkey provider without a url",
-				mutate: func(c *Config) { c.Session.StoreProvider = SessionStoreProviderValkey },
-				want:   `TW_SESSION_VALKEY_URL is required when TW_SESSION_STORE_PROVIDER is "valkey"`,
+				name: "valkey provider without a url",
+				mutate: func(c *Config) {
+					c.Session.StoreProvider = SessionStoreProviderValkey
+					c.Session.Valkey.URL = nil
+				},
+				want: "TW_SESSION_VALKEY_URL is required",
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
@@ -245,24 +248,12 @@ func TestConfig_Validate(t *testing.T) {
 			{
 				name:   "missing host",
 				mutate: func(c *Config) { c.Session.Valkey.URL.Host = "" },
-				want:   "TW_SESSION_VALKEY_URL must include a host",
-			},
-			{
-				name:   "unknown query parameter",
-				mutate: func(c *Config) { c.Session.Valkey.URL.RawQuery = "ssl=true" },
-				want:   `TW_SESSION_VALKEY_URL has unknown query parameter "ssl"`,
+				want:   "TW_SESSION_VALKEY_URL must include a hostname",
 			},
 			{
 				name:   "non-boolean tls value",
 				mutate: func(c *Config) { c.Session.Valkey.URL.RawQuery = "tls=1" },
-				want:   `TW_SESSION_VALKEY_URL tls must be "true" or "false"; got "1"`,
-			},
-			{
-				// The store reads the first value, so accepting a repeated
-				// parameter would validate one value and connect on another.
-				name:   "repeated tls parameter",
-				mutate: func(c *Config) { c.Session.Valkey.URL.RawQuery = "tls=1&tls=true" },
-				want:   `TW_SESSION_VALKEY_URL has 2 "tls" values; specify it once`,
+				want:   `TW_SESSION_VALKEY_URL "tls" must be "true" or "false"; got "1"`,
 			},
 			{
 				name:   "zero dial timeout",

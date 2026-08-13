@@ -95,6 +95,7 @@ func Default() Config {
 			AuthenticatedTTL: 30 * time.Minute,
 			StoreProvider:    SessionStoreProviderMemory,
 			Valkey: SessionValkeyConfig{
+				URL:         must(url.Parse("valkey://127.0.0.1:6379")),
 				Prefix:      "session:",
 				DialTimeout: 5 * time.Second,
 			},
@@ -204,36 +205,23 @@ func (c SessionValkeyConfig) validate() error {
 	}
 
 	if c.URL == nil {
-		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL is required when TW_SESSION_STORE_PROVIDER is %q", SessionStoreProviderValkey))
+		errs = append(errs, errors.New("TW_SESSION_VALKEY_URL is required"))
 		return errors.Join(errs...)
 	}
 
 	if c.URL.Scheme != "valkey" {
 		errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL must use scheme "valkey"; got %q`, c.URL.Scheme))
 	}
-	// Redacted, not the URL itself: %q on a *url.URL calls String(), which
-	// prints the password, and this error is logged at startup.
 	if c.URL.Hostname() == "" {
-		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a host; got %q", c.URL.Redacted()))
+		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a hostname; got %q", c.URL.Redacted()))
 	}
 	if c.URL.Port() == "" {
 		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a port; got %q", c.URL.Redacted()))
 	}
 
-	for key, vals := range c.URL.Query() {
-		if key != "tls" {
-			errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL has unknown query parameter %q; only \"tls\" is supported", key))
-			continue
-		}
-		// The store reads the first value, so a repeated parameter is ambiguous
-		// rather than last-wins: accepting it risks validating "true" while the
-		// connection is made in plaintext.
-		if len(vals) > 1 {
-			errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL has %d "tls" values; specify it once`, len(vals)))
-			continue
-		}
-		if v := vals[0]; v != "true" && v != "false" {
-			errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL tls must be "true" or "false"; got %q`, v))
+	if c.URL.Query().Has("tls") {
+		if tls := c.URL.Query().Get("tls"); tls != "true" && tls != "false" {
+			errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL "tls" must be "true" or "false"; got %q`, tls))
 		}
 	}
 
