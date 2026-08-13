@@ -390,8 +390,8 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 			},
 			{
 				name:   "short student insights signing key",
-				mutate: func(c *APIProxyConfig) { c.StudentInsightsSigningKey = "0123456789abcdef0123456789abcde" },
-				want:   "TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least 32 bytes; got 31",
+				mutate: func(c *APIProxyConfig) { c.StudentInsightsSigningKey = "a-short-secret" },
+				want:   "TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least 32 bytes; got 14",
 			},
 			{
 				name:   "missing posts signing key",
@@ -400,8 +400,8 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 			},
 			{
 				name:   "short posts signing key",
-				mutate: func(c *APIProxyConfig) { c.PostsSigningKey = "0123456789abcdef0123456789abcde" },
-				want:   "TW_API_PROXY_POSTS_SIGNING_KEY must be at least 32 bytes; got 31",
+				mutate: func(c *APIProxyConfig) { c.PostsSigningKey = "a-short-secret" },
+				want:   "TW_API_PROXY_POSTS_SIGNING_KEY must be at least 32 bytes; got 14",
 			},
 			{
 				name:   "zero token TTL",

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -81,9 +80,9 @@ func Default() Config {
 		},
 		APIProxy: APIProxyConfig{
 			StudentInsightsBaseURL:    must(url.Parse("http://127.0.0.1:3002")),
-			StudentInsightsSigningKey: "secret",
 			PostsBaseURL:              must(url.Parse("http://127.0.0.1:3003")),
-			PostsSigningKey:           "secret",
+			StudentInsightsSigningKey: "a-string-secret-at-least-256-bits-long",
+			PostsSigningKey:           "a-string-secret-at-least-256-bits-long",
 			TokenTTL:                  1 * time.Minute,
 		},
 	}
@@ -165,6 +164,10 @@ func (c SessionConfig) validate() error {
 	return errors.Join(errs...)
 }
 
+// RFC 7518, section 3.2 requires a key at
+// least as big as hash output (HS256).
+const minSigningKeyBytes = 32
+
 func (c APIProxyConfig) validate() error {
 	var errs []error
 
@@ -181,8 +184,8 @@ func (c APIProxyConfig) validate() error {
 	if c.StudentInsightsSigningKey == "" {
 		errs = append(errs, errors.New("TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY is required"))
 	} else {
-		if siKeyLength := len(c.StudentInsightsSigningKey); siKeyLength < sha256.Size {
-			errs = append(errs, fmt.Errorf("TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, siKeyLength))
+		if keyLength := len(c.StudentInsightsSigningKey); keyLength < minSigningKeyBytes {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least %d bytes; got %d", minSigningKeyBytes, keyLength))
 		}
 	}
 	if c.PostsBaseURL == nil {
@@ -198,8 +201,8 @@ func (c APIProxyConfig) validate() error {
 	if c.PostsSigningKey == "" {
 		errs = append(errs, errors.New("TW_API_PROXY_POSTS_SIGNING_KEY is required"))
 	} else {
-		if postKeyLength := len(c.PostsSigningKey); postKeyLength < sha256.Size {
-			errs = append(errs, fmt.Errorf("TW_API_PROXY_POSTS_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, postKeyLength))
+		if keyLength := len(c.PostsSigningKey); keyLength < minSigningKeyBytes {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_POSTS_SIGNING_KEY must be at least %d bytes; got %d", minSigningKeyBytes, keyLength))
 		}
 	}
 	if c.TokenTTL < time.Second {
