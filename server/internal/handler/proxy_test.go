@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"slices"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -176,58 +176,91 @@ func TestHandler_proxy(t *testing.T) {
 	})
 
 	t.Run("attaches a signed JWT to outbound request", func(t *testing.T) {
-		var postReceivedReq *http.Request
+		var receivedReqHeaders http.Header
+		studentInsightsBackend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			receivedReqHeaders = r.Header
+		}))
+		t.Cleanup(studentInsightsBackend.Close)
 		postsBackend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			postReceivedReq = r
+			receivedReqHeaders = r.Header
 		}))
 		t.Cleanup(postsBackend.Close)
+		studentInsightsBackendURL, err := url.Parse(studentInsightsBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
 		postsBackendURL, err := url.Parse(postsBackend.URL)
 		if err != nil {
 			t.Fatalf("url.Parse: %v", err)
 		}
 
 		cfg := config.Default()
+		cfg.APIProxy.StudentInsightsBaseURL = studentInsightsBackendURL
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
-		cfg.APIProxy.TokenTTL = 2 * time.Minute
+		cfg.APIProxy.StudentInsightsSigningKey = "student-insights-string-secret-at-least-256-bits-long"
+		cfg.APIProxy.PostsSigningKey = "posts-string-secret-at-least-256-bits-long"
+
+		ttl := 2 * time.Minute
+		cfg.APIProxy.TokenTTL = ttl
 
 		h := New(&cfg)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
-		req.SetPathValue("app", "posts")
-		rec := httptest.NewRecorder()
-
-		h.proxy(rec, req)
-
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-
-		token, ok := strings.CutPrefix(postReceivedReq.Header.Get("Authorization"), "Bearer ")
-		if !ok {
-			t.Fatalf("want: %q; got: %q", "Bearer ", postReceivedReq.Header.Get("Authorization"))
-		}
-
-		var claims jwt.RegisteredClaims
-		if _, err := jwt.ParseWithClaims(token, &claims,
-			func(*jwt.Token) (any, error) {
-				return []byte(cfg.APIProxy.PostsSigningKey), nil
+		currentTime := time.Now()
+		tests := []struct {
+			app        string
+			signingKey string
+			wantClaims jwt.RegisteredClaims
+		}{
+			{
+				app:        "student-insights",
+				signingKey: "student-insights-string-secret-at-least-256-bits-long",
+				wantClaims: jwt.RegisteredClaims{
+					Issuer:    "TW",
+					Audience:  jwt.ClaimStrings{"si"},
+					IssuedAt:  jwt.NewNumericDate(currentTime),
+					ExpiresAt: jwt.NewNumericDate(currentTime.Add(ttl)),
+				},
 			},
-			jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
-		); err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
+			{
+				app:        "posts",
+				signingKey: "posts-string-secret-at-least-256-bits-long",
+				wantClaims: jwt.RegisteredClaims{
+					Issuer:    "TW",
+					Audience:  jwt.ClaimStrings{"pg"},
+					IssuedAt:  jwt.NewNumericDate(currentTime),
+					ExpiresAt: jwt.NewNumericDate(currentTime.Add(ttl)),
+				},
+			},
 		}
 
-		if want, got := "TW", claims.Issuer; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if want, got := (jwt.ClaimStrings{"pg"}), claims.Audience; !slices.Equal(want, got) {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if claims.IssuedAt == nil || claims.ExpiresAt == nil {
-			t.Fatalf("want iat, exp: non-nil; got: %v, %v", claims.IssuedAt, claims.ExpiresAt)
-		}
-		if want, got := cfg.APIProxy.TokenTTL, claims.ExpiresAt.Sub(claims.IssuedAt.Time); want != got {
-			t.Errorf("want: %v; got: %v", want, got)
+		for _, tt := range tests {
+			req := httptest.NewRequest(http.MethodGet, "/api/"+tt.app+"/hello", nil)
+			req.SetPathValue("app", tt.app)
+			rec := httptest.NewRecorder()
+
+			h.proxy(rec, req)
+
+			if want, got := http.StatusOK, rec.Code; want != got {
+				t.Errorf("want: %d; got: %d", want, got)
+			}
+			token, ok := strings.CutPrefix(receivedReqHeaders.Get("Authorization"), "Bearer ")
+			if !ok {
+				t.Fatalf("want: not empty; got: %q", receivedReqHeaders.Get("Authorization"))
+			}
+
+			var claims jwt.RegisteredClaims
+			if _, err := jwt.ParseWithClaims(token, &claims,
+				func(*jwt.Token) (any, error) {
+					return []byte(tt.signingKey), nil
+				},
+				jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+			); err != nil {
+				t.Fatalf("want err: nil; got: %v", err)
+			}
+
+			if want, got := tt.wantClaims, claims; !reflect.DeepEqual(want, got) {
+				t.Errorf("want: %+v; got: %+v", want, got)
+			}
 		}
 	})
 }
