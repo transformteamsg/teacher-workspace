@@ -46,11 +46,8 @@ RUN go mod download
 COPY server/ server/
 
 # Build the binary. CGO_ENABLED=0 keeps it static so it does not depend on the
-# runtime stage's libc. No GOOS/GOARCH needed: the golang base image for this
-# stage is already Linux and already matches --platform, so go build defaults
-# to the right OS and architecture.
-RUN CGO_ENABLED=0 \
-    go build -trimpath -ldflags="-s -w" -o /src/tw ./server/cmd/tw
+# runtime stage's libc.
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /src/tw ./server/cmd/tw
 
 # ----------------------------------------
 # Production stage
