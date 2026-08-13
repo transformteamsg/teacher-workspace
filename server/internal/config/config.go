@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -164,10 +165,6 @@ func (c SessionConfig) validate() error {
 	return errors.Join(errs...)
 }
 
-// RFC 7518, section 3.2 requires a key at
-// least as big as hash output (HS256).
-const minSigningKeyBytes = 32
-
 func (c APIProxyConfig) validate() error {
 	var errs []error
 
@@ -184,8 +181,9 @@ func (c APIProxyConfig) validate() error {
 	if c.StudentInsightsSigningKey == "" {
 		errs = append(errs, errors.New("TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY is required"))
 	} else {
-		if keyLength := len(c.StudentInsightsSigningKey); keyLength < minSigningKeyBytes {
-			errs = append(errs, fmt.Errorf("TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least %d bytes; got %d", minSigningKeyBytes, keyLength))
+		// RFC 7518, section 3.2 requires a key at least as big as hash output (HS256).
+		if keyLength := len(c.StudentInsightsSigningKey); keyLength < sha256.Size {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, keyLength))
 		}
 	}
 	if c.PostsBaseURL == nil {
@@ -201,8 +199,9 @@ func (c APIProxyConfig) validate() error {
 	if c.PostsSigningKey == "" {
 		errs = append(errs, errors.New("TW_API_PROXY_POSTS_SIGNING_KEY is required"))
 	} else {
-		if keyLength := len(c.PostsSigningKey); keyLength < minSigningKeyBytes {
-			errs = append(errs, fmt.Errorf("TW_API_PROXY_POSTS_SIGNING_KEY must be at least %d bytes; got %d", minSigningKeyBytes, keyLength))
+		// RFC 7518, section 3.2 requires a key at least as big as hash output (HS256).
+		if keyLength := len(c.PostsSigningKey); keyLength < sha256.Size {
+			errs = append(errs, fmt.Errorf("TW_API_PROXY_POSTS_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, keyLength))
 		}
 	}
 	if c.TokenTTL < time.Second {
