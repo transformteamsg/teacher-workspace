@@ -13,18 +13,21 @@ WORKDIR /src
 
 RUN npm install --global pnpm@${PNPM_VERSION}
 
-# Fetch all dependencies for better layer caching. Every workspace package
-# matched by pnpm-workspace.yaml needs its manifest copied here, otherwise the
-# frozen lockfile install fails on the missing importer.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/host/package.json apps/host/
+# Fetch all dependencies into the local store for better layer caching. This
+# reads only pnpm-lock.yaml, so it doesn't need every workspace package's
+# manifest copied in ahead of time.
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm fetch
 
+# Only package.json and apps/, so an edit under server/ leaves this stage
+# cached.
+COPY package.json ./
+COPY apps/ apps/
+
+# --offline links from the store fetched above instead of hitting the network.
 # --ignore-scripts skips the root prepare script, which installs the lefthook
 # git hooks and fails without a .git directory.
-RUN pnpm install --frozen-lockfile --ignore-scripts
-
-# Only apps/, so an edit under server/ leaves this stage cached.
-COPY apps/ apps/
+RUN pnpm install --offline --frozen-lockfile --ignore-scripts
 
 # Build the frontend into apps/host/dist.
 RUN pnpm build
@@ -33,11 +36,6 @@ RUN pnpm build
 # Server build stage
 # ----------------------------------------
 FROM golang:1.26.5-alpine3.23 AS server-build
-
-# BuildKit populates TARGETARCH from the platform being built. Hardcoding it
-# would emit a binary for the wrong architecture whenever the build host is not
-# arm64, which fails at run time rather than at build time.
-ARG TARGETARCH
 
 WORKDIR /src
 
@@ -48,8 +46,10 @@ RUN go mod download
 COPY server/ server/
 
 # Build the binary. CGO_ENABLED=0 keeps it static so it does not depend on the
-# runtime stage's libc.
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
+# runtime stage's libc. No GOOS/GOARCH needed: the golang base image for this
+# stage is already Linux and already matches --platform, so go build defaults
+# to the right OS and architecture.
+RUN CGO_ENABLED=0 \
     go build -trimpath -ldflags="-s -w" -o /src/tw ./server/cmd/tw
 
 # ----------------------------------------
@@ -59,30 +59,22 @@ FROM alpine:3.23
 
 WORKDIR /app
 
-# No apk install step: alpine already ships ca-certificates-bundle, which is the
-# trusted root store a static Go binary reads, and adduser/addgroup are busybox
-# builtins. Keeping the stage offline makes the build reproducible.
+# 1. Create a new user named `zero`.
+# 2. Change the permission of `app` folder to user `zero`.
+# 3. Change the current user from `root` to `zero`.
+RUN addgroup -S zero && \
+        adduser -S zero -G zero && \
+        chown zero:zero /app
 
-# 1. Create a new user named `tw`.
-# 2. Change the permission of `app` folder to user `tw`.
-# 3. Change the current user from `root` to `tw`.
-RUN addgroup -S tw && \
-        adduser -S tw -G tw && \
-        chown tw:tw /app
+USER zero
 
-USER tw
+COPY --from=server-build --chown=zero:zero /src/tw /app/tw
+COPY --from=host-build --chown=zero:zero /src/apps/host/dist /app/dist
 
-COPY --from=server-build --chown=tw:tw /src/tw /app/tw
-COPY --from=host-build --chown=tw:tw /src/apps/host/dist /app/dist
-
-# The image ships no .env, so every setting comes from the environment.
-# TW_BUILD_DIR is absolute because config.Validate resolves it against the
-# working directory.
 ENV TW_ENV=production \
     TW_BUILD_DIR=/app/dist \
     TW_SERVER_PORT=3000
 
 EXPOSE 3000
 
-# Exec form, so the server is PID 1 and receives SIGTERM for graceful shutdown.
 CMD ["/app/tw"]
