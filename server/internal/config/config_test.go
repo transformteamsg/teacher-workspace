@@ -57,6 +57,12 @@ func TestDefault(t *testing.T) {
 		if want, got := "http://127.0.0.1:3003", cfg.APIProxy.PostsBaseURL.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
+		if want, got := "a-string-secret-at-least-256-bits-long", cfg.APIProxy.StudentInsightsSigningKey; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "a-string-secret-at-least-256-bits-long", cfg.APIProxy.PostsSigningKey; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 		if want, got := time.Minute, cfg.APIProxy.TokenTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
