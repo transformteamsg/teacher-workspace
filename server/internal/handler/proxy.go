@@ -11,10 +11,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// proxy sends an MFE's API request to that app's backend, stripping the
-// /api/<app> prefix. It swaps the user's session cookie for a short-lived
-// signed token. Answers 404 for an unknown app and 500 if the token cannot
-// be signed.
+// proxy forwards a request to that app's backend, stripping the
+// /api/<app> prefix. It swaps the session cookie for JWT. Responds 404
+// for unknown apps and 500 if the token cannot be signed.
 func (h *Handler) proxy(w http.ResponseWriter, r *http.Request) {
 	logger := middleware.LoggerFromContext(r.Context())
 	app := r.PathValue("app")
