@@ -8,3 +8,7 @@ allowBuilds:
   lefthook: false
 
 minimumReleaseAge: 10080
+
+overrides:
+  hono: '>=4.12.34'
+  '@hono/node-server': '>=1.19.15'
