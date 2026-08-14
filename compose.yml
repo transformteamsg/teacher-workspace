@@ -1,0 +1,19 @@
+services:
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    ports:
+      - '${TW_VALKEY_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # tooling for checking and verifying session keys in parallel with development; can be removed at a later time
+  redisinsight:
+    image: redis/redisinsight:latest
+    profiles: [tools]
+    ports:
+      - '${TW_REDISINSIGHT_PORT:-5540}:5540'
+    depends_on:
+      - valkey

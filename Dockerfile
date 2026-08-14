@@ -39,15 +39,17 @@ FROM golang:1.26.5-alpine3.23 AS server-build
 
 WORKDIR /src
 
+# cgo toolchain for valkey-glide, which the Go Alpine image does not ship.
+RUN apk add --no-cache gcc musl-dev
+
 # Fetch all dependencies for better layer caching.
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY server/ server/
 
-# Build the binary. CGO_ENABLED=0 keeps it static so it does not depend on the
-# runtime stage's libc.
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /src/tw ./server/cmd/tw
+# valkey-glide requires cgo; the musl tag selects its musl archive over glibc.
+RUN CGO_ENABLED=1 go build -tags musl -trimpath -ldflags="-s -w" -o /src/tw ./server/cmd/tw
 
 # ----------------------------------------
 # Production stage
@@ -55,6 +57,9 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /src/tw ./server/cmd/tw
 FROM alpine:3.23
 
 WORKDIR /app
+
+# The cgo binary links libgcc_s.so.1, which the base image does not ship.
+RUN apk add --no-cache libgcc
 
 # 1. Create a new user named `zero`.
 # 2. Change the permission of `app` folder to user `zero`.

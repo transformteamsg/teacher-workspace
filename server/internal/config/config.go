@@ -42,11 +42,25 @@ type ServerConfig struct {
 	IdleTimeout       time.Duration `dotenv:"TW_SERVER_IDLE_TIMEOUT"`
 }
 
+type SessionStoreProvider string
+
+const (
+	SessionStoreProviderMemory SessionStoreProvider = "memory"
+	SessionStoreProviderValkey SessionStoreProvider = "valkey"
+)
+
 // SessionConfig represents the configuration for the session.
 type SessionConfig struct {
-	Name             string        `dotenv:"TW_SESSION_NAME"`
-	DefaultTTL       time.Duration `dotenv:"TW_SESSION_DEFAULT_TTL"`
-	AuthenticatedTTL time.Duration `dotenv:"TW_SESSION_AUTHENTICATED_TTL"`
+	Name             string               `dotenv:"TW_SESSION_NAME"`
+	DefaultTTL       time.Duration        `dotenv:"TW_SESSION_DEFAULT_TTL"`
+	AuthenticatedTTL time.Duration        `dotenv:"TW_SESSION_AUTHENTICATED_TTL"`
+	StoreProvider    SessionStoreProvider `dotenv:"TW_SESSION_STORE_PROVIDER"`
+
+	Valkey SessionValkeyConfig `dotenv:",squash"`
+}
+type SessionValkeyConfig struct {
+	URL    *url.URL `dotenv:"TW_SESSION_VALKEY_URL"`
+	Prefix string   `dotenv:"TW_SESSION_VALKEY_PREFIX"`
 }
 
 // APIProxyConfig represents the configuration for the backend proxies.
@@ -78,6 +92,11 @@ func Default() Config {
 			Name:             "tw_session",
 			DefaultTTL:       3 * time.Hour,
 			AuthenticatedTTL: 30 * time.Minute,
+			StoreProvider:    SessionStoreProviderMemory,
+			Valkey: SessionValkeyConfig{
+				URL:    must(url.Parse("valkey://127.0.0.1:6379")),
+				Prefix: "session:",
+			},
 		},
 		APIProxy: APIProxyConfig{
 			StudentInsightsBaseURL:    must(url.Parse("http://127.0.0.1:3002")),
@@ -160,6 +179,43 @@ func (c SessionConfig) validate() error {
 	}
 	if c.AuthenticatedTTL < time.Second {
 		errs = append(errs, fmt.Errorf("TW_SESSION_AUTHENTICATED_TTL must be at least 1s; got %v", c.AuthenticatedTTL))
+	}
+
+	if c.StoreProvider != SessionStoreProviderMemory && c.StoreProvider != SessionStoreProviderValkey {
+		errs = append(errs, fmt.Errorf("TW_SESSION_STORE_PROVIDER must be %q or %q; got %q",
+			SessionStoreProviderMemory, SessionStoreProviderValkey, c.StoreProvider))
+	}
+	if c.StoreProvider == SessionStoreProviderValkey {
+		errs = append(errs, c.Valkey.validate())
+	}
+
+	return errors.Join(errs...)
+}
+
+func (c SessionValkeyConfig) validate() error {
+	var errs []error
+
+	if c.Prefix == "" {
+		errs = append(errs, errors.New("TW_SESSION_VALKEY_PREFIX is required"))
+	}
+
+	if c.URL == nil {
+		errs = append(errs, errors.New("TW_SESSION_VALKEY_URL is required"))
+	} else {
+		if c.URL.Scheme != "valkey" {
+			errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL must use scheme "valkey"; got %q`, c.URL.Scheme))
+		}
+		if c.URL.Hostname() == "" {
+			errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a hostname; got %q", c.URL.Redacted()))
+		}
+		if c.URL.Port() == "" {
+			errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a port; got %q", c.URL.Redacted()))
+		}
+		if c.URL.Query().Has("tls") {
+			if tls := c.URL.Query().Get("tls"); tls != "true" && tls != "false" {
+				errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL "tls" must be "true" or "false"; got %q`, tls))
+			}
+		}
 	}
 
 	return errors.Join(errs...)

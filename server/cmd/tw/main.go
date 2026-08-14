@@ -8,13 +8,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
+
+	glide "github.com/valkey-io/valkey-glide/go/v2"
+	glideconfig "github.com/valkey-io/valkey-glide/go/v2/config"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/handler"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
+	"github.com/String-sg/teacher-workspace/server/internal/session"
 	"github.com/String-sg/teacher-workspace/server/internal/session/memstore"
+	"github.com/String-sg/teacher-workspace/server/internal/session/valkeystore"
 	"github.com/String-sg/teacher-workspace/server/pkg/dotenv"
 )
 
@@ -35,8 +41,42 @@ func main() {
 		Level: cfg.LogLevel,
 	})))
 
-	store := memstore.New()
-	session := middleware.Session(store, middleware.SessionOptions{
+	var store session.Store
+	switch cfg.Session.StoreProvider {
+	case config.SessionStoreProviderValkey:
+		host := cfg.Session.Valkey.URL.Hostname()
+		port, err := strconv.Atoi(cfg.Session.Valkey.URL.Port())
+		if err != nil {
+			slog.Error("failed to parse valkey port", "port", cfg.Session.Valkey.URL.Port(), "err", err)
+			os.Exit(1)
+		}
+
+		vcfg := glideconfig.NewClientConfiguration().
+			WithAddress(&glideconfig.NodeAddress{Host: host, Port: port}).
+			WithUseTLS(cfg.Session.Valkey.URL.Query().Get("tls") == "true")
+
+		if cfg.Session.Valkey.URL.User != nil {
+			username := cfg.Session.Valkey.URL.User.Username()
+			password, _ := cfg.Session.Valkey.URL.User.Password()
+			vcfg = vcfg.WithCredentials(glideconfig.NewServerCredentials(username, password))
+		}
+
+		client, err := glide.NewClient(vcfg)
+		if err != nil {
+			slog.Error("failed to create valkey client", "err", err)
+			os.Exit(1)
+		}
+		defer client.Close()
+
+		store = valkeystore.New(client, valkeystore.WithPrefix(cfg.Session.Valkey.Prefix))
+	case config.SessionStoreProviderMemory:
+		store = memstore.New()
+	default:
+		slog.Error("unsupported session store provider", "provider", cfg.Session.StoreProvider)
+		os.Exit(1)
+	}
+
+	sessionMiddleware := middleware.Session(store, middleware.SessionOptions{
 		Name:             cfg.Session.Name,
 		DefaultTTL:       cfg.Session.DefaultTTL,
 		AuthenticatedTTL: cfg.Session.AuthenticatedTTL,
@@ -45,7 +85,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	mux := http.NewServeMux()
-	handler.New(&cfg).Register(mux, session)
+	handler.New(&cfg).Register(mux, sessionMiddleware)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           middleware.RequestID(middleware.RequestLog(mux)),
@@ -59,7 +99,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		slog.Info("listening", "addr", addr, "env", cfg.Env)
+		slog.Info("listening", "addr", addr, "env", cfg.Env, "session_store", cfg.Session.StoreProvider)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("listen failed", "err", err)
 			os.Exit(1)

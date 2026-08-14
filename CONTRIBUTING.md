@@ -9,6 +9,11 @@ Teacher Workspace is a unified platform that consolidates teacher-facing applica
 - **Go** >= 1.26.5
 - **Node.js** >= 24
 - **pnpm** >= 11
+- **Docker**, for the local Valkey and for the session store tests
+
+Note that the server depends on [valkey-glide](https://github.com/valkey-io/valkey-glide),
+which is cgo-based and ships prebuilt native libraries for Linux and macOS only.
+Builds require `CGO_ENABLED=1` (the default), and Windows is not supported.
 
 Recommended install on macOS:
 
@@ -44,6 +49,20 @@ pnpm dev
 # Terminal 2: Go server on http://localhost:3000
 go run ./server/cmd/tw
 ```
+
+By default the server keeps sessions in memory, so they are lost on restart and
+are not shared between processes. To run against a shared store instead, start
+the local Valkey and point the server at it:
+
+```bash
+docker compose up -d
+TW_SESSION_STORE_PROVIDER=valkey TW_SESSION_VALKEY_URL=valkey://127.0.0.1:6379 \
+  go run ./server/cmd/tw
+```
+
+The server refuses to start if the store provider is `valkey` and Valkey cannot
+be reached: it never falls back to the in-memory store, since a silent downgrade
+would lose sessions in a horizontally scaled deployment.
 
 Open <http://localhost:3000>. The Go server is the entry point: in development it proxies every request to the Rsbuild dev server, so hot reload still works.
 
