@@ -59,9 +59,6 @@ func TestDefault(t *testing.T) {
 		if want, got := "session:", cfg.Session.Valkey.Prefix; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if want, got := 5*time.Second, cfg.Session.Valkey.DialTimeout; want != got {
-			t.Errorf("want: %v; got: %v", want, got)
-		}
 
 		if want, got := "http://127.0.0.1:3002", cfg.APIProxy.StudentInsightsBaseURL.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
@@ -375,7 +372,6 @@ func TestSessionConfig_validate(t *testing.T) {
 		cfg := Default().Session
 		cfg.Valkey.URL = &url.URL{Scheme: "nonsense"}
 		cfg.Valkey.Prefix = ""
-		cfg.Valkey.DialTimeout = 0
 
 		if err := cfg.validate(); err != nil {
 			t.Errorf("want err: nil; got: %v", err)
@@ -437,11 +433,6 @@ func TestSessionValkeyConfig_validate(t *testing.T) {
 				name:   "non-boolean tls value",
 				mutate: func(c *SessionValkeyConfig) { c.URL.RawQuery = "tls=1" },
 				want:   `TW_SESSION_VALKEY_URL "tls" must be "true" or "false"; got "1"`,
-			},
-			{
-				name:   "zero dial timeout",
-				mutate: func(c *SessionValkeyConfig) { c.DialTimeout = 0 },
-				want:   "TW_SESSION_VALKEY_DIAL_TIMEOUT must be positive",
 			},
 			{
 				name:   "empty key prefix",

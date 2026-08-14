@@ -59,9 +59,8 @@ type SessionConfig struct {
 	Valkey SessionValkeyConfig `dotenv:",squash"`
 }
 type SessionValkeyConfig struct {
-	URL         *url.URL      `dotenv:"TW_SESSION_VALKEY_URL"`
-	Prefix      string        `dotenv:"TW_SESSION_VALKEY_PREFIX"`
-	DialTimeout time.Duration `dotenv:"TW_SESSION_VALKEY_DIAL_TIMEOUT"`
+	URL    *url.URL `dotenv:"TW_SESSION_VALKEY_URL"`
+	Prefix string   `dotenv:"TW_SESSION_VALKEY_PREFIX"`
 }
 
 // APIProxyConfig represents the configuration for the backend proxies.
@@ -95,9 +94,8 @@ func Default() Config {
 			AuthenticatedTTL: 30 * time.Minute,
 			StoreProvider:    SessionStoreProviderMemory,
 			Valkey: SessionValkeyConfig{
-				URL:         must(url.Parse("valkey://127.0.0.1:6379")),
-				Prefix:      "session:",
-				DialTimeout: 5 * time.Second,
+				URL:    must(url.Parse("valkey://127.0.0.1:6379")),
+				Prefix: "session:",
 			},
 		},
 		APIProxy: APIProxyConfig{
@@ -197,9 +195,6 @@ func (c SessionConfig) validate() error {
 func (c SessionValkeyConfig) validate() error {
 	var errs []error
 
-	if c.DialTimeout <= 0 {
-		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_DIAL_TIMEOUT must be positive; got %v", c.DialTimeout))
-	}
 	if c.Prefix == "" {
 		errs = append(errs, errors.New("TW_SESSION_VALKEY_PREFIX is required"))
 	}
