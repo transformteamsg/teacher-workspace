@@ -8,8 +8,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
+
+	glide "github.com/valkey-io/valkey-glide/go/v2"
+	glideconfig "github.com/valkey-io/valkey-glide/go/v2/config"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/handler"
@@ -37,12 +41,40 @@ func main() {
 		Level: cfg.LogLevel,
 	})))
 
-	store, closeStore, err := newSessionStore(&cfg)
-	if err != nil {
-		slog.Error("failed to create session store", "provider", cfg.Session.StoreProvider, "err", err)
+	var store session.Store
+	switch cfg.Session.StoreProvider {
+	case config.SessionStoreProviderValkey:
+		host := cfg.Session.Valkey.URL.Hostname()
+		port, err := strconv.Atoi(cfg.Session.Valkey.URL.Port())
+		if err != nil {
+			slog.Error("failed to parse valkey port", "port", cfg.Session.Valkey.URL.Port(), "err", err)
+			os.Exit(1)
+		}
+
+		vcfg := glideconfig.NewClientConfiguration().
+			WithAddress(&glideconfig.NodeAddress{Host: host, Port: port}).
+			WithUseTLS(cfg.Session.Valkey.URL.Query().Get("tls") == "true")
+
+		if cfg.Session.Valkey.URL.User != nil {
+			username := cfg.Session.Valkey.URL.User.Username()
+			password, _ := cfg.Session.Valkey.URL.User.Password()
+			vcfg = vcfg.WithCredentials(glideconfig.NewServerCredentials(username, password))
+		}
+
+		client, err := glide.NewClient(vcfg)
+		if err != nil {
+			slog.Error("failed to create valkey client", "err", err)
+			os.Exit(1)
+		}
+		defer client.Close()
+
+		store = valkeystore.New(client, valkeystore.WithPrefix(cfg.Session.Valkey.Prefix))
+	case config.SessionStoreProviderMemory:
+		store = memstore.New()
+	default:
+		slog.Error("unsupported session store provider", "provider", cfg.Session.StoreProvider)
 		os.Exit(1)
 	}
-	defer closeStore()
 
 	sessionMiddleware := middleware.Session(store, middleware.SessionOptions{
 		Name:             cfg.Session.Name,
@@ -83,24 +115,5 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown failed", "err", err)
 		os.Exit(1)
-	}
-}
-
-func newSessionStore(cfg *config.Config) (session.Store, func(), error) {
-	switch cfg.Session.StoreProvider {
-	case config.SessionStoreProviderValkey:
-		ctx, cancel := context.WithTimeout(context.Background(), cfg.Session.Valkey.DialTimeout)
-		defer cancel()
-
-		client, err := valkeystore.Dial(ctx, cfg.Session.Valkey.URL)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		return valkeystore.New(client, valkeystore.WithPrefix(cfg.Session.Valkey.Prefix)), client.Close, nil
-	default:
-		// Validate rejects any provider other than memory or valkey, so this
-		// arm is only ever reached for memory.
-		return memstore.New(), func() {}, nil
 	}
 }
