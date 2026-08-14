@@ -57,6 +57,15 @@ func TestDefault(t *testing.T) {
 		if want, got := "http://127.0.0.1:3003", cfg.APIProxy.PostsBaseURL.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
+		if want, got := "a-string-secret-at-least-256-bits-long", cfg.APIProxy.StudentInsightsSigningKey; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "a-string-secret-at-least-256-bits-long", cfg.APIProxy.PostsSigningKey; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := time.Minute, cfg.APIProxy.TokenTTL; want != got {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
 	})
 }
 
@@ -327,12 +336,11 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 	t.Run("accepts http and https base urls", func(t *testing.T) {
 		for _, scheme := range []string{"http", "https"} {
 			t.Run(scheme, func(t *testing.T) {
-				cfg := APIProxyConfig{
-					StudentInsightsBaseURL: &url.URL{Scheme: scheme, Host: "student-insights.example.com"},
-					PostsBaseURL:           &url.URL{Scheme: scheme, Host: "posts.example.com"},
-				}
+				cfgAPIProxy := Default().APIProxy
+				cfgAPIProxy.StudentInsightsBaseURL = &url.URL{Scheme: scheme, Host: "student-insights.example.com"}
+				cfgAPIProxy.PostsBaseURL = &url.URL{Scheme: scheme, Host: "posts.example.com"}
 
-				if err := cfg.validate(); err != nil {
+				if err := cfgAPIProxy.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
 				}
 			})
@@ -374,6 +382,41 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 				name:   "posts without a host",
 				mutate: func(c *APIProxyConfig) { c.PostsBaseURL = &url.URL{Scheme: "http"} },
 				want:   `TW_API_PROXY_POSTS_BASE_URL must include host[:port]; got "http:"`,
+			},
+			{
+				name:   "missing student insights signing key",
+				mutate: func(c *APIProxyConfig) { c.StudentInsightsSigningKey = "" },
+				want:   "TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY is required",
+			},
+			{
+				name:   "short student insights signing key",
+				mutate: func(c *APIProxyConfig) { c.StudentInsightsSigningKey = "a-short-secret" },
+				want:   "TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least 32 bytes; got 14",
+			},
+			{
+				name:   "missing posts signing key",
+				mutate: func(c *APIProxyConfig) { c.PostsSigningKey = "" },
+				want:   "TW_API_PROXY_POSTS_SIGNING_KEY is required",
+			},
+			{
+				name:   "short posts signing key",
+				mutate: func(c *APIProxyConfig) { c.PostsSigningKey = "a-short-secret" },
+				want:   "TW_API_PROXY_POSTS_SIGNING_KEY must be at least 32 bytes; got 14",
+			},
+			{
+				name:   "zero token TTL",
+				mutate: func(c *APIProxyConfig) { c.TokenTTL = 0 },
+				want:   "TW_API_PROXY_TOKEN_TTL must be at least 1s; got 0s",
+			},
+			{
+				name:   "negative token TTL",
+				mutate: func(c *APIProxyConfig) { c.TokenTTL = -time.Second },
+				want:   "TW_API_PROXY_TOKEN_TTL must be at least 1s; got -1s",
+			},
+			{
+				name:   "sub-second token TTL",
+				mutate: func(c *APIProxyConfig) { c.TokenTTL = 500 * time.Millisecond },
+				want:   "TW_API_PROXY_TOKEN_TTL must be at least 1s; got 500ms",
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {

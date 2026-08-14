@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestHandler_proxy(t *testing.T) {
@@ -138,6 +141,128 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
+	t.Run("strips the session cookie", func(t *testing.T) {
+		var forwarded http.Header
+		record := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			forwarded = r.Header.Clone()
+		})
+
+		postsBackend := httptest.NewServer(record)
+		t.Cleanup(postsBackend.Close)
+
+		postsBackendURL, err := url.Parse(postsBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.APIProxy.PostsBaseURL = postsBackendURL
+
+		h := New(&cfg)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
+		req.SetPathValue("app", "posts")
+		req.AddCookie(&http.Cookie{Name: "session-name", Value: "session-value"})
+		rec := httptest.NewRecorder()
+
+		h.proxy(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if got := forwarded.Get("Cookie"); got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+	})
+
+	t.Run("attaches a signed JWT to outbound request", func(t *testing.T) {
+		var receivedReqHeaders http.Header
+		studentInsightsBackend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			receivedReqHeaders = r.Header
+		}))
+		t.Cleanup(studentInsightsBackend.Close)
+		postsBackend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			receivedReqHeaders = r.Header
+		}))
+		t.Cleanup(postsBackend.Close)
+		studentInsightsBackendURL, err := url.Parse(studentInsightsBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+		postsBackendURL, err := url.Parse(postsBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.APIProxy.StudentInsightsBaseURL = studentInsightsBackendURL
+		cfg.APIProxy.PostsBaseURL = postsBackendURL
+		cfg.APIProxy.StudentInsightsSigningKey = "student-insights-string-secret-at-least-256-bits-long"
+		cfg.APIProxy.PostsSigningKey = "posts-string-secret-at-least-256-bits-long"
+
+		ttl := 2 * time.Minute
+		cfg.APIProxy.TokenTTL = ttl
+
+		h := New(&cfg)
+
+		currentTime := time.Now()
+		tests := []struct {
+			app        string
+			signingKey string
+			wantClaims jwt.RegisteredClaims
+		}{
+			{
+				app:        "student-insights",
+				signingKey: "student-insights-string-secret-at-least-256-bits-long",
+				wantClaims: jwt.RegisteredClaims{
+					Issuer:    "TW",
+					Audience:  jwt.ClaimStrings{"si"},
+					IssuedAt:  jwt.NewNumericDate(currentTime),
+					ExpiresAt: jwt.NewNumericDate(currentTime.Add(ttl)),
+				},
+			},
+			{
+				app:        "posts",
+				signingKey: "posts-string-secret-at-least-256-bits-long",
+				wantClaims: jwt.RegisteredClaims{
+					Issuer:    "TW",
+					Audience:  jwt.ClaimStrings{"pg"},
+					IssuedAt:  jwt.NewNumericDate(currentTime),
+					ExpiresAt: jwt.NewNumericDate(currentTime.Add(ttl)),
+				},
+			},
+		}
+
+		for _, tt := range tests {
+			req := httptest.NewRequest(http.MethodGet, "/api/"+tt.app+"/hello", nil)
+			req.SetPathValue("app", tt.app)
+			rec := httptest.NewRecorder()
+
+			h.proxy(rec, req)
+
+			if want, got := http.StatusOK, rec.Code; want != got {
+				t.Errorf("want: %d; got: %d", want, got)
+			}
+			token, ok := strings.CutPrefix(receivedReqHeaders.Get("Authorization"), "Bearer ")
+			if !ok {
+				t.Fatalf("want: not empty; got: %q", receivedReqHeaders.Get("Authorization"))
+			}
+
+			var claims jwt.RegisteredClaims
+			if _, err := jwt.ParseWithClaims(token, &claims,
+				func(*jwt.Token) (any, error) {
+					return []byte(tt.signingKey), nil
+				},
+				jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+			); err != nil {
+				t.Fatalf("want err: nil; got: %v", err)
+			}
+
+			if want, got := tt.wantClaims, claims; !reflect.DeepEqual(want, got) {
+				t.Errorf("want: %+v; got: %+v", want, got)
+			}
+		}
+	})
 }
 
 func TestProxyErrorHandler(t *testing.T) {

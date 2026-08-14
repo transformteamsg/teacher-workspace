@@ -4,26 +4,52 @@ import (
 	"net/http"
 	stdhttputil "net/http/httputil"
 	"strings"
+	"time"
 
 	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
+	"github.com/golang-jwt/jwt/v5"
 )
 
+// proxy forwards a request to that app's backend, stripping the
+// /api/<app> prefix. It swaps the session cookie for JWT. Responds 404
+// for unknown apps and 500 if the token cannot be signed.
 func (h *Handler) proxy(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.LoggerFromContext(r.Context())
 	app := r.PathValue("app")
 
 	var p *stdhttputil.ReverseProxy
+	var signingKey, aud string
 	switch app {
-	case "posts":
-		p = h.postsProxy
 	case "student-insights":
-		p = h.studentInsightsProxy
+		p, signingKey, aud = h.studentInsightsProxy, h.cfg.APIProxy.StudentInsightsSigningKey, "si"
+	case "posts":
+		p, signingKey, aud = h.postsProxy, h.cfg.APIProxy.PostsSigningKey, "pg"
 	default:
-		httputil.RenderJSON(w, middleware.LoggerFromContext(r.Context()), http.StatusNotFound, &httputil.ErrorResponse{
+		httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
 			Message: http.StatusText(http.StatusNotFound),
 		})
 		return
 	}
+
+	now := time.Now()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    "TW",
+		Audience:  jwt.ClaimStrings{aud},
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(h.cfg.APIProxy.TokenTTL)),
+	})
+	signedToken, err := token.SignedString([]byte(signingKey))
+	if err != nil {
+		logger.Error("failed to sign JWT", "app", app, "err", err)
+		httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
+			Message: http.StatusText(http.StatusInternalServerError),
+		})
+		return
+	}
+
+	r.Header.Del("Cookie")
+	r.Header.Set("Authorization", "Bearer "+signedToken)
 
 	http.StripPrefix("/api/"+app, p).ServeHTTP(w, r)
 }
