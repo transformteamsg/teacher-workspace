@@ -206,22 +206,20 @@ func (c SessionValkeyConfig) validate() error {
 
 	if c.URL == nil {
 		errs = append(errs, errors.New("TW_SESSION_VALKEY_URL is required"))
-		return errors.Join(errs...)
-	}
-
-	if c.URL.Scheme != "valkey" {
-		errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL must use scheme "valkey"; got %q`, c.URL.Scheme))
-	}
-	if c.URL.Hostname() == "" {
-		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a hostname; got %q", c.URL.Redacted()))
-	}
-	if c.URL.Port() == "" {
-		errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a port; got %q", c.URL.Redacted()))
-	}
-
-	if c.URL.Query().Has("tls") {
-		if tls := c.URL.Query().Get("tls"); tls != "true" && tls != "false" {
-			errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL "tls" must be "true" or "false"; got %q`, tls))
+	} else {
+		if c.URL.Scheme != "valkey" {
+			errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL must use scheme "valkey"; got %q`, c.URL.Scheme))
+		}
+		if c.URL.Hostname() == "" {
+			errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a hostname; got %q", c.URL.Redacted()))
+		}
+		if c.URL.Port() == "" {
+			errs = append(errs, fmt.Errorf("TW_SESSION_VALKEY_URL must include a port; got %q", c.URL.Redacted()))
+		}
+		if c.URL.Query().Has("tls") {
+			if tls := c.URL.Query().Get("tls"); tls != "true" && tls != "false" {
+				errs = append(errs, fmt.Errorf(`TW_SESSION_VALKEY_URL "tls" must be "true" or "false"; got %q`, tls))
+			}
 		}
 	}
 
