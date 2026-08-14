@@ -15,6 +15,6 @@
   "devDependencies": {
     "@types/express": "^5",
     "@types/oidc-provider": "^9",
-    "typescript": "^6.0.3"
+    "typescript": "^5.9.3"
   }
 }
