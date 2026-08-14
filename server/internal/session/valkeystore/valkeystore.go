@@ -10,13 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/url"
-	"strconv"
-	"strings"
 	"time"
 
 	glide "github.com/valkey-io/valkey-glide/go/v2"
-	glideconfig "github.com/valkey-io/valkey-glide/go/v2/config"
 	glideopts "github.com/valkey-io/valkey-glide/go/v2/options"
 
 	"github.com/String-sg/teacher-workspace/server/internal/session"
@@ -47,108 +43,6 @@ func New(client *glide.Client, opts ...Option) *Store {
 	}
 
 	return s
-}
-
-// Dial connects to the Valkey server addressed by u and verifies the connection
-// before returning, so an unreachable server surfaces at startup rather than on
-// the first request. Bound the wait by cancelling ctx. The caller owns the
-// returned client and must Close it. Errors carry the host and port only, never
-// the URL's credentials.
-func Dial(ctx context.Context, u *url.URL) (*glide.Client, error) {
-	cfg, err := clientConfig(u)
-	if err != nil {
-		return nil, err
-	}
-
-	// glide.NewClient takes no context, so ctx alone would bound only the ping
-	// below and leave the connection attempt on glide's own default. Handing
-	// the deadline over as an explicit connection timeout is what makes the
-	// caller's bound apply to an unreachable server, which is the case that
-	// matters at startup.
-	if deadline, ok := ctx.Deadline(); ok {
-		cfg = cfg.WithAdvancedConfiguration(
-			glideconfig.NewAdvancedClientConfiguration().WithConnectionTimeout(time.Until(deadline)),
-		)
-	}
-
-	client, err := glide.NewClient(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("valkeystore: connect to %s: %w", u.Host, err)
-	}
-
-	// NewClient can report success before the connection is usable, so the ping
-	// is what actually establishes reachability.
-	if _, err := client.Ping(ctx); err != nil {
-		client.Close()
-		return nil, fmt.Errorf("valkeystore: ping %s: %w", u.Host, err)
-	}
-
-	return client, nil
-}
-
-// connOptions is the parsed form of a Valkey URL. It exists so the URL contract
-// can be tested without reaching into the glide configuration, whose fields are
-// unexported.
-type connOptions struct {
-	host     string
-	port     int
-	useTLS   bool
-	username string
-	password string
-	// database is the logical database index, or nil when the URL has no path.
-	database *int
-}
-
-// parseURL splits u into connection options. TLS comes from the tls query
-// parameter rather than the scheme, matching the URL format the platform stores
-// in Secrets Manager.
-func parseURL(u *url.URL) (connOptions, error) {
-	port, err := strconv.Atoi(u.Port())
-	if err != nil {
-		return connOptions{}, fmt.Errorf("valkeystore: parse port from %q: %w", u.Host, err)
-	}
-
-	opts := connOptions{
-		host:   u.Hostname(),
-		port:   port,
-		useTLS: u.Query().Get("tls") == "true",
-	}
-
-	if u.User != nil {
-		opts.username = u.User.Username()
-		opts.password, _ = u.User.Password()
-	}
-
-	if db := strings.Trim(u.Path, "/"); db != "" {
-		id, err := strconv.Atoi(db)
-		if err != nil {
-			return connOptions{}, fmt.Errorf("valkeystore: parse database id from path %q: %w", u.Path, err)
-		}
-		opts.database = &id
-	}
-
-	return opts, nil
-}
-
-// clientConfig translates u into a glide client configuration.
-func clientConfig(u *url.URL) (*glideconfig.ClientConfiguration, error) {
-	opts, err := parseURL(u)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := glideconfig.NewClientConfiguration().
-		WithAddress(&glideconfig.NodeAddress{Host: opts.host, Port: opts.port}).
-		WithUseTLS(opts.useTLS)
-
-	if opts.username != "" || opts.password != "" {
-		cfg = cfg.WithCredentials(glideconfig.NewServerCredentials(opts.username, opts.password))
-	}
-	if opts.database != nil {
-		cfg = cfg.WithDatabaseId(*opts.database)
-	}
-
-	return cfg, nil
 }
 
 // Prepare implements [session.Store.Prepare]. An entry that cannot be decoded

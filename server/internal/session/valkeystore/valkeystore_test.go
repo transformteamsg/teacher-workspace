@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	glide "github.com/valkey-io/valkey-glide/go/v2"
+	glideconfig "github.com/valkey-io/valkey-glide/go/v2/config"
 	glideopts "github.com/valkey-io/valkey-glide/go/v2/options"
 
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
@@ -65,9 +67,15 @@ func TestMain(m *testing.M) {
 func newClient(t *testing.T) *glide.Client {
 	t.Helper()
 
-	client, err := Dial(t.Context(), valkeyURL)
+	port, err := strconv.Atoi(valkeyURL.Port())
 	if err != nil {
-		t.Fatalf("Dial: %v", err)
+		t.Fatalf("strconv.Atoi: %v", err)
+	}
+
+	client, err := glide.NewClient(glideconfig.NewClientConfiguration().
+		WithAddress(&glideconfig.NodeAddress{Host: valkeyURL.Hostname(), Port: port}))
+	if err != nil {
+		t.Fatalf("glide.NewClient: %v", err)
 	}
 	t.Cleanup(client.Close)
 
@@ -131,172 +139,6 @@ func TestNew(t *testing.T) {
 
 		if want, got := "custom:", store.prefix; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
-		}
-	})
-}
-
-func TestParseURL(t *testing.T) {
-	t.Run("parses the platform URL format", func(t *testing.T) {
-		u, err := url.Parse("valkey://someone:s3cret@cache.example.com:6379/2?tls=true")
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		opts, err := parseURL(u)
-
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-		if want, got := "cache.example.com", opts.host; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if want, got := 6379, opts.port; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if got := opts.useTLS; !got {
-			t.Error("want: true; got: false")
-		}
-		if want, got := "someone", opts.username; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if want, got := "s3cret", opts.password; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if opts.database == nil {
-			t.Fatal("want database: non-nil; got: nil")
-		}
-		if want, got := 2, *opts.database; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-	})
-
-	t.Run("parses the local compose URL format", func(t *testing.T) {
-		u, err := url.Parse("valkey://127.0.0.1:6379")
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		opts, err := parseURL(u)
-
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-		if want, got := "127.0.0.1", opts.host; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if got := opts.useTLS; got {
-			t.Error("want: false; got: true")
-		}
-		if want, got := "", opts.username; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if opts.database != nil {
-			t.Errorf("want database: nil; got: %v", *opts.database)
-		}
-	})
-
-	t.Run("does not enable TLS from the scheme alone", func(t *testing.T) {
-		// The platform signals TLS with a query parameter. Reading it from the
-		// scheme would connect in plaintext to a cluster that requires TLS.
-		u, err := url.Parse("valkeys://cache.example.com:6379")
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		opts, err := parseURL(u)
-
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-		if got := opts.useTLS; got {
-			t.Error("want: false; got: true")
-		}
-	})
-
-	t.Run("rejects invalid input", func(t *testing.T) {
-		for _, tt := range []struct {
-			name string
-			raw  string
-			want string
-		}{
-			{name: "missing port", raw: "valkey://cache.example.com", want: "parse port"},
-			{name: "non-numeric database id", raw: "valkey://cache.example.com:6379/main", want: "parse database id"},
-		} {
-			t.Run(tt.name, func(t *testing.T) {
-				u, err := url.Parse(tt.raw)
-				if err != nil {
-					t.Fatalf("url.Parse: %v", err)
-				}
-
-				_, err = parseURL(u)
-
-				if err == nil {
-					t.Fatal("want err: non-nil; got: nil")
-				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
-				}
-			})
-		}
-	})
-}
-
-func TestDial(t *testing.T) {
-	t.Run("returns a usable client for a reachable server", func(t *testing.T) {
-		client, err := Dial(t.Context(), valkeyURL)
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-		t.Cleanup(client.Close)
-
-		got, err := client.Ping(t.Context())
-
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-		if want := "PONG"; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-	})
-
-	t.Run("returns an error naming the address on an unreachable server", func(t *testing.T) {
-		// Port 1 is reserved and never has a listener.
-		u, err := url.Parse("valkey://127.0.0.1:1")
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-
-		client, err := Dial(ctx, u)
-
-		if err == nil {
-			client.Close()
-			t.Fatal("want err: non-nil; got: nil")
-		}
-		if want := "127.0.0.1:1"; !strings.Contains(err.Error(), want) {
-			t.Errorf("want err: containing %q; got: %q", want, err)
-		}
-	})
-
-	t.Run("keeps credentials out of the error", func(t *testing.T) {
-		u, err := url.Parse("valkey://someone:s3cret@127.0.0.1:1")
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-
-		client, err := Dial(ctx, u)
-
-		if err == nil {
-			client.Close()
-			t.Fatal("want err: non-nil; got: nil")
-		}
-		if strings.Contains(err.Error(), "s3cret") {
-			t.Errorf("want err: without the password; got: %q", err)
 		}
 	})
 }
