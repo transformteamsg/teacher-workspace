@@ -356,28 +356,18 @@ func TestSessionConfig_validate(t *testing.T) {
 		}
 	})
 
-	t.Run("accepts the valkey provider with the platform url format", func(t *testing.T) {
+	t.Run("validates the valkey settings when the provider is valkey", func(t *testing.T) {
 		cfg := Default().Session
 		cfg.StoreProvider = SessionStoreProviderValkey
-		cfg.Valkey.URL = &url.URL{
-			Scheme:   "valkey",
-			Host:     "cache.example.com:6379",
-			Path:     "/0",
-			RawQuery: "tls=true",
+		cfg.Valkey.Prefix = ""
+
+		err := cfg.validate()
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
 		}
-
-		if err := cfg.validate(); err != nil {
-			t.Errorf("want err: nil; got: %v", err)
-		}
-	})
-
-	t.Run("accepts the valkey provider without credentials or tls", func(t *testing.T) {
-		cfg := Default().Session
-		cfg.StoreProvider = SessionStoreProviderValkey
-		cfg.Valkey.URL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:6379"}
-
-		if err := cfg.validate(); err != nil {
-			t.Errorf("want err: nil; got: %v", err)
+		if want := "TW_SESSION_VALKEY_PREFIX is required"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
 		}
 	})
 
@@ -391,48 +381,77 @@ func TestSessionConfig_validate(t *testing.T) {
 			t.Errorf("want err: nil; got: %v", err)
 		}
 	})
+}
 
-	t.Run("rejects invalid valkey settings", func(t *testing.T) {
+func TestSessionValkeyConfig_validate(t *testing.T) {
+	t.Run("accepts the platform url format", func(t *testing.T) {
+		cfg := Default().Session.Valkey
+		cfg.URL = &url.URL{
+			Scheme:   "valkey",
+			Host:     "cache.example.com:6379",
+			Path:     "/0",
+			RawQuery: "tls=true",
+		}
+
+		if err := cfg.validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("accepts a url without credentials or tls", func(t *testing.T) {
+		cfg := Default().Session.Valkey
+		cfg.URL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:6379"}
+
+		if err := cfg.validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("rejects invalid values", func(t *testing.T) {
 		for _, tt := range []struct {
 			name   string
-			mutate func(*SessionConfig)
+			mutate func(*SessionValkeyConfig)
 			want   string
 		}{
 			{
+				name:   "missing url",
+				mutate: func(c *SessionValkeyConfig) { c.URL = nil },
+				want:   "TW_SESSION_VALKEY_URL is required",
+			},
+			{
 				name:   "non-valkey scheme",
-				mutate: func(c *SessionConfig) { c.Valkey.URL.Scheme = "rediss" },
+				mutate: func(c *SessionValkeyConfig) { c.URL.Scheme = "rediss" },
 				want:   `TW_SESSION_VALKEY_URL must use scheme "valkey"; got "rediss"`,
 			},
 			{
 				name:   "missing port",
-				mutate: func(c *SessionConfig) { c.Valkey.URL.Host = "cache.example.com" },
+				mutate: func(c *SessionValkeyConfig) { c.URL.Host = "cache.example.com" },
 				want:   "TW_SESSION_VALKEY_URL must include a port",
 			},
 			{
 				name:   "missing hostname",
-				mutate: func(c *SessionConfig) { c.Valkey.URL.Host = "" },
+				mutate: func(c *SessionValkeyConfig) { c.URL.Host = "" },
 				want:   "TW_SESSION_VALKEY_URL must include a hostname",
 			},
 			{
 				name:   "non-boolean tls value",
-				mutate: func(c *SessionConfig) { c.Valkey.URL.RawQuery = "tls=1" },
+				mutate: func(c *SessionValkeyConfig) { c.URL.RawQuery = "tls=1" },
 				want:   `TW_SESSION_VALKEY_URL "tls" must be "true" or "false"; got "1"`,
 			},
 			{
 				name:   "zero dial timeout",
-				mutate: func(c *SessionConfig) { c.Valkey.DialTimeout = 0 },
+				mutate: func(c *SessionValkeyConfig) { c.DialTimeout = 0 },
 				want:   "TW_SESSION_VALKEY_DIAL_TIMEOUT must be positive",
 			},
 			{
 				name:   "empty key prefix",
-				mutate: func(c *SessionConfig) { c.Valkey.Prefix = "" },
+				mutate: func(c *SessionValkeyConfig) { c.Prefix = "" },
 				want:   "TW_SESSION_VALKEY_PREFIX is required",
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
-				cfg := Default().Session
-				cfg.StoreProvider = SessionStoreProviderValkey
-				cfg.Valkey.URL = &url.URL{
+				cfg := Default().Session.Valkey
+				cfg.URL = &url.URL{
 					Scheme:   "valkey",
 					Host:     "cache.example.com:6379",
 					Path:     "/0",
@@ -452,13 +471,12 @@ func TestSessionConfig_validate(t *testing.T) {
 		}
 	})
 
-	t.Run("keeps valkey credentials out of the error", func(t *testing.T) {
+	t.Run("keeps credentials out of the error", func(t *testing.T) {
 		// The validation error is logged at startup, so a malformed URL must not
 		// carry the password into the logs with it.
-		cfg := Default().Session
-		cfg.StoreProvider = SessionStoreProviderValkey
-		cfg.Valkey.URL = &url.URL{Scheme: "valkey", Host: "cache.example.com"}
-		cfg.Valkey.URL.User = url.UserPassword("someone", "s3cret")
+		cfg := Default().Session.Valkey
+		cfg.URL = &url.URL{Scheme: "valkey", Host: "cache.example.com"}
+		cfg.URL.User = url.UserPassword("someone", "s3cret")
 
 		err := cfg.validate()
 
