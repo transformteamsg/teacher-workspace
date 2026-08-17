@@ -63,14 +63,15 @@ async function exchangeCode(
   });
 }
 
-function decodeJwtPayload(jwt: string): Record<string, unknown> {
-  const payload = jwt.split('.')[1];
-  return JSON.parse(Buffer.from(payload, 'base64url').toString());
+function decodeJwtPart(jwt: string, index: number): Record<string, unknown> {
+  return JSON.parse(Buffer.from(jwt.split('.')[index], 'base64url').toString());
 }
 
-function decodeJwtHeader(jwt: string): Record<string, unknown> {
-  const header = jwt.split('.')[0];
-  return JSON.parse(Buffer.from(header, 'base64url').toString());
+function decodeJwtHeader(jwt: string) {
+  return decodeJwtPart(jwt, 0);
+}
+function decodeJwtPayload(jwt: string) {
+  return decodeJwtPart(jwt, 1);
 }
 
 async function importJwk(jwk: Record<string, unknown>): Promise<CryptoKey> {
