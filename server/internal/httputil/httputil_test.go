@@ -59,7 +59,7 @@ func TestRenderPlain(t *testing.T) {
 		}
 	})
 
-	t.Run("logs error message", func(t *testing.T) {
+	t.Run("logs error message when it fails to write body", func(t *testing.T) {
 		var logs bytes.Buffer
 		logger := slog.New(slog.NewJSONHandler(&logs, nil))
 		rec := httptest.NewRecorder()
@@ -136,7 +136,7 @@ func TestRenderJSON(t *testing.T) {
 		}
 	})
 
-	t.Run("logs error message", func(t *testing.T) {
+	t.Run("logs error message when it fails to encode the body to JSON", func(t *testing.T) {
 		var logs bytes.Buffer
 		logger := slog.New(slog.NewJSONHandler(&logs, nil))
 		rec := httptest.NewRecorder()
