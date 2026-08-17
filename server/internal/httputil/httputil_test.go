@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/String-sg/teacher-workspace/server/internal/httputil"
-	"github.com/String-sg/teacher-workspace/server/pkg/require"
 )
 
 func TestRenderPlain(t *testing.T) {
@@ -20,7 +19,9 @@ func TestRenderPlain(t *testing.T) {
 		httputil.RenderPlain(rec, logger, http.StatusInternalServerError)
 		res := rec.Result()
 
-		require.Equal(t, "text/plain; charset=UTF-8", res.Header.Get("Content-Type"))
+		if want, got := "text/plain; charset=UTF-8", res.Header.Get("Content-Type"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 
 	t.Run("sets X-Content-Type-Options header", func(t *testing.T) {
@@ -30,7 +31,9 @@ func TestRenderPlain(t *testing.T) {
 		httputil.RenderPlain(rec, logger, http.StatusInternalServerError)
 		res := rec.Result()
 
-		require.Equal(t, "nosniff", res.Header.Get("X-Content-Type-Options"))
+		if want, got := "nosniff", res.Header.Get("X-Content-Type-Options"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 
 	t.Run("responds with status code from given status code", func(t *testing.T) {
@@ -40,7 +43,9 @@ func TestRenderPlain(t *testing.T) {
 		httputil.RenderPlain(rec, logger, http.StatusInternalServerError)
 		res := rec.Result()
 
-		require.Equal(t, 500, res.StatusCode)
+		if want, got := 500, res.StatusCode; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
 	})
 
 	t.Run("responds with text from given status code", func(t *testing.T) {
@@ -49,7 +54,9 @@ func TestRenderPlain(t *testing.T) {
 
 		httputil.RenderPlain(rec, logger, http.StatusInternalServerError)
 
-		require.Equal(t, "Internal Server Error", rec.Body.String())
+		if want, got := "Internal Server Error", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 
 	t.Run("logs error message", func(t *testing.T) {
@@ -59,19 +66,25 @@ func TestRenderPlain(t *testing.T) {
 
 		httputil.RenderPlain(rec, logger, http.StatusNoContent)
 
-		type logLine struct {
+		type logRecord struct {
 			Level    string `json:"level"`
 			Renderer string `json:"renderer"`
 			Err      string `json:"err"`
 		}
-		var got logLine
-		if err := json.Unmarshal(logs.Bytes(), &got); err != nil {
+		var lc logRecord
+		if err := json.Unmarshal(logs.Bytes(), &lc); err != nil {
 			t.Fatalf("decoding log output: %v", err)
 		}
 
-		require.Equal(t, "ERROR", got.Level)
-		require.Equal(t, "plain", got.Renderer)
-		require.Equal(t, "http: request method or response status code does not allow body", got.Err)
+		if want, got := "ERROR", lc.Level; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "plain", lc.Renderer; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "http: request method or response status code does not allow body", lc.Err; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 }
 
@@ -83,7 +96,9 @@ func TestRenderJSON(t *testing.T) {
 		httputil.RenderJSON(rec, logger, http.StatusInternalServerError, nil)
 		res := rec.Result()
 
-		require.Equal(t, "application/json; charset=UTF-8", res.Header.Get("Content-Type"))
+		if want, got := "application/json; charset=UTF-8", res.Header.Get("Content-Type"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 
 	t.Run("sets X-Content-Type-Options header", func(t *testing.T) {
@@ -93,7 +108,9 @@ func TestRenderJSON(t *testing.T) {
 		httputil.RenderJSON(rec, logger, http.StatusInternalServerError, nil)
 		res := rec.Result()
 
-		require.Equal(t, "nosniff", res.Header.Get("X-Content-Type-Options"))
+		if want, got := "nosniff", res.Header.Get("X-Content-Type-Options"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 
 	t.Run("responds with status code from given status code", func(t *testing.T) {
@@ -103,7 +120,9 @@ func TestRenderJSON(t *testing.T) {
 		httputil.RenderJSON(rec, logger, http.StatusInternalServerError, nil)
 		res := rec.Result()
 
-		require.Equal(t, 500, res.StatusCode)
+		if want, got := 500, res.StatusCode; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
 	})
 
 	t.Run("responds with JSON from given value", func(t *testing.T) {
@@ -112,7 +131,9 @@ func TestRenderJSON(t *testing.T) {
 
 		httputil.RenderJSON(rec, logger, http.StatusInternalServerError, httputil.ErrorResponse{Message: "Internal Server Error"})
 
-		require.Equal(t, `{"message":"Internal Server Error"}`+"\n", rec.Body.String())
+		if want, got := `{"message":"Internal Server Error"}`+"\n", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 
 	t.Run("logs error message", func(t *testing.T) {
@@ -127,13 +148,19 @@ func TestRenderJSON(t *testing.T) {
 			Renderer string `json:"renderer"`
 			Err      string `json:"err"`
 		}
-		var got logLine
-		if err := json.Unmarshal(logs.Bytes(), &got); err != nil {
+		var line logLine
+		if err := json.Unmarshal(logs.Bytes(), &line); err != nil {
 			t.Fatalf("decoding log output: %v", err)
 		}
 
-		require.Equal(t, "ERROR", got.Level)
-		require.Equal(t, "json", got.Renderer)
-		require.Equal(t, "json: unsupported type: func()", got.Err)
+		if want, got := "ERROR", line.Level; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "json", line.Renderer; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "json: unsupported type: func()", line.Err; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 }
