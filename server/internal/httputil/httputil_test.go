@@ -36,7 +36,7 @@ func TestRenderPlain(t *testing.T) {
 		}
 	})
 
-	t.Run("responds with status code from given status code", func(t *testing.T) {
+	t.Run("responds with the expected status code", func(t *testing.T) {
 		logger := slog.New(slog.DiscardHandler)
 		rec := httptest.NewRecorder()
 
@@ -48,7 +48,7 @@ func TestRenderPlain(t *testing.T) {
 		}
 	})
 
-	t.Run("responds with text from given status code", func(t *testing.T) {
+	t.Run("responds with the expected body", func(t *testing.T) {
 		logger := slog.New(slog.DiscardHandler)
 		rec := httptest.NewRecorder()
 
@@ -113,7 +113,7 @@ func TestRenderJSON(t *testing.T) {
 		}
 	})
 
-	t.Run("responds with status code from given status code", func(t *testing.T) {
+	t.Run("responds with the expected status code", func(t *testing.T) {
 		logger := slog.New(slog.DiscardHandler)
 		rec := httptest.NewRecorder()
 
@@ -125,7 +125,7 @@ func TestRenderJSON(t *testing.T) {
 		}
 	})
 
-	t.Run("responds with JSON from given value", func(t *testing.T) {
+	t.Run("responds with the expected body", func(t *testing.T) {
 		logger := slog.New(slog.DiscardHandler)
 		rec := httptest.NewRecorder()
 
