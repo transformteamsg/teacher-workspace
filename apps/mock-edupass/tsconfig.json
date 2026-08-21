@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "target": "ES2023",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["src", "test"]
+}
