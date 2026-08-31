@@ -6,9 +6,9 @@ Teacher Workspace is a unified platform that consolidates teacher-facing applica
 
 ### Prerequisites
 
-- **Go** >= 1.26.5
+- **Go** 1.26.5
 - **Node.js** 24.19.0
-- **pnpm** >= 11
+- **pnpm** 11.22.0
 - **Docker**, for the local Valkey and for the session store tests
 
 Note that the server depends on [valkey-glide](https://github.com/valkey-io/valkey-glide),
@@ -18,11 +18,13 @@ Builds require `CGO_ENABLED=1` (the default), and Windows is not supported.
 Recommended install on macOS:
 
 ```bash
-brew install mise pnpm
-mise use --global go@1.26.5 node@24.19.0
+brew install mise
+mise use --global go@1.26.5 node@24.19.0 npm:pnpm@11.22.0
 ```
 
-On Linux or Windows, install [mise](https://mise.jdx.dev/) and [pnpm](https://pnpm.io/installation) via your package manager, then run the same `mise use` command.
+`mise use` records the versions but does not put them on `PATH`. Follow mise's [activation guide](https://mise.jdx.dev/getting-started.html) for your shell, and add `~/.local/share/mise/shims` to `PATH` as well, so the tools also resolve when git and your editor run outside an interactive shell.
+
+On Linux or Windows, install [mise](https://mise.jdx.dev/) via your package manager, then run the same `mise use` command.
 
 ### First-time setup
 

@@ -7,7 +7,7 @@ FROM node:24.19.0-alpine3.23 AS host-build
 
 # Keep in sync with the pnpm/action-setup version in .github/workflows/ci.yml,
 # so the image and CI resolve dependencies identically.
-ARG PNPM_VERSION=11.11.0
+ARG PNPM_VERSION=11.22.0
 
 WORKDIR /src
 
