@@ -7,7 +7,7 @@ Teacher Workspace is a unified platform that consolidates teacher-facing applica
 ### Prerequisites
 
 - **Go** >= 1.26.5
-- **Node.js** >= 24
+- **Node.js** 24.19.0
 - **pnpm** >= 11
 - **Docker**, for the local Valkey and for the session store tests
 
@@ -19,7 +19,7 @@ Recommended install on macOS:
 
 ```bash
 brew install mise pnpm
-mise use --global go@1.26.5 node@24
+mise use --global go@1.26.5 node@24.19.0
 ```
 
 On Linux or Windows, install [mise](https://mise.jdx.dev/) and [pnpm](https://pnpm.io/installation) via your package manager, then run the same `mise use` command.
