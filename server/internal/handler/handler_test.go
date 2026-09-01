@@ -24,12 +24,14 @@ func TestHandler_Register(t *testing.T) {
 			t.Fatalf("os.WriteFile: %v", err)
 		}
 
-		postsBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("posts:" + r.URL.RequestURI()))
+		// Routed through student-insights, not posts: this case needs EnvProduction
+		// for the asset handler, where posts is refused while the stub exists.
+		siBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("student-insights:" + r.URL.RequestURI()))
 		}))
-		t.Cleanup(postsBackend.Close)
+		t.Cleanup(siBackend.Close)
 
-		postsBackendURL, err := url.Parse(postsBackend.URL)
+		siBackendURL, err := url.Parse(siBackend.URL)
 		if err != nil {
 			t.Fatalf("url.Parse: %v", err)
 		}
@@ -37,7 +39,7 @@ func TestHandler_Register(t *testing.T) {
 		cfg := config.Default()
 		cfg.Env = config.EnvProduction
 		cfg.BuildDir = buildDir
-		cfg.APIProxy.PostsBaseURL = postsBackendURL
+		cfg.APIProxy.StudentInsightsBaseURL = siBackendURL
 
 		h := New(&cfg)
 
@@ -52,7 +54,7 @@ func TestHandler_Register(t *testing.T) {
 		}{
 			{name: "index", target: "/", wantCode: http.StatusOK, wantBody: "<html>Hello world!</html>"},
 			{name: "static asset", target: "/static/js/index.abc123.js", wantCode: http.StatusOK, wantBody: "console.log('Hello world!');"},
-			{name: "API", target: "/api/posts/hello", wantCode: http.StatusOK, wantBody: "posts:/hello"},
+			{name: "API", target: "/api/student-insights/hello", wantCode: http.StatusOK, wantBody: "student-insights:/hello"},
 			{name: "API path naming no app", target: "/api/", wantCode: http.StatusNotFound, wantBody: "{\"message\":\"Not Found\"}\n"},
 		}
 

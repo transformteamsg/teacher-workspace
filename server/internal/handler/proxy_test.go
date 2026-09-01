@@ -77,6 +77,38 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
+	// PG's version prefix lives on the base URL, so the rewrite must keep it.
+	t.Run("keeps the base URL's path prefix", func(t *testing.T) {
+		var gotPath string
+		postsBackend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.RequestURI()
+		}))
+		t.Cleanup(postsBackend.Close)
+
+		postsBackendURL, err := url.Parse(postsBackend.URL + "/api/tw/1/staff")
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.APIProxy.PostsBaseURL = postsBackendURL
+
+		h := New(&cfg)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/announcements?page=2", nil)
+		req.SetPathValue("app", "posts")
+		rec := httptest.NewRecorder()
+
+		h.proxy(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := "/api/tw/1/staff/announcements?page=2", gotPath; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
 	t.Run("answers 404 for an unknown app", func(t *testing.T) {
 		var calls int
 		count := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ })
@@ -203,18 +235,27 @@ func TestHandler_proxy(t *testing.T) {
 		ttl := 2 * time.Minute
 		cfg.APIProxy.TokenTTL = ttl
 
+		// TEMP-PG-LOCAL: claims come from the env stub; seed the session instead
+		// once proxy_pg_identity_stub.go goes.
+		t.Setenv(envPGStubSubject, "EP000001")
+		t.Setenv(envPGStubSchoolCode, "1001")
+
 		h := New(&cfg)
 
 		currentTime := time.Now()
 		tests := []struct {
 			app        string
 			signingKey string
-			wantClaims jwt.RegisteredClaims
+			// jwt.Claims so student-insights keeps registered claims while posts
+			// carries PG's.
+			into       func() jwt.Claims
+			wantClaims jwt.Claims
 		}{
 			{
 				app:        "student-insights",
 				signingKey: "student-insights-string-secret-at-least-256-bits-long",
-				wantClaims: jwt.RegisteredClaims{
+				into:       func() jwt.Claims { return &jwt.RegisteredClaims{} },
+				wantClaims: &jwt.RegisteredClaims{
 					Issuer:    "TW",
 					Audience:  jwt.ClaimStrings{"si"},
 					IssuedAt:  jwt.NewNumericDate(currentTime),
@@ -224,11 +265,19 @@ func TestHandler_proxy(t *testing.T) {
 			{
 				app:        "posts",
 				signingKey: "posts-string-secret-at-least-256-bits-long",
-				wantClaims: jwt.RegisteredClaims{
-					Issuer:    "TW",
-					Audience:  jwt.ClaimStrings{"pg"},
-					IssuedAt:  jwt.NewNumericDate(currentTime),
-					ExpiresAt: jwt.NewNumericDate(currentTime.Add(ttl)),
+				into:       func() jwt.Claims { return &pgClaims{} },
+				wantClaims: &pgClaims{
+					Roles:         []string{"TW_TEACHER"},
+					EffectiveRole: "TW_TEACHER",
+					Attributes:    []string{"ATTR_PG_USER"},
+					SchoolCode:    "1001",
+					RegisteredClaims: jwt.RegisteredClaims{
+						Issuer:    "TW",
+						Subject:   "EP000001",
+						Audience:  jwt.ClaimStrings{"pg"},
+						IssuedAt:  jwt.NewNumericDate(currentTime),
+						ExpiresAt: jwt.NewNumericDate(currentTime.Add(ttl)),
+					},
 				},
 			},
 		}
@@ -248,8 +297,8 @@ func TestHandler_proxy(t *testing.T) {
 				t.Fatalf("want: not empty; got: %q", receivedReqHeaders.Get("Authorization"))
 			}
 
-			var claims jwt.RegisteredClaims
-			if _, err := jwt.ParseWithClaims(token, &claims,
+			claims := tt.into()
+			if _, err := jwt.ParseWithClaims(token, claims,
 				func(*jwt.Token) (any, error) {
 					return []byte(tt.signingKey), nil
 				},
@@ -261,6 +310,176 @@ func TestHandler_proxy(t *testing.T) {
 			if want, got := tt.wantClaims, claims; !reflect.DeepEqual(want, got) {
 				t.Errorf("want: %+v; got: %+v", want, got)
 			}
+		}
+	})
+
+	// TEMP-PG-LOCAL: delete alongside proxy_pg_identity_stub.go.
+	t.Run("refuses to sign a PG token in production", func(t *testing.T) {
+		var calls int
+		postsBackend := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+		t.Cleanup(postsBackend.Close)
+
+		postsBackendURL, err := url.Parse(postsBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		// A production deployment that still had the stub env vars set would
+		// otherwise hand every teacher the same identity, and the same posts.
+		t.Setenv(envPGStubSubject, "EP000001")
+		t.Setenv(envPGStubSchoolCode, "1001")
+
+		cfg := config.Default()
+		cfg.Env = config.EnvProduction
+		cfg.APIProxy.PostsBaseURL = postsBackendURL
+
+		h := New(&cfg)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/announcements", nil)
+		req.SetPathValue("app", "posts")
+		rec := httptest.NewRecorder()
+
+		h.proxy(rec, req)
+
+		if want, got := http.StatusInternalServerError, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want := 0; want != calls {
+			t.Errorf("backend calls: want %d; got %d", want, calls)
+		}
+	})
+
+	t.Run("student-insights is unaffected in production", func(t *testing.T) {
+		var calls int
+		siBackend := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+		t.Cleanup(siBackend.Close)
+
+		siBackendURL, err := url.Parse(siBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.Env = config.EnvProduction
+		cfg.APIProxy.StudentInsightsBaseURL = siBackendURL
+
+		h := New(&cfg)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/student-insights/hello", nil)
+		req.SetPathValue("app", "student-insights")
+		rec := httptest.NewRecorder()
+
+		h.proxy(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want := 1; want != calls {
+			t.Errorf("backend calls: want %d; got %d", want, calls)
+		}
+	})
+
+	t.Run("signs PG tokens with the stubbed staff identity", func(t *testing.T) {
+		var receivedReqHeaders http.Header
+		postsBackend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			receivedReqHeaders = r.Header
+		}))
+		t.Cleanup(postsBackend.Close)
+
+		postsBackendURL, err := url.Parse(postsBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		const signingKey = "posts-string-secret-at-least-256-bits-long"
+
+		cfg := config.Default()
+		cfg.APIProxy.PostsBaseURL = postsBackendURL
+		cfg.APIProxy.PostsSigningKey = signingKey
+
+		h := New(&cfg)
+
+		tests := []struct {
+			name           string
+			subject        string
+			schoolCode     string
+			roles          string
+			wantRoles      []string
+			wantSubject    string
+			wantSchoolCode string
+		}{
+			{
+				name:           "defaults roles when unset",
+				subject:        "EP000001",
+				schoolCode:     "1001",
+				wantRoles:      []string{"TW_TEACHER"},
+				wantSubject:    "EP000001",
+				wantSchoolCode: "1001",
+			},
+			{
+				name:           "splits a comma-separated role list",
+				subject:        "EP000002",
+				schoolCode:     "2002",
+				roles:          "TW_TEACHER, TW_SCHOOL_ADMIN ",
+				wantRoles:      []string{"TW_TEACHER", "TW_SCHOOL_ADMIN"},
+				wantSubject:    "EP000002",
+				wantSchoolCode: "2002",
+			},
+			{
+				// Still signs, so PG returns the 401 rather than a 500 here.
+				name:           "signs an empty identity when the stub is unset",
+				wantRoles:      []string{"TW_TEACHER"},
+				wantSubject:    "",
+				wantSchoolCode: "",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Setenv(envPGStubSubject, tt.subject)
+				t.Setenv(envPGStubSchoolCode, tt.schoolCode)
+				t.Setenv(envPGStubRoles, tt.roles)
+
+				req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
+				req.SetPathValue("app", "posts")
+				rec := httptest.NewRecorder()
+
+				h.proxy(rec, req)
+
+				if want, got := http.StatusOK, rec.Code; want != got {
+					t.Fatalf("want: %d; got: %d", want, got)
+				}
+				token, ok := strings.CutPrefix(receivedReqHeaders.Get("Authorization"), "Bearer ")
+				if !ok {
+					t.Fatalf("want: not empty; got: %q", receivedReqHeaders.Get("Authorization"))
+				}
+
+				var claims pgClaims
+				if _, err := jwt.ParseWithClaims(token, &claims,
+					func(*jwt.Token) (any, error) { return []byte(signingKey), nil },
+					jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+				); err != nil {
+					t.Fatalf("want err: nil; got: %v", err)
+				}
+
+				if want, got := tt.wantSubject, claims.Subject; want != got {
+					t.Errorf("subject: want %q; got %q", want, got)
+				}
+				if want, got := tt.wantSchoolCode, claims.SchoolCode; want != got {
+					t.Errorf("school_code: want %q; got %q", want, got)
+				}
+				if want, got := tt.wantRoles, claims.Roles; !reflect.DeepEqual(want, got) {
+					t.Errorf("roles: want %v; got %v", want, got)
+				}
+				// PG rejects a token without these: -4017 for a missing
+				// effective_role, -4036 without ATTR_PG_USER.
+				if claims.EffectiveRole == "" {
+					t.Error("effective_role: want non-empty; got empty")
+				}
+				if want, got := []string{"ATTR_PG_USER"}, claims.Attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("attributes: want %v; got %v", want, got)
+				}
+			})
 		}
 	})
 }

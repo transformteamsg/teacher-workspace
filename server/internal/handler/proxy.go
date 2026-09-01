@@ -11,6 +11,17 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// pgClaims carries the identity PG's /api/tw/1 surface requires: it resolves
+// the staff member from sub scoped by school_code, then authorises on roles.
+type pgClaims struct {
+	Roles         []string `json:"roles"`
+	EffectiveRole string   `json:"effective_role"`
+	Attributes    []string `json:"attributes"`
+	SchoolCode    string   `json:"school_code"`
+
+	jwt.RegisteredClaims
+}
+
 // proxy forwards a request to that app's backend, stripping the
 // /api/<app> prefix. It swaps the session cookie for JWT. Responds 404
 // for unknown apps and 500 if the token cannot be signed.
@@ -18,13 +29,40 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request) {
 	logger := middleware.LoggerFromContext(r.Context())
 	app := r.PathValue("app")
 
+	now := time.Now()
+	reg := jwt.RegisteredClaims{
+		Issuer:    "TW",
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(h.cfg.APIProxy.TokenTTL)),
+	}
+
 	var p *stdhttputil.ReverseProxy
-	var signingKey, aud string
+	var signingKey string
+	var claims jwt.Claims
 	switch app {
 	case "student-insights":
-		p, signingKey, aud = h.studentInsightsProxy, h.cfg.APIProxy.StudentInsightsSigningKey, "si"
+		p, signingKey = h.studentInsightsProxy, h.cfg.APIProxy.StudentInsightsSigningKey
+		reg.Audience = jwt.ClaimStrings{"si"}
+		claims = reg
 	case "posts":
-		p, signingKey, aud = h.postsProxy, h.cfg.APIProxy.PostsSigningKey, "pg"
+		p, signingKey = h.postsProxy, h.cfg.APIProxy.PostsSigningKey
+		identity, err := pgIdentityFor(r, logger, h.cfg.Env)
+		if err != nil {
+			logger.Error("refusing to sign a PG token", "err", err)
+			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
+				Message: http.StatusText(http.StatusInternalServerError),
+			})
+			return
+		}
+		reg.Audience = jwt.ClaimStrings{"pg"}
+		reg.Subject = identity.Subject
+		claims = pgClaims{
+			Roles:            identity.Roles,
+			EffectiveRole:    identity.EffectiveRole,
+			Attributes:       identity.Attributes,
+			SchoolCode:       identity.SchoolCode,
+			RegisteredClaims: reg,
+		}
 	default:
 		httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
 			Message: http.StatusText(http.StatusNotFound),
@@ -32,13 +70,7 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Issuer:    "TW",
-		Audience:  jwt.ClaimStrings{aud},
-		IssuedAt:  jwt.NewNumericDate(now),
-		ExpiresAt: jwt.NewNumericDate(now.Add(h.cfg.APIProxy.TokenTTL)),
-	})
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString([]byte(signingKey))
 	if err != nil {
 		logger.Error("failed to sign JWT", "app", app, "err", err)
