@@ -2,11 +2,12 @@ import { loadRemote, registerRemotes } from '@module-federation/enhanced/runtime
 import React from 'react';
 
 import { ErrorBoundary } from '~/components/ErrorBoundary';
+import { PG_REMOTE_ENTRY } from '~/helpers/pgRemote';
 
 registerRemotes([
   {
     name: 'pg',
-    entry: 'https://d390008ekba73v.cloudfront.net/mf-manifest.json',
+    entry: PG_REMOTE_ENTRY,
   },
 ]);
 
