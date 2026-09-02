@@ -1,81 +1,77 @@
 # syntax=docker/dockerfile:1
 
 # ----------------------------------------
-# Host build stage
+# TW Host build stage
 # ----------------------------------------
-FROM node:24.19.0-alpine3.23 AS host-build
+FROM node:24.19.0-trixie AS tw-host-build
 
-# Keep in sync with the pnpm/action-setup version in .github/workflows/ci.yml,
-# so the image and CI resolve dependencies identically.
-ARG PNPM_VERSION=11.22.0
+ENV NODE_ENV=production
 
-WORKDIR /src
+RUN mkdir /app
+WORKDIR /app
 
-RUN npm install --global pnpm@${PNPM_VERSION}
+# Install `pnpm`.
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN mkdir $PNPM_HOME && \
+        wget -qO- "https://github.com/pnpm/pnpm/releases/download/v11.22.0/pnpm-linux-arm64.tar.gz" | tar -xzf - -C "$PNPM_HOME" && \
+        ln -s $PNPM_HOME/pnpm /usr/local/bin/pnpm
 
-# Fetch all dependencies into the local store for better layer caching. This
-# reads only pnpm-lock.yaml, so it doesn't need every workspace package's
-# manifest copied in ahead of time.
+# Fetch all dependencies into the virtual store.
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm fetch
 
-# Only package.json and apps/, so an edit under server/ leaves this stage
-# cached.
 COPY package.json ./
-COPY apps/ apps/
+COPY apps/host/package.json ./apps/host/package.json
 
-# --offline links from the store fetched above instead of hitting the network.
-# --ignore-scripts skips the root prepare script, which installs the lefthook
-# git hooks and fails without a .git directory.
 RUN pnpm install --offline --frozen-lockfile --ignore-scripts
 
-# Build the frontend into apps/host/dist.
-RUN pnpm build
+COPY apps/host/ ./apps/host/
+
+# Build the host app.
+RUN pnpm --filter=@teacher-workspace/host build
 
 # ----------------------------------------
-# Server build stage
+# TW Server build stage
 # ----------------------------------------
-FROM golang:1.26.5-alpine3.23 AS server-build
+FROM golang:1.26.5-trixie AS tw-server-build
 
-WORKDIR /src
+ENV CGO_ENABLED=1
 
-# cgo toolchain for valkey-glide, which the Go Alpine image does not ship.
-RUN apk add --no-cache gcc musl-dev
+RUN mkdir /app
+WORKDIR /app
 
-# Fetch all dependencies for better layer caching.
+# Fetch all dependencies.
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY server/ server/
+COPY server/ ./server
 
-# valkey-glide requires cgo; the musl tag selects its musl archive over glibc.
-RUN CGO_ENABLED=1 go build -tags musl -trimpath -ldflags="-s -w" -o /src/tw ./server/cmd/tw
+RUN go build -trimpath -ldflags="-s -w" ./server/cmd/tw
 
 # ----------------------------------------
 # Production stage
 # ----------------------------------------
-FROM alpine:3.23
-
-WORKDIR /app
-
-# The cgo binary links libgcc_s.so.1, which the base image does not ship.
-RUN apk add --no-cache libgcc
-
-# 1. Create a new user named `zero`.
-# 2. Change the permission of `app` folder to user `zero`.
-# 3. Change the current user from `root` to `zero`.
-RUN addgroup -S zero && \
-        adduser -S zero -G zero && \
-        chown zero:zero /app
-
-USER zero
-
-COPY --from=server-build --chown=zero:zero /src/tw /app/tw
-COPY --from=host-build --chown=zero:zero /src/apps/host/dist /app/dist
+FROM debian:trixie-slim
 
 ENV TW_ENV=production \
     TW_BUILD_DIR=/app/dist \
     TW_SERVER_PORT=3000
+
+RUN mkdir /app
+WORKDIR /app
+
+# 1. Create a system group named `zero`.
+# 2. Create a system user named `zero` (no home directory, no login shell).
+# 3. Change the permission of `app` folder to user `zero`.
+RUN groupadd --system zero && \
+        useradd --system --gid zero --no-create-home --shell /usr/sbin/nologin zero && \
+        chown zero:zero /app
+
+USER zero
+
+COPY --from=tw-host-build --chown=zero:zero /app/apps/host/dist /app/dist
+COPY --from=tw-server-build --chown=zero:zero /app/tw /app/tw
 
 EXPOSE 3000
 
