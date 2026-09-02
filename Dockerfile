@@ -5,10 +5,10 @@
 # ----------------------------------------
 FROM node:24.19.0-trixie AS tw-host-build
 
+ENV NODE_ENV=production
+
 RUN mkdir /app
 WORKDIR /app
-
-ENV NODE_ENV=production
 
 # Install `pnpm`.
 ENV PNPM_HOME="/pnpm"
@@ -36,6 +36,8 @@ RUN pnpm --filter=@teacher-workspace/host build
 # ----------------------------------------
 FROM golang:1.26.5-trixie AS tw-server-build
 
+ENV CGO_ENABLED=1
+
 RUN mkdir /app
 WORKDIR /app
 
@@ -45,12 +47,16 @@ RUN go mod download
 
 COPY server/ ./server
 
-RUN CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" ./server/cmd/tw
+RUN go build -trimpath -ldflags="-s -w" ./server/cmd/tw
 
 # ----------------------------------------
 # Production stage
 # ----------------------------------------
 FROM debian:trixie-slim
+
+ENV TW_ENV=production \
+    TW_BUILD_DIR=/app/dist \
+    TW_SERVER_PORT=3000
 
 RUN mkdir /app
 WORKDIR /app
@@ -66,10 +72,6 @@ USER zero
 
 COPY --from=tw-host-build --chown=zero:zero /app/apps/host/dist /app/dist
 COPY --from=tw-server-build --chown=zero:zero /app/tw /app/tw
-
-ENV TW_ENV=production \
-    TW_BUILD_DIR=/app/dist \
-    TW_SERVER_PORT=3000
 
 EXPOSE 3000
 
