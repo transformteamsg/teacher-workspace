@@ -19,9 +19,13 @@ That leaves those developers without a way to exercise the full flow. Running th
 
 Three approaches were tabled and their trade-offs reviewed:
 
-1. **Container image bundling the host shell and the proxy.** Developers run one image locally provided by Teacher Workspace, pointed at their remote entry and their local back end. It serves the host shell, issues a mock session, performs the cookie-to-JWT translation, and forwards to the developer's back end, reproducing all four hops on localhost. Costs are image size and the need for an update/versioning story to prevent drift from the real host and proxy.
+1. **Container image bundling the host shell and the proxy.** Developers run one image locally provided by Teacher Workspace, pointed at their remote entry and their local back end. It bundles everything the host side of the flow needs to stand up on its own: the Teacher Workspace front end, the Teacher Workspace back end, the database, and Valkey. Two environment variables wire in the developer's side — one for the remote entry served by their local front-end dev server, one for the base URL of their local back end. It serves the host shell, issues a mock session, performs the cookie-to-JWT translation, and forwards to the developer's back end, reproducing all four hops on localhost. Costs are image size and the need for an update/versioning story to prevent drift from the real host and proxy.
 2. **Hosted / public proxy (API Gateway).** Developers point their local remote at a shared proxy and authenticate with an API key. Always current with the real proxy behind it and nothing to install, but it puts an internet-facing entry point in front of otherwise private infrastructure, and adds API-key issuance and rotation, CORS configuration for local origins, shared state between developers, and a hosted component to operate. It also has no route back to a back end running on the developer's laptop, and answers nothing for step 1: the host shell still has to come from somewhere.
-3. **Lightweight SDK / dev-server rewrite package.** A package installed in the remote app repository hooks into its dev server, injects JWTs, and rewrites requests at development time. The smallest footprint and the most natural fit for the existing workflow, but it stands in for the proxy rather than running it, so what a developer tests is not the translation their requests will really go through. It also couples that logic into a front-end build dependency that every remote app repository must install and keep tracking as the host and proxy change.
+3. **Lightweight SDK.** A published package the remote app team installs, which mints the JWT locally and forwards requests to their own back end. Two shapes of this were discussed:
+   - **3a. Library / dev-server rewrite.** The package hooks into the remote app's rsbuild dev server proxy: it intercepts requests, strips the `/api/{app}` prefix, and injects the JWT. No separate process to run, but the rewrite logic has to live in the remote app's dev server config, so it couples into that repository's build setup.
+   - **3b. Standalone local proxy.** The developer installs the package and starts a proxy server with one command in the CLI. It mints the JWT and forwards to their local back end. The remote app's code and build config stay untouched, at the cost of an extra process the developer has to run.
+
+   Both share the same limitation: they stand in for the proxy rather than running it, so what a developer tests is not the translation their requests will really go through, and either way every remote app repository takes on a dependency it must keep tracking as the host and proxy change.
 
 ## Decision
 
@@ -29,7 +33,7 @@ Three approaches were tabled and their trade-offs reviewed:
 
 Running locally sidesteps the private-link restriction outright rather than working around it with a public entry point, and keeping all traffic on localhost avoids CORS and API-key management entirely. Bundling the host shell and the proxy into a single artifact is the only one of the three that reproduces the whole chain, from the shell that mounts the remote through the real proxy that performs the JWT exchange and on to the developer's own back end, and it is what makes the one-line start and the default mock user achievable. It also keeps the remote app repositories clean: their only obligation is to expose a remote entry and a back end on localhost for the container to point at.
 
-The hosted proxy and the SDK remain viable alternatives if the container approach proves too heavy in practice.
+The hosted proxy and both SDK variants remain viable alternatives if the container approach proves too heavy in practice.
 
 ## Consequences
 
@@ -40,8 +44,8 @@ Positive:
 
 Negative / follow-ups:
 
-- Image size needs attention, since a large pull is a real ergonomic cost.
+- Image size needs attention, since a large pull is a real ergonomic cost, and bundling the front end, back end, database, and Valkey into one artifact makes it a live concern rather than a theoretical one.
 - We need an update and versioning mechanism so local images do not drift from the deployed host and proxy.
 - Long-term maintenance of the bundled host and proxy falls to us; it is a new artifact to keep current, and it is consumed by teams outside this repository, so breaking it breaks them.
-- We need a documented convention for how a developer points the container at their local remote entry and their local back end.
-- If maintenance or image size becomes the dominant pain, revisit the hosted proxy or the SDK.
+- We need to settle and document the two environment variables a developer sets to point the container at their local remote entry and their local back end, since that contract is the whole interface remote app teams see.
+- If maintenance or image size becomes the dominant pain, revisit the hosted proxy or either SDK variant.
