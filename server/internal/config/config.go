@@ -31,6 +31,7 @@ type Config struct {
 	Server   ServerConfig   `dotenv:",squash"`
 	Session  SessionConfig  `dotenv:",squash"`
 	APIProxy APIProxyConfig `dotenv:",squash"`
+	OIDC     OIDCConfig     `dotenv:",squash"`
 }
 
 // ServerConfig represents the configuration for the HTTP server.
@@ -61,6 +62,14 @@ type SessionConfig struct {
 type SessionValkeyConfig struct {
 	URL    *url.URL `dotenv:"TW_SESSION_VALKEY_URL"`
 	Prefix string   `dotenv:"TW_SESSION_VALKEY_PREFIX"`
+}
+
+// OIDCConfig represents the configuration for the Edupass OIDC relying party.
+type OIDCConfig struct {
+	IssuerURL    *url.URL `dotenv:"TW_OIDC_ISSUER_URL"`
+	ClientID     string   `dotenv:"TW_OIDC_CLIENT_ID"`
+	ClientSecret string   `dotenv:"TW_OIDC_CLIENT_SECRET"`
+	RedirectURL  *url.URL `dotenv:"TW_OIDC_REDIRECT_URL"`
 }
 
 // APIProxyConfig represents the configuration for the backend proxies.
@@ -105,6 +114,12 @@ func Default() Config {
 			PostsSigningKey:           "a-string-secret-at-least-256-bits-long",
 			TokenTTL:                  1 * time.Minute,
 		},
+		OIDC: OIDCConfig{
+			IssuerURL:    must(url.Parse("http://localhost:9000")),
+			ClientID:     "teacher-workspace",
+			ClientSecret: "teacher-workspace-secret",
+			RedirectURL:  must(url.Parse("http://localhost:3000/auth/edupass/callback")),
+		},
 	}
 }
 
@@ -136,7 +151,7 @@ func (c Config) Validate() error {
 		}
 	}
 
-	return errors.Join(append(errs, c.Server.validate(), c.Session.validate(), c.APIProxy.validate())...)
+	return errors.Join(append(errs, c.Server.validate(), c.Session.validate(), c.APIProxy.validate(), c.OIDC.validate())...)
 }
 
 func (c ServerConfig) validate() error {
@@ -262,6 +277,39 @@ func (c APIProxyConfig) validate() error {
 	}
 	if c.TokenTTL < time.Second {
 		errs = append(errs, fmt.Errorf("TW_API_PROXY_TOKEN_TTL must be at least 1s; got %v", c.TokenTTL))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (c OIDCConfig) validate() error {
+	var errs []error
+
+	if c.IssuerURL == nil {
+		errs = append(errs, errors.New("TW_OIDC_ISSUER_URL is required"))
+	} else {
+		if c.IssuerURL.Scheme != "http" && c.IssuerURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("TW_OIDC_ISSUER_URL must use scheme http or https; got %q", c.IssuerURL))
+		}
+		if c.IssuerURL.Host == "" {
+			errs = append(errs, fmt.Errorf("TW_OIDC_ISSUER_URL must include host; got %q", c.IssuerURL))
+		}
+	}
+	if c.ClientID == "" {
+		errs = append(errs, errors.New("TW_OIDC_CLIENT_ID is required"))
+	}
+	if c.ClientSecret == "" {
+		errs = append(errs, errors.New("TW_OIDC_CLIENT_SECRET is required"))
+	}
+	if c.RedirectURL == nil {
+		errs = append(errs, errors.New("TW_OIDC_REDIRECT_URL is required"))
+	} else {
+		if c.RedirectURL.Scheme != "http" && c.RedirectURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("TW_OIDC_REDIRECT_URL must use scheme http or https; got %q", c.RedirectURL))
+		}
+		if c.RedirectURL.Host == "" {
+			errs = append(errs, fmt.Errorf("TW_OIDC_REDIRECT_URL must include host; got %q", c.RedirectURL))
+		}
 	}
 
 	return errors.Join(errs...)

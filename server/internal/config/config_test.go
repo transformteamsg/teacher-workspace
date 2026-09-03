@@ -75,6 +75,19 @@ func TestDefault(t *testing.T) {
 		if want, got := time.Minute, cfg.APIProxy.TokenTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
+
+		if want, got := "http://localhost:9000", cfg.OIDC.IssuerURL.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "teacher-workspace", cfg.OIDC.ClientID; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "teacher-workspace-secret", cfg.OIDC.ClientSecret; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "http://localhost:3000/auth/edupass/callback", cfg.OIDC.RedirectURL.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 }
 
@@ -187,13 +200,14 @@ func TestConfig_Validate(t *testing.T) {
 		cfg.Server.Port = 0
 		cfg.Session.Name = ""
 		cfg.APIProxy.PostsBaseURL = nil
+		cfg.OIDC.ClientID = ""
 
 		err := cfg.Validate()
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		for _, want := range []string{"TW_ENV", "TW_SERVER_PORT", "TW_SESSION_NAME", "TW_API_PROXY_POSTS_BASE_URL"} {
+		for _, want := range []string{"TW_ENV", "TW_SERVER_PORT", "TW_SESSION_NAME", "TW_API_PROXY_POSTS_BASE_URL", "TW_OIDC_CLIENT_ID"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("want err: containing %q; got: %q", want, err)
 			}
@@ -569,6 +583,85 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				cfg := Default().APIProxy
+				tt.mutate(&cfg)
+
+				err := cfg.validate()
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if !strings.Contains(err.Error(), tt.want) {
+					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				}
+			})
+		}
+	})
+}
+
+func TestOIDCConfig_validate(t *testing.T) {
+	t.Run("accepts http and https urls", func(t *testing.T) {
+		for _, scheme := range []string{"http", "https"} {
+			t.Run(scheme, func(t *testing.T) {
+				cfg := Default().OIDC
+				cfg.IssuerURL = &url.URL{Scheme: scheme, Host: "localhost:9000"}
+				cfg.RedirectURL = &url.URL{Scheme: scheme, Host: "localhost:3000", Path: "/auth/edupass/callback"}
+
+				if err := cfg.validate(); err != nil {
+					t.Errorf("want err: nil; got: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("rejects invalid values", func(t *testing.T) {
+		for _, tt := range []struct {
+			name   string
+			mutate func(*OIDCConfig)
+			want   string
+		}{
+			{
+				name:   "missing issuer url",
+				mutate: func(c *OIDCConfig) { c.IssuerURL = nil },
+				want:   "TW_OIDC_ISSUER_URL is required",
+			},
+			{
+				name:   "issuer url with a non-http scheme",
+				mutate: func(c *OIDCConfig) { c.IssuerURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
+				want:   "TW_OIDC_ISSUER_URL must use scheme http or https",
+			},
+			{
+				name:   "issuer url without a host",
+				mutate: func(c *OIDCConfig) { c.IssuerURL = &url.URL{Scheme: "http"} },
+				want:   "TW_OIDC_ISSUER_URL must include host",
+			},
+			{
+				name:   "empty client id",
+				mutate: func(c *OIDCConfig) { c.ClientID = "" },
+				want:   "TW_OIDC_CLIENT_ID is required",
+			},
+			{
+				name:   "empty client secret",
+				mutate: func(c *OIDCConfig) { c.ClientSecret = "" },
+				want:   "TW_OIDC_CLIENT_SECRET is required",
+			},
+			{
+				name:   "missing redirect url",
+				mutate: func(c *OIDCConfig) { c.RedirectURL = nil },
+				want:   "TW_OIDC_REDIRECT_URL is required",
+			},
+			{
+				name:   "redirect url with a non-http scheme",
+				mutate: func(c *OIDCConfig) { c.RedirectURL = &url.URL{Scheme: "ftp", Host: "localhost:3000"} },
+				want:   "TW_OIDC_REDIRECT_URL must use scheme http or https",
+			},
+			{
+				name:   "redirect url without a host",
+				mutate: func(c *OIDCConfig) { c.RedirectURL = &url.URL{Scheme: "http"} },
+				want:   "TW_OIDC_REDIRECT_URL must include host",
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				cfg := Default().OIDC
 				tt.mutate(&cfg)
 
 				err := cfg.validate()
