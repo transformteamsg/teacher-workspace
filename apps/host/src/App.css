@@ -109,3 +109,13 @@
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/*
+ * Sonner injects its own stylesheet at mount time, so it can land after this
+ * one in the document and win cascade ties on equal-specificity selectors.
+ * `!important` here pins the icon to the top of the toast instead of sonner's
+ * default vertical centering against the full (often multi-line) row height.
+ */
+[data-sonner-toast][data-styled='true'] {
+  align-items: flex-start !important;
+}
