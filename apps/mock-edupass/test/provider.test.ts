@@ -14,7 +14,7 @@ const TEST_PORT = 9876;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
 const CLIENT_ID = 'teacher-workspace';
 const CLIENT_SECRET = 'teacher-workspace-secret';
-const REDIRECT_URI = 'http://localhost:3000/auth/callback';
+const REDIRECT_URI = 'http://localhost:3000/auth/edupass/callback';
 
 async function obtainAuthorizationCode(
   client: OidcClient,

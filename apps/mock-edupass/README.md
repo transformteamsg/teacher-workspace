@@ -20,18 +20,18 @@ cd apps/mock-edupass && pnpm start
 
 Configure your relying party with these values:
 
-| Parameter           | Value                                 |
-| ------------------- | ------------------------------------- |
-| Issuer              | `http://localhost:9000`               |
-| Client ID           | `teacher-workspace`                   |
-| Client Secret       | `teacher-workspace-secret`            |
-| Redirect URI        | `http://localhost:3000/auth/callback` |
-| Scopes              | `openid`                              |
-| Response type       | `code`                                |
-| Response mode       | `form_post`                           |
-| Grant type          | `authorization_code`                  |
-| Token endpoint auth | `client_secret_post`                  |
-| PKCE                | Required (S256)                       |
+| Parameter           | Value                                         |
+| ------------------- | --------------------------------------------- |
+| Issuer              | `http://localhost:9000`                       |
+| Client ID           | `teacher-workspace`                           |
+| Client Secret       | `teacher-workspace-secret`                    |
+| Redirect URI        | `http://localhost:3000/auth/edupass/callback` |
+| Scopes              | `openid`                                      |
+| Response type       | `code`                                        |
+| Response mode       | `form_post`                                   |
+| Grant type          | `authorization_code`                          |
+| Token endpoint auth | `client_secret_post`                          |
+| PKCE                | Required (S256)                               |
 
 ## Fake Accounts
 
