@@ -38,7 +38,7 @@ func TestHandler_Register(t *testing.T) {
 		cfg.Env = config.EnvProduction
 		cfg.BuildDir = buildDir
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
-		cfg.Host.Remotes = "pg=https://pg.test/mf-manifest.json"
+		cfg.Remotes = "pg=https://pg.test/mf-manifest.json"
 
 		h := New(&cfg)
 

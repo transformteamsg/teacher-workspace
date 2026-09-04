@@ -28,8 +28,9 @@ type Config struct {
 	DevServerURL *url.URL `dotenv:"TW_DEV_SERVER_URL"`
 	// BuildDir is used in production to serve the frontend build output.
 	BuildDir string `dotenv:"TW_BUILD_DIR"`
+	// Remotes holds comma-separated name=url pairs, url being the remote's mf-manifest.json.
+	Remotes string `dotenv:"TW_REMOTES"`
 
-	Host     HostConfig     `dotenv:",squash"`
 	Server   ServerConfig   `dotenv:",squash"`
 	Session  SessionConfig  `dotenv:",squash"`
 	APIProxy APIProxyConfig `dotenv:",squash"`
@@ -41,14 +42,8 @@ type Remote struct {
 	Entry string `json:"entry"`
 }
 
-// HostConfig represents the configuration the frontend reads at runtime.
-type HostConfig struct {
-	// Remotes holds comma-separated name=url pairs, url being the remote's mf-manifest.json.
-	Remotes string `dotenv:"TW_HOST_REMOTES"`
-}
-
 // ParsedRemotes returns the configured remotes in order, skipping the pairs Validate rejects.
-func (c HostConfig) ParsedRemotes() []Remote {
+func (c Config) ParsedRemotes() []Remote {
 	remotes, _ := parseRemotes(c.Remotes)
 	return remotes
 }
@@ -100,11 +95,9 @@ func Default() Config {
 
 		DevServerURL: must(url.Parse("http://127.0.0.1:3001")),
 		BuildDir:     "apps/host/dist",
+		// The deployed Parents Gateway remote, previously compiled into the host bundle.
+		Remotes: "pg=https://d390008ekba73v.cloudfront.net/mf-manifest.json",
 
-		Host: HostConfig{
-			// The deployed Parents Gateway remote, previously compiled into the host bundle.
-			Remotes: "pg=https://d390008ekba73v.cloudfront.net/mf-manifest.json",
-		},
 		Server: ServerConfig{
 			Port:              3000,
 			ReadHeaderTimeout: 2 * time.Second,
@@ -160,12 +153,11 @@ func (c Config) Validate() error {
 		}
 	}
 
-	return errors.Join(append(errs, c.Host.validate(), c.Server.validate(), c.Session.validate(), c.APIProxy.validate())...)
-}
+	if _, err := parseRemotes(c.Remotes); err != nil {
+		errs = append(errs, err)
+	}
 
-func (c HostConfig) validate() error {
-	_, err := parseRemotes(c.Remotes)
-	return err
+	return errors.Join(append(errs, c.Server.validate(), c.Session.validate(), c.APIProxy.validate())...)
 }
 
 func (c ServerConfig) validate() error {
@@ -310,21 +302,21 @@ func parseRemotes(s string) ([]Remote, error) {
 
 		name, entry, ok := strings.Cut(pair, "=")
 		if !ok {
-			errs = append(errs, fmt.Errorf("TW_HOST_REMOTES entry must be name=url; got %q", pair))
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry must be name=url; got %q", pair))
 			continue
 		}
 		name, entry = strings.TrimSpace(name), strings.TrimSpace(entry)
 
 		switch {
 		case name == "":
-			errs = append(errs, fmt.Errorf("TW_HOST_REMOTES entry must have a name; got %q", pair))
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry must have a name; got %q", pair))
 			continue
 		case entry == "":
-			errs = append(errs, fmt.Errorf("TW_HOST_REMOTES entry %q must have a url; got %q", name, pair))
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry %q must have a url; got %q", name, pair))
 			continue
 		case seen[name]:
 			// The runtime keeps the first registration of a name and silently drops the rest.
-			errs = append(errs, fmt.Errorf("TW_HOST_REMOTES names %q more than once", name))
+			errs = append(errs, fmt.Errorf("TW_REMOTES names %q more than once", name))
 			continue
 		}
 		seen[name] = true
@@ -332,13 +324,13 @@ func parseRemotes(s string) ([]Remote, error) {
 		u, err := url.Parse(entry)
 		switch {
 		case err != nil:
-			errs = append(errs, fmt.Errorf("TW_HOST_REMOTES entry %q must be a valid url; got %q", name, entry))
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry %q must be a valid url; got %q", name, entry))
 			continue
 		case u.Scheme != "http" && u.Scheme != "https":
-			errs = append(errs, fmt.Errorf("TW_HOST_REMOTES entry %q must use scheme http or https; got %q", name, entry))
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry %q must use scheme http or https; got %q", name, entry))
 			continue
 		case u.Host == "":
-			errs = append(errs, fmt.Errorf("TW_HOST_REMOTES entry %q must include host[:port]; got %q", name, entry))
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry %q must include host[:port]; got %q", name, entry))
 			continue
 		}
 

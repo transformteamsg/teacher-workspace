@@ -20,7 +20,7 @@ func (h *Handler) runtimeConfig(w http.ResponseWriter, r *http.Request) {
 
 	// An empty array rather than null, so the client never has to guard
 	// against a missing list.
-	remotes := h.cfg.Host.ParsedRemotes()
+	remotes := h.cfg.ParsedRemotes()
 	if remotes == nil {
 		remotes = []config.Remote{}
 	}

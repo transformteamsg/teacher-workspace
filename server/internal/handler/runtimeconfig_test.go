@@ -14,7 +14,7 @@ import (
 func TestHandler_runtimeConfig(t *testing.T) {
 	t.Run("serves the configured remotes in order", func(t *testing.T) {
 		cfg := config.Default()
-		cfg.Host.Remotes = "pg=https://pg.test/mf-manifest.json,si=https://si.test/mf-manifest.json"
+		cfg.Remotes = "pg=https://pg.test/mf-manifest.json,si=https://si.test/mf-manifest.json"
 		h := New(&cfg)
 
 		req := httptest.NewRequest(http.MethodGet, "/config.json", nil)
@@ -44,7 +44,7 @@ func TestHandler_runtimeConfig(t *testing.T) {
 
 	t.Run("serves an empty array rather than null when nothing is configured", func(t *testing.T) {
 		cfg := config.Default()
-		cfg.Host.Remotes = ""
+		cfg.Remotes = ""
 		h := New(&cfg)
 
 		req := httptest.NewRequest(http.MethodGet, "/config.json", nil)
