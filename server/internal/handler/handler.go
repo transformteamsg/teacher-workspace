@@ -48,10 +48,11 @@ func New(cfg *config.Config) *Handler {
 }
 
 // Register registers all application routes on the given HTTP server mux.
-// Application routes are wrapped in the session middleware; static asset routes
-// are not.
+// Application routes are wrapped in the session middleware; static assets and
+// the runtime config are not.
 func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
 	mux.HandleFunc("/static/", h.static)
+	mux.HandleFunc("/config.json", h.runtimeConfig)
 
 	// Session-scoped routes: everything registered on this sub-mux runs
 	// through the session middleware, which is applied a single time.

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -27,10 +28,24 @@ type Config struct {
 	DevServerURL *url.URL `dotenv:"TW_DEV_SERVER_URL"`
 	// BuildDir is used in production to serve the frontend build output.
 	BuildDir string `dotenv:"TW_BUILD_DIR"`
+	// Remotes holds comma-separated name=url pairs, url being the remote's mf-manifest.json.
+	Remotes string `dotenv:"TW_REMOTES"`
 
 	Server   ServerConfig   `dotenv:",squash"`
 	Session  SessionConfig  `dotenv:",squash"`
 	APIProxy APIProxyConfig `dotenv:",squash"`
+}
+
+// Remote is a Module Federation remote the host registers at runtime.
+type Remote struct {
+	Name  string `json:"name"`
+	Entry string `json:"entry"`
+}
+
+// ParsedRemotes returns the configured remotes in order, skipping the pairs Validate rejects.
+func (c Config) ParsedRemotes() []Remote {
+	remotes, _ := parseRemotes(c.Remotes)
+	return remotes
 }
 
 // ServerConfig represents the configuration for the HTTP server.
@@ -80,6 +95,8 @@ func Default() Config {
 
 		DevServerURL: must(url.Parse("http://127.0.0.1:3001")),
 		BuildDir:     "apps/host/dist",
+		// The deployed Parents Gateway remote, previously compiled into the host bundle.
+		Remotes: "pg=https://d390008ekba73v.cloudfront.net/mf-manifest.json",
 
 		Server: ServerConfig{
 			Port:              3000,
@@ -134,6 +151,10 @@ func (c Config) Validate() error {
 		} else if _, err := os.Stat(c.BuildDir); os.IsNotExist(err) {
 			errs = append(errs, fmt.Errorf("TW_BUILD_DIR does not exist: %q", c.BuildDir))
 		}
+	}
+
+	if _, err := parseRemotes(c.Remotes); err != nil {
+		errs = append(errs, err)
 	}
 
 	return errors.Join(append(errs, c.Server.validate(), c.Session.validate(), c.APIProxy.validate())...)
@@ -265,6 +286,58 @@ func (c APIProxyConfig) validate() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// parseRemotes splits name=url pairs into remotes, with one error per malformed pair.
+func parseRemotes(s string) ([]Remote, error) {
+	var remotes []Remote
+	var errs []error
+	seen := make(map[string]bool)
+
+	for _, pair := range strings.Split(s, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		name, entry, ok := strings.Cut(pair, "=")
+		if !ok {
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry must be name=url; got %q", pair))
+			continue
+		}
+		name, entry = strings.TrimSpace(name), strings.TrimSpace(entry)
+
+		switch {
+		case name == "":
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry must have a name; got %q", pair))
+			continue
+		case entry == "":
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry %q must have a url; got %q", name, pair))
+			continue
+		case seen[name]:
+			// The runtime keeps the first registration of a name and silently drops the rest.
+			errs = append(errs, fmt.Errorf("TW_REMOTES names %q more than once", name))
+			continue
+		}
+		seen[name] = true
+
+		u, err := url.Parse(entry)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry %q must be a valid url; got %q", name, entry))
+			continue
+		case u.Scheme != "http" && u.Scheme != "https":
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry %q must use scheme http or https; got %q", name, entry))
+			continue
+		case u.Host == "":
+			errs = append(errs, fmt.Errorf("TW_REMOTES entry %q must include host[:port]; got %q", name, entry))
+			continue
+		}
+
+		remotes = append(remotes, Remote{Name: name, Entry: entry})
+	}
+
+	return remotes, errors.Join(errs...)
 }
 
 // must is a helper function to panic if an error is not nil.

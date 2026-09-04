@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,10 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 		if want, got := "apps/host/dist", cfg.BuildDir; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+
+		if want, got := "pg=https://d390008ekba73v.cloudfront.net/mf-manifest.json", cfg.Remotes; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 
@@ -102,6 +107,15 @@ func TestConfig_Validate(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts no remotes", func(t *testing.T) {
+		cfg := Default()
+		cfg.Remotes = ""
+
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
 	t.Run("rejects invalid values", func(t *testing.T) {
 		for _, tt := range []struct {
 			name   string
@@ -144,6 +158,11 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				want: `TW_BUILD_DIR does not exist: "testdata/does-not-exist"`,
 			},
+			{
+				name:   "malformed remotes",
+				mutate: func(c *Config) { c.Remotes = "pg" },
+				want:   `TW_REMOTES entry must be name=url; got "pg"`,
+			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				cfg := Default()
@@ -184,6 +203,7 @@ func TestConfig_Validate(t *testing.T) {
 	t.Run("reports multiple invalid fields in one error", func(t *testing.T) {
 		cfg := Default()
 		cfg.Env = "staging"
+		cfg.Remotes = "pg"
 		cfg.Server.Port = 0
 		cfg.Session.Name = ""
 		cfg.APIProxy.PostsBaseURL = nil
@@ -193,7 +213,7 @@ func TestConfig_Validate(t *testing.T) {
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		for _, want := range []string{"TW_ENV", "TW_SERVER_PORT", "TW_SESSION_NAME", "TW_API_PROXY_POSTS_BASE_URL"} {
+		for _, want := range []string{"TW_ENV", "TW_REMOTES", "TW_SERVER_PORT", "TW_SESSION_NAME", "TW_API_PROXY_POSTS_BASE_URL"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("want err: containing %q; got: %q", want, err)
 			}
@@ -580,6 +600,133 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 					t.Errorf("want err: containing %q; got: %q", tt.want, err)
 				}
 			})
+		}
+	})
+}
+
+func TestParseRemotes(t *testing.T) {
+	t.Run("returns name=url pairs in order", func(t *testing.T) {
+		got, err := parseRemotes("pg=https://pg.test/mf-manifest.json,si=https://si.test/mf-manifest.json")
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+
+		want := []Remote{
+			{Name: "pg", Entry: "https://pg.test/mf-manifest.json"},
+			{Name: "si", Entry: "https://si.test/mf-manifest.json"},
+		}
+		if !slices.Equal(want, got) {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("trims whitespace around names, urls and separators", func(t *testing.T) {
+		got, err := parseRemotes(" pg = https://pg.test/mf-manifest.json , si=https://si.test/mf-manifest.json ")
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+
+		want := []Remote{
+			{Name: "pg", Entry: "https://pg.test/mf-manifest.json"},
+			{Name: "si", Entry: "https://si.test/mf-manifest.json"},
+		}
+		if !slices.Equal(want, got) {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("keeps everything after the first equals sign as the url", func(t *testing.T) {
+		got, err := parseRemotes("pg=https://pg.test/mf-manifest.json?v=2&x=y")
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+
+		want := []Remote{{Name: "pg", Entry: "https://pg.test/mf-manifest.json?v=2&x=y"}}
+		if !slices.Equal(want, got) {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("returns nil when nothing is configured", func(t *testing.T) {
+		got, err := parseRemotes("")
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if got != nil {
+			t.Errorf("want: nil; got: %v", got)
+		}
+	})
+
+	t.Run("rejects invalid values", func(t *testing.T) {
+		for _, tt := range []struct {
+			name    string
+			remotes string
+			want    string
+		}{
+			{
+				name:    "missing equals sign",
+				remotes: "pg",
+				want:    `TW_REMOTES entry must be name=url; got "pg"`,
+			},
+			{
+				name:    "empty name",
+				remotes: "=https://pg.test/mf-manifest.json",
+				want:    `TW_REMOTES entry must have a name; got "=https://pg.test/mf-manifest.json"`,
+			},
+			{
+				name:    "empty url",
+				remotes: "pg=",
+				want:    `TW_REMOTES entry "pg" must have a url; got "pg="`,
+			},
+			{
+				name:    "unparseable url",
+				remotes: "pg=http://bad host/mf-manifest.json",
+				want:    `TW_REMOTES entry "pg" must be a valid url; got "http://bad host/mf-manifest.json"`,
+			},
+			{
+				name:    "non-http scheme",
+				remotes: "pg=ftp://pg.test/mf-manifest.json",
+				want:    `TW_REMOTES entry "pg" must use scheme http or https; got "ftp://pg.test/mf-manifest.json"`,
+			},
+			{
+				name:    "missing host",
+				remotes: "pg=https:///mf-manifest.json",
+				want:    `TW_REMOTES entry "pg" must include host[:port]; got "https:///mf-manifest.json"`,
+			},
+			{
+				name:    "duplicate name",
+				remotes: "pg=https://a.test/mf-manifest.json,pg=https://b.test/mf-manifest.json",
+				want:    `TW_REMOTES names "pg" more than once`,
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := parseRemotes(tt.remotes)
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if !strings.Contains(err.Error(), tt.want) {
+					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				}
+			})
+		}
+	})
+
+	t.Run("returns the well-formed pairs alongside one error per malformed pair", func(t *testing.T) {
+		got, err := parseRemotes("noequals,pg=https://pg.test/mf-manifest.json,si=ftp://si.test/mf-manifest.json")
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		for _, want := range []string{`got "noequals"`, `entry "si"`} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("want err: containing %q; got: %q", want, err)
+			}
+		}
+
+		want := []Remote{{Name: "pg", Entry: "https://pg.test/mf-manifest.json"}}
+		if !slices.Equal(want, got) {
+			t.Errorf("want: %v; got: %v", want, got)
 		}
 	})
 }

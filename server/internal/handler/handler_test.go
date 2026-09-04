@@ -38,6 +38,7 @@ func TestHandler_Register(t *testing.T) {
 		cfg.Env = config.EnvProduction
 		cfg.BuildDir = buildDir
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
+		cfg.Remotes = "pg=https://pg.test/mf-manifest.json"
 
 		h := New(&cfg)
 
@@ -52,6 +53,7 @@ func TestHandler_Register(t *testing.T) {
 		}{
 			{name: "index", target: "/", wantCode: http.StatusOK, wantBody: "<html>Hello world!</html>"},
 			{name: "static asset", target: "/static/js/index.abc123.js", wantCode: http.StatusOK, wantBody: "console.log('Hello world!');"},
+			{name: "runtime config", target: "/config.json", wantCode: http.StatusOK, wantBody: "{\"remotes\":[{\"name\":\"pg\",\"entry\":\"https://pg.test/mf-manifest.json\"}]}\n"},
 			{name: "API", target: "/api/posts/hello", wantCode: http.StatusOK, wantBody: "posts:/hello"},
 			{name: "API path naming no app", target: "/api/", wantCode: http.StatusNotFound, wantBody: "{\"message\":\"Not Found\"}\n"},
 		}
@@ -129,7 +131,7 @@ func TestHandler_Register(t *testing.T) {
 		}
 	})
 
-	t.Run("serves static assets without the session middleware", func(t *testing.T) {
+	t.Run("serves static assets and runtime config without the session middleware", func(t *testing.T) {
 		buildDir := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(buildDir, "static", "js"), 0o755); err != nil {
 			t.Fatalf("os.MkdirAll: %v", err)
@@ -144,26 +146,38 @@ func TestHandler_Register(t *testing.T) {
 
 		h := New(&cfg)
 
-		var calls int
-
-		mux := http.NewServeMux()
-		h.Register(mux, func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				calls++
-				next.ServeHTTP(w, r)
-			})
-		})
-
-		req := httptest.NewRequest(http.MethodGet, "/static/js/index.abc123.js", nil)
-		rec := httptest.NewRecorder()
-
-		mux.ServeHTTP(rec, req)
-
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
+		tests := []struct {
+			name   string
+			target string
+		}{
+			{name: "static asset", target: "/static/js/index.abc123.js"},
+			{name: "runtime config", target: "/config.json"},
 		}
-		if want := 0; want != calls {
-			t.Errorf("want: %d; got: %d", want, calls)
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var calls int
+
+				mux := http.NewServeMux()
+				h.Register(mux, func(next http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						calls++
+						next.ServeHTTP(w, r)
+					})
+				})
+
+				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+				rec := httptest.NewRecorder()
+
+				mux.ServeHTTP(rec, req)
+
+				if want, got := http.StatusOK, rec.Code; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
+				if want := 0; want != calls {
+					t.Errorf("want: %d; got: %d", want, calls)
+				}
+			})
 		}
 	})
 }
