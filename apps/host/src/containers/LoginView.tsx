@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router';
-import { toast } from 'sonner';
 
 import TeacherIllustration from '~/assets/images/teacher-illustration.png';
 import { Button } from '~/components/ui/button';
+import { toast } from '~/components/ui/toast';
 
 export function LoginView() {
   const [searchParams] = useSearchParams();
@@ -12,15 +12,19 @@ export function LoginView() {
   useEffect(() => {
     if (!showError) return;
 
-    const id = toast.error("We couldn't sign you in with Edupass.", {
+    const id = 'oauth2-callback-failed';
+
+    toast.add({
+      id,
+      title: "We couldn't sign you in with Edupass.",
       description:
         'Choose Sign in with Edupass to try again. If it keeps failing, ask your school admin.',
-      duration: Infinity,
-      closeButton: true,
+      type: 'error',
+      timeout: 0,
     });
 
     return () => {
-      toast.dismiss(id);
+      toast.close(id);
     };
   }, [showError]);
 

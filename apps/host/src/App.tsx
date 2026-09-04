@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router';
 
-import { Toaster } from '~/components/ui/sonner';
+import { Toaster } from '~/components/ui/toast';
 import { TooltipProvider } from '~/components/ui/tooltip';
 import { LoginView } from '~/containers/LoginView';
 import { NotFoundView } from '~/containers/NotFoundView';
@@ -16,7 +16,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <TooltipProvider>
-        <Toaster position="bottom-right" />
+        <Toaster />
         <Suspense fallback={null}>
           <Routes>
             <Route path="/login" element={<LoginView />} />
