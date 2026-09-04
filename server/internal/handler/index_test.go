@@ -28,7 +28,7 @@ func TestHandler_index(t *testing.T) {
 		h := New(&config.Config{
 			Env:          config.EnvDevelopment,
 			DevServerURL: devServerURL,
-		})
+		}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 		rec := httptest.NewRecorder()
@@ -52,7 +52,7 @@ func TestHandler_index(t *testing.T) {
 		h := New(&config.Config{
 			Env:      config.EnvProduction,
 			BuildDir: buildDir,
-		})
+		}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 		rec := httptest.NewRecorder()
@@ -68,7 +68,7 @@ func TestHandler_index(t *testing.T) {
 	})
 
 	t.Run("return 404 for an unknown environment", func(t *testing.T) {
-		h := New(&config.Config{})
+		h := New(&config.Config{}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -97,7 +97,7 @@ func TestHandler_static(t *testing.T) {
 		h := New(&config.Config{
 			Env:          config.EnvDevelopment,
 			DevServerURL: devServerURL,
-		})
+		}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/static/js/index.js", nil)
 		rec := httptest.NewRecorder()
@@ -124,7 +124,7 @@ func TestHandler_static(t *testing.T) {
 		h := New(&config.Config{
 			Env:      config.EnvProduction,
 			BuildDir: buildDir,
-		})
+		}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/static/js/index.abc123.js", nil)
 		rec := httptest.NewRecorder()
@@ -140,7 +140,7 @@ func TestHandler_static(t *testing.T) {
 	})
 
 	t.Run("return 404 for an unknown environment", func(t *testing.T) {
-		h := New(&config.Config{})
+		h := New(&config.Config{}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/static/js/missing.js", nil)
 		rec := httptest.NewRecorder()

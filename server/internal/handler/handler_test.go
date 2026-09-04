@@ -39,7 +39,7 @@ func TestHandler_Register(t *testing.T) {
 		cfg.BuildDir = buildDir
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
 
-		h := New(&cfg)
+		h := New(&cfg, nil)
 
 		mux := http.NewServeMux()
 		h.Register(mux, func(next http.Handler) http.Handler { return next })
@@ -92,7 +92,7 @@ func TestHandler_Register(t *testing.T) {
 		cfg.BuildDir = buildDir
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
 
-		h := New(&cfg)
+		h := New(&cfg, nil)
 
 		tests := []struct {
 			name   string
@@ -142,7 +142,7 @@ func TestHandler_Register(t *testing.T) {
 		cfg.Env = config.EnvProduction
 		cfg.BuildDir = buildDir
 
-		h := New(&cfg)
+		h := New(&cfg, nil)
 
 		var calls int
 
