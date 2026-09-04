@@ -14,7 +14,7 @@ export function createProvider(port: number): Provider {
       {
         client_id: 'teacher-workspace',
         client_secret: 'teacher-workspace-secret',
-        redirect_uris: ['http://localhost:3000/auth/callback'],
+        redirect_uris: ['http://localhost:3000/auth/edupass/callback'],
         response_types: ['code'],
         grant_types: ['authorization_code'],
         token_endpoint_auth_method: 'client_secret_post',

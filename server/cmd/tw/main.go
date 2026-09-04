@@ -18,6 +18,7 @@ import (
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/handler"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
+	"github.com/String-sg/teacher-workspace/server/internal/oidc"
 	"github.com/String-sg/teacher-workspace/server/internal/session"
 	"github.com/String-sg/teacher-workspace/server/internal/session/memstore"
 	"github.com/String-sg/teacher-workspace/server/internal/session/valkeystore"
@@ -83,9 +84,15 @@ func main() {
 		Secure:           cfg.Env == config.EnvProduction,
 	})
 
+	rp, err := oidc.New(context.Background(), cfg.OIDC.IssuerURL.String(), cfg.OIDC.ClientID, cfg.OIDC.ClientSecret, cfg.OIDC.RedirectURL.String())
+	if err != nil {
+		slog.Error("failed to initialize OIDC relying party", "err", err)
+		os.Exit(1)
+	}
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	mux := http.NewServeMux()
-	handler.New(&cfg).Register(mux, sessionMiddleware)
+	handler.New(&cfg, rp).Register(mux, sessionMiddleware)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           middleware.RequestID(middleware.RequestLog(mux)),
