@@ -1,10 +1,13 @@
 services:
   valkey:
     image: valkey/valkey:8.1-alpine
+    command: ['valkey-server', '--requirepass', 'secret']
     ports:
-      - '${TW_VALKEY_PORT:-6379}:6379'
+      # Loopback only: never publish the session store to the network.
+      - '127.0.0.1:${TW_VALKEY_PORT:-6379}:6379'
     healthcheck:
-      test: ['CMD', 'valkey-cli', 'ping']
+      # valkey-cli exits 0 on NOAUTH, so match the reply, not the exit code.
+      test: ['CMD-SHELL', 'valkey-cli --no-auth-warning -a secret ping | grep -q PONG']
       interval: 5s
       timeout: 3s
       retries: 5
@@ -14,6 +17,6 @@ services:
     image: redis/redisinsight:latest
     profiles: [tools]
     ports:
-      - '${TW_REDISINSIGHT_PORT:-5540}:5540'
+      - '127.0.0.1:${TW_REDISINSIGHT_PORT:-5540}:5540'
     depends_on:
       - valkey
