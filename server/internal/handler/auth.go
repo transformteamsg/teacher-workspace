@@ -64,6 +64,18 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	logger := middleware.LoggerFromContext(r.Context())
 
+	sess, ok := middleware.SessionFromContext(r.Context())
+	if !ok {
+		logger.Error("session not found in context")
+		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		return
+	}
+
+	storedState := popSessionString(sess, sessionKeyOIDCState)
+	storedNonce := popSessionString(sess, sessionKeyOIDCNonce)
+	storedVerifier := popSessionString(sess, sessionKeyOIDCCodeVerifier)
+	returnTo := popSessionString(sess, sessionKeyReturnTo)
+
 	if errParam := r.URL.Query().Get("error"); errParam != "" {
 		logger.Warn("OIDC provider returned error",
 			"error", errParam,
@@ -80,18 +92,6 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		httputil.RenderPlain(w, logger, http.StatusBadRequest)
 		return
 	}
-
-	sess, ok := middleware.SessionFromContext(r.Context())
-	if !ok {
-		logger.Error("session not found in context")
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
-		return
-	}
-
-	storedState := popSessionString(sess, sessionKeyOIDCState)
-	storedNonce := popSessionString(sess, sessionKeyOIDCNonce)
-	storedVerifier := popSessionString(sess, sessionKeyOIDCCodeVerifier)
-	returnTo := popSessionString(sess, sessionKeyReturnTo)
 
 	if storedState == "" || state != storedState {
 		logger.Warn("state mismatch or missing")

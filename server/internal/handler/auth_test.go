@@ -527,6 +527,26 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects provider error response", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		sess := newSessionWithOIDC("test-state", "test-nonce", "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?error=access_denied&error_description=user+denied", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusForbidden, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
+			if _, ok := sess.Get(key); ok {
+				t.Errorf("want %q ok: false; got: true", key)
+			}
+		}
+	})
+
 	t.Run("rejects missing code", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 
@@ -541,20 +561,10 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusBadRequest, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
-	})
-
-	t.Run("rejects provider error response", func(t *testing.T) {
-		env := newCallbackTestEnv(t)
-
-		sess := session.New()
-		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?error=access_denied&error_description=user+denied", nil)
-		req = req.WithContext(middleware.WithSession(req.Context(), sess))
-		rec := httptest.NewRecorder()
-
-		env.h.authEdupassCallback(rec, req)
-
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
+		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
+			if _, ok := sess.Get(key); ok {
+				t.Errorf("want %q ok: false; got: true", key)
+			}
 		}
 	})
 
@@ -628,6 +638,11 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		if want, got := http.StatusBadRequest, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
+			if _, ok := sess.Get(key); ok {
+				t.Errorf("want %q ok: false; got: true", key)
+			}
 		}
 	})
 
