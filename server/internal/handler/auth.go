@@ -15,6 +15,7 @@ const (
 	sessionKeyOIDCState        = "oidc_state"
 	sessionKeyOIDCNonce        = "oidc_nonce"
 	sessionKeyOIDCCodeVerifier = "oidc_code_verifier"
+	sessionKeyReturnTo         = "return_to"
 )
 
 func popSessionString(sess *session.Session, key string) string {
@@ -32,6 +33,15 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 		logger.Error("session not found in context")
 		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
 		return
+	}
+
+	if raw := r.URL.Query().Get("return_to"); raw != "" {
+		dest, ok := sanitizeReturnTo(raw)
+		if ok {
+			sess.Set(sessionKeyReturnTo, dest)
+		} else {
+			logger.Warn("refused return_to destination", "raw", raw, "resolved", dest)
+		}
 	}
 
 	codeVerifier := oauth2.GenerateVerifier()
@@ -81,6 +91,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	storedState := popSessionString(sess, sessionKeyOIDCState)
 	storedNonce := popSessionString(sess, sessionKeyOIDCNonce)
 	storedVerifier := popSessionString(sess, sessionKeyOIDCCodeVerifier)
+	returnTo := popSessionString(sess, sessionKeyReturnTo)
 
 	if storedState == "" || state != storedState {
 		logger.Warn("state mismatch or missing")
@@ -137,5 +148,8 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 
 	sess.SetUser(&session.User{Email: claims.Email})
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	if returnTo == "" {
+		returnTo = "/"
+	}
+	http.Redirect(w, r, returnTo, http.StatusSeeOther)
 }
