@@ -3,6 +3,19 @@
 **Author(s):**
 
 - Goh Jun Hong / [@junnhooong](https://github.com/junnhooong)
+- Peh Yi Ming / [@yimingiscold](https://github.com/yimingiscold)
+
+**Decision-makers:**
+
+- Goh Jun Hong / [@junnhooong](https://github.com/junnhooong)
+- Peh Yi Ming / [@yimingiscold](https://github.com/yimingiscold)
+- Eileen Kang / [@kmye](https://github.com/kmye)
+- Kelly Lim / [@kellylimmm](https://github.com/kellylimmm)
+- Soong Yi Ning / [@yiningsoong](https://github.com/yiningsoong)
+- Eugene Ang / [@evtpano](https://github.com/evtpano)
+- Gerald Neo / [@nwsgerald](https://github.com/nwsgerald)
+- Teh Chee Yang / [@cheellipadi](https://github.com/cheellipadi)
+- Adam Ameera / [@ameeracadam](https://github.com/ameeracadam)
 
 **Status:** Accepted
 
