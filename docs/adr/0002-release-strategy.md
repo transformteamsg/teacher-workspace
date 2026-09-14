@@ -6,8 +6,7 @@
 
 **Status:** Accepted
 
-**Discussion:** [teacher-workspace #112](https://github.com/transformteamsg/teacher-workspace/issues/112),
-settled in a meeting; no separate RFC issue was raised.
+**Discussion:** No RFC issue was raised; agreed at grooming on 2026-09-02.
 
 ## Context
 
@@ -44,10 +43,10 @@ Three approaches were tabled:
    cover the same need, and neither approach solves database migrations or
    breaking API changes.
 3. **Automated releases from commit history** (release-please, or releasing
-   on every merge). Removes the manual step, but the team wants to group
-   merges and write a summary, and the deploy is a manual, version-input
-   trigger. It yields the same artefacts as option 1, so it remains a later
-   refinement.
+   on every merge). Removes the manual release step, but the team wants to
+   group merges and write a summary, and the deploy after it stays a manual,
+   version-input trigger either way. It yields the same artefacts as option 1,
+   so it remains a later refinement.
 
 ## Decision
 
@@ -78,8 +77,8 @@ showed defects.**
   its OCI labels, pushes it via OIDC to ECR as
   `transform/teacher-workspace:vX.Y.Z`, then creates the annotated git tag.
   A version cannot be republished: the workflow exits if the git tag exists,
-  and ECR refuses to overwrite a `v*` image tag. Three corrections to Onward's
-  workflow:
+  and never pushes over an existing `v*` image, since the ECR repository itself
+  accepts overwrites. Three corrections to Onward's workflow:
   - the image is pushed **before** tagging, so a failed build leaves nothing
     behind;
   - a PR check on `release/**` branches rejects a malformed title, so a
@@ -165,7 +164,7 @@ not have merged: the mistake that produced two tagless releases in Onward.
 
 ## Consequences
 
-Positive:
+### Positive
 
 - Partner developers pull a known version, and the container reports it.
 - Every release is a reviewed, revertible commit that the version, notes, tag
@@ -173,26 +172,32 @@ Positive:
 - Same flow as Onward, no new tooling, and the versioning rule is now written
   down.
 
-Negative / follow-ups:
+### Negative
 
 - "No tests at release" assumes PR CI is enforced, but `main` currently has no
-  required status checks and requires zero approvals. Make the CI jobs and the
-  release-title check required, and require one approval.
-- A CI ticket must add the release workflow and the title check, reusing the
-  OIDC role and ECR repository #120 already pushes to; then validate end to
-  end with a dummy `v0.0.1`.
-- `CONTRIBUTING.md` gains the release procedure, the versioning rule and the
-  `release` type; `CHANGELOG.md` is created.
-- The ECR repository must let `pr-<n>-latest` move while refusing to
-  overwrite a `v*` tag: configure tag immutability with a `pr-*` exclusion, or
-  enforce it in the workflow, before the first release.
+  required status checks and requires zero approvals.
+- Until the release-title check exists and is required, a release titled
+  without the `v` can still merge and silently publish nothing.
 - Only `linux/arm64` is published; `amd64` needs a native or emulated builder
   because the server is cgo.
 
+### Follow-ups
+
+- Add the release-title check. The release workflow landed in #127, reusing
+  the OIDC role and ECR repository #120 already pushes to; validate it end to
+  end with `v0.0.1`.
+- Make the CI jobs and the release-title check required, and require one
+  approval.
+- `CONTRIBUTING.md` gains the release procedure and the versioning rule; the
+  `release` type and `CHANGELOG.md` landed with #127.
+- Configure ECR tag immutability with a `pr-*` exclusion, so the registry, not
+  only the workflow, refuses to overwrite a `v*` tag.
+
 ## References
 
-- [teacher-workspace #112](https://github.com/transformteamsg/teacher-workspace/issues/112)
+- [teacher-workspace #112](https://github.com/transformteamsg/teacher-workspace/issues/112): the chore that scoped this work to Teacher Workspace and `linux/arm64`
 - [teacher-workspace #120](https://github.com/transformteamsg/teacher-workspace/pull/120): pull request images to ECR
+- [teacher-workspace #127](https://github.com/transformteamsg/teacher-workspace/pull/127): the release workflow
 - [onward `release.yaml`](https://github.com/transformteamsg/onward/blob/main/.github/workflows/release.yaml)
 - [onward `CHANGELOG.md`](https://github.com/transformteamsg/onward/blob/main/CHANGELOG.md)
 - [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
