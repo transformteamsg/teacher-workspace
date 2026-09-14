@@ -60,8 +60,8 @@ func TestDefault(t *testing.T) {
 		if want, got := SessionStoreProviderMemory, cfg.Session.StoreProvider; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if want, got := "valkey://127.0.0.1:6379", cfg.Session.Valkey.URL.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
+		if got := cfg.Session.Valkey.URL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
 		}
 		if want, got := "session:", cfg.Session.Valkey.Prefix; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
