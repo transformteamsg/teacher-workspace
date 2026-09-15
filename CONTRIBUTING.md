@@ -58,7 +58,7 @@ the local Valkey and point the server at it:
 
 ```bash
 docker compose up -d
-TW_SESSION_STORE_PROVIDER=valkey TW_SESSION_VALKEY_URL=valkey://127.0.0.1:6379 \
+TW_SESSION_STORE_PROVIDER=valkey TW_SESSION_VALKEY_URL=valkey://default:secret@127.0.0.1:6379 \
   go run ./server/cmd/tw
 ```
 

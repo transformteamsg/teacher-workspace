@@ -116,7 +116,6 @@ func Default() Config {
 			AuthenticatedTTL: 30 * time.Minute,
 			StoreProvider:    SessionStoreProviderMemory,
 			Valkey: SessionValkeyConfig{
-				URL:    must(url.Parse("valkey://127.0.0.1:6379")),
 				Prefix: "session:",
 			},
 		},
