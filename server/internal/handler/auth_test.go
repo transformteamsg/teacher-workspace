@@ -167,6 +167,15 @@ func newSessionWithOIDC(state, nonce, codeVerifier string) *session.Session {
 	return sess
 }
 
+func newSessionWithOIDCAndReturnTo(state, nonce, codeVerifier, returnTo string) *session.Session {
+	sess := newSessionWithOIDC(state, nonce, codeVerifier)
+	// mirrors authEdupass: empty return_to is never stored
+	if returnTo != "" {
+		sess.Set(sessionKeyReturnTo, returnTo)
+	}
+	return sess
+}
+
 func TestHandler_authEdupass(t *testing.T) {
 	t.Run("redirects to the provider authorization endpoint", func(t *testing.T) {
 		h, srv := newTestOIDCHandler(t)
@@ -318,6 +327,125 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Errorf("want: != %q; got: %q", c1, c2)
 		}
 	})
+
+	t.Run("stores return_to in the session when valid", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fposts%3Ftab%3Ddrafts", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+
+		val, ok := sess.Get(sessionKeyReturnTo)
+		if !ok {
+			t.Fatal("want ok: true; got: false")
+		}
+		if want, got := "/posts?tab=drafts", val.(string); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not store return_to when the value is refused", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=https%3A%2F%2Fevil.example", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+
+		if _, ok := sess.Get(sessionKeyReturnTo); ok {
+			t.Error("want ok: false; got: true")
+		}
+	})
+
+	t.Run("does not store return_to when the parameter is absent", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+
+		if _, ok := sess.Get(sessionKeyReturnTo); ok {
+			t.Error("want ok: false; got: true")
+		}
+	})
+
+	t.Run("does not store return_to when the value targets /auth/", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fauth%2Fedupass", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+
+		if _, ok := sess.Get(sessionKeyReturnTo); ok {
+			t.Error("want ok: false; got: true")
+		}
+	})
+
+	t.Run("does not store return_to when the value targets /api/", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fapi%2Fposts", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+
+		if _, ok := sess.Get(sessionKeyReturnTo); ok {
+			t.Error("want ok: false; got: true")
+		}
+	})
+
+	t.Run("does not store return_to when the value is an empty string", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+
+		if _, ok := sess.Get(sessionKeyReturnTo); ok {
+			t.Error("want ok: false; got: true")
+		}
+	})
+
 }
 
 func TestHandler_authEdupassCallback(t *testing.T) {
@@ -399,6 +527,26 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects provider error response", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		sess := newSessionWithOIDC("test-state", "test-nonce", "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?error=access_denied&error_description=user+denied", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusForbidden, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
+			if _, ok := sess.Get(key); ok {
+				t.Errorf("want %q ok: false; got: true", key)
+			}
+		}
+	})
+
 	t.Run("rejects missing code", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 
@@ -413,20 +561,10 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusBadRequest, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
-	})
-
-	t.Run("rejects provider error response", func(t *testing.T) {
-		env := newCallbackTestEnv(t)
-
-		sess := session.New()
-		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?error=access_denied&error_description=user+denied", nil)
-		req = req.WithContext(middleware.WithSession(req.Context(), sess))
-		rec := httptest.NewRecorder()
-
-		env.h.authEdupassCallback(rec, req)
-
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
+		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
+			if _, ok := sess.Get(key); ok {
+				t.Errorf("want %q ok: false; got: true", key)
+			}
 		}
 	})
 
@@ -501,6 +639,11 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusBadRequest, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
+		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
+			if _, ok := sess.Get(key); ok {
+				t.Errorf("want %q ok: false; got: true", key)
+			}
+		}
 	})
 
 	t.Run("returns 500 when session is missing from context", func(t *testing.T) {
@@ -573,6 +716,139 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		if want, got := http.StatusForbidden, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
+		}
+	})
+
+	t.Run("redirects to the return_to destination after authentication", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+
+		sess := newSessionWithOIDCAndReturnTo(state, nonce, "test-verifier", "/posts?tab=drafts")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := "/posts?tab=drafts", rec.Header().Get("Location"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if sess.User() == nil {
+			t.Fatal("want: non-nil; got: nil")
+		}
+		if want, got := "jane@example.com", sess.User().Email; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("ignores return_to on the callback request URL", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state+"&return_to=/evil", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := "/", rec.Header().Get("Location"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("clears all OIDC session keys after successful authentication", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+
+		sess := newSessionWithOIDCAndReturnTo(state, nonce, "test-verifier", "/posts")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+
+		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
+			if _, ok := sess.Get(key); ok {
+				t.Errorf("session key %q should be absent after callback; got present", key)
+			}
+		}
+	})
+
+	t.Run("clears OIDC session keys and does not set user on nonce mismatch", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		*env.tokenNonce = "token-nonce-B"
+		*env.tokenEmail = "jane@example.com"
+
+		sess := newSessionWithOIDCAndReturnTo(state, "session-nonce-A", "test-verifier", "/posts")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusForbidden, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if sess.User() != nil {
+			t.Error("want: nil; got: non-nil")
+		}
+		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
+			if _, ok := sess.Get(key); ok {
+				t.Errorf("session key %q should be absent after failed callback; got present", key)
+			}
+		}
+	})
+
+	t.Run("clears OIDC session keys and does not set user on missing email", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = ""
+
+		sess := newSessionWithOIDCAndReturnTo(state, nonce, "test-verifier", "/posts")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusForbidden, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if sess.User() != nil {
+			t.Error("want: nil; got: non-nil")
+		}
+		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
+			if _, ok := sess.Get(key); ok {
+				t.Errorf("session key %q should be absent after failed callback; got present", key)
+			}
 		}
 	})
 }
