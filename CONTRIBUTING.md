@@ -114,8 +114,8 @@ Server:
 go test -race ./...                    # all tests, as CI runs them
 go test ./server/internal/config       # single package
 go test -run TestName ./server/...     # single test
-make fmt                               # golangci-lint fmt, rewrites files in place
-make lint                              # golangci-lint run, reports without fixing
+mise run fmt                           # rewrites files in place
+mise run lint                          # reports without fixing
 go build -o build/tw ./server/cmd/tw   # production binary
 ```
 
@@ -173,7 +173,7 @@ Use **keyed struct literals** (field names) even when every field is set, includ
 - Yes: `User{Name: "a", Age: 1}`
 - No: `User{"a", 1}`
 
-Formatting: `make fmt`. Linting and static analysis: `make lint`.
+Formatting: `mise run fmt`. Linting and static analysis: `mise run lint`.
 
 #### Doc comments
 
