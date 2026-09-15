@@ -1,8 +1,8 @@
 [tools]
+"github:golangci/golangci-lint" = "2.12.2"
 go = "1.26.5"
-golangci-lint = "2.12.2"
 node = "24.19.0"
-pnpm = "11.22.0"
+"npm:pnpm" = "11.22.0"
 
 [settings]
 lockfile = true
