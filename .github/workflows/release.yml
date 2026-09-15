@@ -1,7 +1,5 @@
 name: Release
 
-# `pull_request_target` on close no longer has permission to write the Docker
-# build cache to GitHub Actions Cache.
 on:
   push:
     branches: [main]
