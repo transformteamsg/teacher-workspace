@@ -1,3 +1,5 @@
+min_version = "2026.3.5"
+
 [tasks.fmt]
 description = "Go formatter"
 run = "golangci-lint fmt"
