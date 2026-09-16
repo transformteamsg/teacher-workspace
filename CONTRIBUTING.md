@@ -66,6 +66,20 @@ The server refuses to start if the store provider is `valkey` and Valkey cannot
 be reached: it never falls back to the in-memory store, since a silent downgrade
 would lose sessions in a horizontally scaled deployment.
 
+To inspect sessions while developing, use the `valkey-cli` that ships in the
+Valkey container:
+
+```bash
+# List session keys
+docker compose exec -e REDISCLI_AUTH=secret valkey valkey-cli --scan --pattern 'session:*'
+# Open a prompt
+docker compose exec -e REDISCLI_AUTH=secret valkey valkey-cli
+```
+
+At the prompt, `GET session:<id>` prints a session as JSON, `TTL session:<id>`
+shows the seconds until it expires, and `MONITOR` streams every command the
+server receives.
+
 Open <http://localhost:3000>. The Go server is the entry point: in development it fetches the page from the Rsbuild dev server to embed the remote configuration, and proxies every other request, so hot reload still works.
 
 To check a production build, where the server serves `apps/host/dist` instead of proxying:
