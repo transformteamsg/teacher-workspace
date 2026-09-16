@@ -16,3 +16,4 @@ node = "24.19.0"
 
 [settings]
 lockfile = true
+lockfile_platforms = ["macos-arm64"]
