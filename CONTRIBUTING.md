@@ -86,11 +86,14 @@ To check a production build, where the server serves `apps/host/dist` instead of
 
 ```bash
 pnpm build
-TW_ENV=production go run ./server/cmd/tw
+docker compose up -d
+TW_ENV=production TW_SESSION_STORE_PROVIDER=valkey TW_SESSION_VALKEY_URL=valkey://default:secret@127.0.0.1:6379 \
+  go run ./server/cmd/tw
 ```
 
 In production the server parses `apps/host/dist/index.html` once at startup and
-refuses to start when it is missing, so rebuild and restart together.
+refuses to start when it is missing, so rebuild and restart together. It also
+refuses the in-memory session store, so it needs the local Valkey.
 
 ### Running against a local remote
 
