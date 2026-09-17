@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -354,9 +356,14 @@ func TestHandler_authEdupass(t *testing.T) {
 	t.Run("does not store return_to when the value is refused", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
+		var logBuf bytes.Buffer
+		testLogger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
 		sess := session.New()
 		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=https%3A%2F%2Fevil.example", nil)
-		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		ctx := middleware.WithSession(req.Context(), sess)
+		ctx = middleware.WithLogger(ctx, testLogger)
+		req = req.WithContext(ctx)
 		rec := httptest.NewRecorder()
 
 		h.authEdupass(rec, req)
@@ -367,6 +374,24 @@ func TestHandler_authEdupass(t *testing.T) {
 
 		if _, ok := sess.Get(sessionKeyReturnTo); ok {
 			t.Error("want ok: false; got: true")
+		}
+
+		var entry struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+			Raw   string `json:"raw"`
+		}
+		if err := json.NewDecoder(&logBuf).Decode(&entry); err != nil {
+			t.Fatalf("want a log entry; got decode error: %v", err)
+		}
+		if want, got := "WARN", entry.Level; want != got {
+			t.Errorf("log level: want %q; got %q", want, got)
+		}
+		if want, got := "refused return_to destination", entry.Msg; want != got {
+			t.Errorf("log msg: want %q; got %q", want, got)
+		}
+		if want, got := "https://evil.example", entry.Raw; want != got {
+			t.Errorf("log raw: want %q; got %q", want, got)
 		}
 	})
 
