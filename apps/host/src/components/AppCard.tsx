@@ -41,7 +41,7 @@ function CardIcon({
       <img src={icon} alt="" className="tw:h-full tw:w-full tw:object-contain" />
       <div
         className={cn(
-          'tw:pointer-events-none tw:absolute tw:inset-0 tw:bg-[#0064ff] tw:mix-blend-color tw:transition-opacity tw:duration-200 tw:will-change-[opacity] tw:group-hover:opacity-0',
+          'tw:pointer-events-none tw:absolute tw:inset-0 tw:bg-primary tw:mix-blend-color tw:transition-opacity tw:duration-200 tw:will-change-[opacity] tw:group-hover:opacity-0',
           HOVER_COLOR_MAP[color],
         )}
       />
