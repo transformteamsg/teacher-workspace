@@ -25,7 +25,7 @@ brew install mise
 
 [Activate mise](https://mise.jdx.dev/getting-started.html#activate-mise) for your shell, then add `~/.local/share/mise/shims` to `PATH` for your editor and git hooks.
 
-GitHub rate limits downloads without a [token](https://mise.jdx.dev/dev-tools/github-tokens.html) (403 or 429 errors), so run `gh auth login` or set `MISE_GITHUB_TOKEN`.
+Some tools, such as golangci-lint, are downloaded from their GitHub releases (the `github:` entries in `mise.toml`), and GitHub rate-limits unauthenticated downloads, failing them with 403 or 429 errors. Authenticate before running `mise install` to avoid this: run `gh auth login`, or set `MISE_GITHUB_TOKEN` to a [GitHub token](https://mise.jdx.dev/dev-tools/github-tokens.html).
 
 ### First-time setup
 
