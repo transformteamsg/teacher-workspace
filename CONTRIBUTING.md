@@ -188,6 +188,10 @@ Formatting: `pnpm format` (oxfmt). Linting: `pnpm lint` (oxlint).
 
 A [lefthook](https://lefthook.dev/) pre-commit hook (installed by `pnpm install`) runs both on staged files, auto-fixing and re-staging them.
 
+### Markdown
+
+Don't manually wrap lines. Write each paragraph or list item on a single line and let the editor soft-wrap it.
+
 ## Test Conventions
 
 ### Go
