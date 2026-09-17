@@ -11,6 +11,10 @@ func sanitizeReturnTo(raw string) (string, bool) {
 	if raw == "" {
 		return "/", false
 	}
+	// Guards against unbounded session writes.
+	if len(raw) > 2048 {
+		return "/", false
+	}
 
 	// Guards inspect u.Path (decoded); raw is returned as-is to preserve percent-encoding.
 	// u.Scheme/u.Host cover absolute URLs. The path prefix check catches bare host names

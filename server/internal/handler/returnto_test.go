@@ -1,6 +1,9 @@
 package handler
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSanitizeReturnTo(t *testing.T) {
 	tests := []struct {
@@ -63,6 +66,9 @@ func TestSanitizeReturnTo(t *testing.T) {
 
 		// Percent-encoded data preserved (would fail with double-decode)
 		{name: "preserves percent-encoded path segment", raw: "/groups/P5%2F3", wantPath: "/groups/P5%2F3", wantOK: true},
+
+		// Length limit
+		{name: "rejects path over 2048 bytes", raw: "/" + strings.Repeat("a", 2048), wantPath: "/", wantOK: false},
 
 		// No leading slash variants
 		{name: "rejects query-only string", raw: "?foo=bar", wantPath: "/", wantOK: false},
