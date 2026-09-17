@@ -12,40 +12,25 @@ func sanitizeReturnTo(raw string) (string, bool) {
 		return "/", false
 	}
 
-	// Decode before all checks so %2F%2Fevil.com is caught as //evil.com, not passed as-is.
-	// Malformed percent-encoding (e.g. %ZZ) cannot be decoded to a known path, so refuse it.
-	decoded, err := url.QueryUnescape(raw)
-	if err != nil {
+	// Guards inspect u.Path (decoded); raw is returned as-is to preserve percent-encoding.
+	// u.Scheme/u.Host cover absolute URLs. The path prefix check catches bare host names
+	// (e.g. evil.example) which have neither scheme nor host.
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "" || u.Host != "" || !strings.HasPrefix(u.Path, "/") {
 		return "/", false
 	}
 
-	// Reject anything that is not a relative path (absolute URLs, schemeless origins, etc.).
-	if !strings.HasPrefix(decoded, "/") {
+	// Browsers treat //host and /\host as off-site redirects.
+	if len(u.Path) > 1 && (u.Path[1] == '/' || u.Path[1] == '\\') {
 		return "/", false
 	}
 
-	// Block protocol-relative URLs: //evil.com and /\evil.com are treated as off-site by browsers.
-	if len(decoded) > 1 && (decoded[1] == '/' || decoded[1] == '\\') {
-		return "/", false
-	}
-
-	// Case-insensitive: /Auth/Edupass and /API/posts must also be refused.
-	// Exact match covers the bare /auth and /api paths; slash-prefix covers all sub-paths.
-	// HasPrefix("/auth") alone is not used because it would also block /authentication and /apikeys.
-	lower := strings.ToLower(decoded)
+	// Exact match + slash-prefix: HasPrefix("/auth") alone would also block /authentication and /apikeys.
+	lower := strings.ToLower(u.Path)
 	if lower == "/auth" || lower == "/api" ||
 		strings.HasPrefix(lower, "/auth/") || strings.HasPrefix(lower, "/api/") {
 		return "/", false
 	}
 
-	// Final guard: if Go's URL parser finds a scheme or host the path encodes one we missed.
-	u, err := url.Parse(decoded)
-	if err != nil {
-		return "/", false
-	}
-	if u.Scheme != "" || u.Host != "" {
-		return "/", false
-	}
-
-	return decoded, true
+	return raw, true
 }

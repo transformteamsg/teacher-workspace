@@ -61,6 +61,9 @@ func TestSanitizeReturnTo(t *testing.T) {
 		// XSS via javascript: scheme -- rejected by no-leading-slash check
 		{name: "rejects javascript scheme", raw: "javascript:alert(1)", wantPath: "/", wantOK: false},
 
+		// Percent-encoded data preserved (would fail with double-decode)
+		{name: "preserves percent-encoded path segment", raw: "/groups/P5%2F3", wantPath: "/groups/P5%2F3", wantOK: true},
+
 		// No leading slash variants
 		{name: "rejects query-only string", raw: "?foo=bar", wantPath: "/", wantOK: false},
 	}
