@@ -78,9 +78,9 @@ Valkey container:
 
 ```bash
 # List session keys
-docker compose exec -e REDISCLI_AUTH=secret valkey valkey-cli --scan --pattern 'session:*'
+docker compose exec -e VALKEYCLI_AUTH=secret valkey valkey-cli --scan --pattern 'session:*'
 # Open a prompt
-docker compose exec -e REDISCLI_AUTH=secret valkey valkey-cli
+docker compose exec -e VALKEYCLI_AUTH=secret valkey valkey-cli
 ```
 
 At the prompt, `GET session:<id>` prints a session as JSON, `TTL session:<id>`
