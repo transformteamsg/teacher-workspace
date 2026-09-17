@@ -1,8 +1,7 @@
 name: Release
 
 on:
-  pull_request_target:
-    types: [closed]
+  push:
     branches: [main]
 
 permissions:
@@ -15,9 +14,9 @@ concurrency:
 jobs:
   release:
     name: Release
+    # Squash-merge lands a release PR on main as `release: vX.Y.Z (#N)`.
     if: >
-      github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.title, 'release: v')
+      startsWith(github.event.head_commit.message, 'release: v')
     runs-on: ubuntu-24.04-arm
     env:
       ECR_REPOSITORY: transform/teacher-workspace
@@ -27,26 +26,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          # Pin to the commit this pull request produced. A pull_request_target
-          # event otherwise checks out whatever main's tip was when the event
-          # fired, which is this commit only by coincidence.
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Resolve version
         id: resolve-version
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          if [[ ! "$PR_TITLE" =~ ^release:[[:space:]]v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "::error::PR title must look like 'release: v1.2.3', got '${PR_TITLE}'"
+          TITLE="${COMMIT_MESSAGE%%$'\n'*}"
+          if [[ ! "$TITLE" =~ ^release:[[:space:]]v([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]\(#([0-9]+)\)$ ]]; then
+            echo "::error::Commit title must look like 'release: v1.2.3 (#123)', got '${TITLE}'"
             exit 1
           fi
           VERSION="v${BASH_REMATCH[1]}"
+          PR_NUMBER="${BASH_REMATCH[2]}"
 
           DECLARED="$(jq -r '.version' package.json)"
           if [[ "$VERSION" != "v${DECLARED}" ]]; then
-            echo "::error::PR title says ${VERSION}, root package.json declares v${DECLARED}"
+            echo "::error::Commit title says ${VERSION}, root package.json declares v${DECLARED}"
             exit 1
           fi
 
@@ -57,6 +53,7 @@ jobs:
           fi
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "pr-number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
@@ -99,8 +96,6 @@ jobs:
           images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
           tags: |
             type=raw,value=${{ steps.resolve-version.outputs.version }}
-          labels: |
-            org.opencontainers.image.revision=${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Build and push image
         if: steps.check-existing-image-tag.outputs.exists != 'true'
@@ -118,8 +113,9 @@ jobs:
       - name: Tag release
         env:
           VERSION: ${{ steps.resolve-version.outputs.version }}
+          PR_NUMBER: ${{ steps.resolve-version.outputs.pr-number }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$VERSION" -m "Automated release $VERSION (#${{ github.event.pull_request.number }})"
+          git tag -a "$VERSION" -m "Automated release $VERSION (#${PR_NUMBER})"
           git push origin "$VERSION"
