@@ -13,14 +13,9 @@ Teacher Workspace is a unified platform that consolidates teacher-facing applica
   - **golangci-lint** 2.12.2
 - **Docker**, for the local Valkey and for the session store tests
 
-`mise.lock` pins each tool and records how it was verified, so a tampered download is caught before
-it is installed. Only mise [2026.3.5](https://github.com/jdx/mise/releases/tag/v2026.3.5) and newer
-writes and checks that record; older versions install the tools without it. `mise.toml` sets
-`min_version` so that nobody misses the check.
+`mise.lock` pins each tool and records how it was verified, so a tampered download is caught before it is installed. Only mise [2026.3.5](https://github.com/jdx/mise/releases/tag/v2026.3.5) and newer writes and checks that record; older versions install the tools without it. `mise.toml` sets `min_version` so that nobody misses the check.
 
-Note that the server depends on [valkey-glide](https://github.com/valkey-io/valkey-glide),
-which is cgo-based and ships prebuilt native libraries for Linux and macOS only.
-Builds require `CGO_ENABLED=1` (the default), and Windows is not supported.
+Note that the server depends on [valkey-glide](https://github.com/valkey-io/valkey-glide), which is cgo-based and ships prebuilt native libraries for Linux and macOS only. Builds require `CGO_ENABLED=1` (the default), and Windows is not supported.
 
 Install mise on macOS:
 
@@ -59,9 +54,7 @@ pnpm dev
 go run ./server/cmd/tw
 ```
 
-By default the server keeps sessions in memory, so they are lost on restart and
-are not shared between processes. To run against a shared store instead, start
-the local Valkey and point the server at it:
+By default the server keeps sessions in memory, so they are lost on restart and are not shared between processes. To run against a shared store instead, start the local Valkey and point the server at it:
 
 ```bash
 docker compose up -d
@@ -69,12 +62,9 @@ TW_SESSION_STORE_PROVIDER=valkey TW_SESSION_VALKEY_URL=valkey://default:secret@1
   go run ./server/cmd/tw
 ```
 
-The server refuses to start if the store provider is `valkey` and Valkey cannot
-be reached: it never falls back to the in-memory store, since a silent downgrade
-would lose sessions in a horizontally scaled deployment.
+The server refuses to start if the store provider is `valkey` and Valkey cannot be reached: it never falls back to the in-memory store, since a silent downgrade would lose sessions in a horizontally scaled deployment.
 
-To inspect sessions while developing, use the `valkey-cli` that ships in the
-Valkey container:
+To inspect sessions while developing, use the `valkey-cli` that ships in the Valkey container:
 
 ```bash
 # List session keys
@@ -83,9 +73,7 @@ docker compose exec -e VALKEYCLI_AUTH=secret valkey valkey-cli --scan --pattern 
 docker compose exec -e VALKEYCLI_AUTH=secret valkey valkey-cli
 ```
 
-At the prompt, `GET session:<id>` prints a session as JSON, `TTL session:<id>`
-shows the seconds until it expires, and `MONITOR` streams every command the
-server receives.
+At the prompt, `GET session:<id>` prints a session as JSON, `TTL session:<id>` shows the seconds until it expires, and `MONITOR` streams every command the server receives.
 
 Open <http://localhost:3000>. The Go server is the entry point: in development it fetches the page from the Rsbuild dev server to embed the remote configuration, and proxies every other request, so hot reload still works.
 
@@ -96,18 +84,13 @@ pnpm build
 TW_ENV=production go run ./server/cmd/tw
 ```
 
-In production the server parses `apps/host/dist/index.html` once at startup and
-refuses to start when it is missing, so rebuild and restart together.
+In production the server parses `apps/host/dist/index.html` once at startup and refuses to start when it is missing, so rebuild and restart together.
 
 ### Running against a local remote
 
-Posts and Groups are served by the `pg` remote, and Student Insights by `si`.
-Neither is compiled into the host: the server reads their manifest URLs at
-startup and embeds them in the page. Unset, a remote is not registered and its
-route renders the unavailable fallback.
+Posts and Groups are served by the `pg` remote, and Student Insights by `si`. Neither is compiled into the host: the server reads their manifest URLs at startup and embeds them in the page. Unset, a remote is not registered and its route renders the unavailable fallback.
 
-Point the host at a remote running locally, where the Parents Gateway dev
-server defaults to port 3004:
+Point the host at a remote running locally, where the Parents Gateway dev server defaults to port 3004:
 
 ```bash
 TW_REMOTE_POSTS_MURL=http://127.0.0.1:3004/mf-manifest.json go run ./server/cmd/tw
@@ -121,9 +104,7 @@ TW_REMOTE_POSTS_MURL=http://127.0.0.1:3004/mf-manifest.json \
   go run ./server/cmd/tw
 ```
 
-The host and the remote share a single React instance, so both must be
-development builds or both production builds. A production host pointed at a
-remote's dev server fails to render it and shows the route's fallback.
+The host and the remote share a single React instance, so both must be development builds or both production builds. A production host pointed at a remote's dev server fails to render it and shows the route's fallback.
 
 ### Common commands
 
