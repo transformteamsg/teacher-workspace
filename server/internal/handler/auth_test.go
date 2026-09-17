@@ -285,7 +285,7 @@ func TestHandler_authEdupass(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 500 when session is missing from context", func(t *testing.T) {
+	t.Run("redirects to login with error when session is missing from context", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		req := httptest.NewRequest(http.MethodGet, "/auth/edupass", nil)
@@ -293,8 +293,43 @@ func TestHandler_authEdupass(t *testing.T) {
 
 		h.authEdupass(rec, req)
 
-		if want, got := http.StatusInternalServerError, rec.Code; want != got {
+		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := "/login?error=oauth2_failed", rec.Header().Get("Location"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("redirects to login with error and return_to when session is missing", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fposts%2F123", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := "/login?error=oauth2_failed&return_to=%2Fposts%2F123", rec.Header().Get("Location"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("redirects to login with error and no return_to when return_to is invalid", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=https%3A%2F%2Fevil.example", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := "/login?error=oauth2_failed", rec.Header().Get("Location"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})
 

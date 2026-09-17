@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"net/url"
 
 	"golang.org/x/oauth2"
 
@@ -25,23 +26,36 @@ func popSessionString(sess *session.Session, key string) string {
 	return s
 }
 
+func redirectLoginError(w http.ResponseWriter, r *http.Request, errorCode string, returnTo string) {
+	q := url.Values{}
+	q.Set("error", errorCode)
+	if returnTo != "" {
+		q.Set("return_to", returnTo)
+	}
+	http.Redirect(w, r, "/login?"+q.Encode(), http.StatusFound)
+}
+
 func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 	logger := middleware.LoggerFromContext(r.Context())
+
+	var dest string
+	if raw := r.URL.Query().Get("return_to"); raw != "" {
+		if d, ok := sanitizeReturnTo(raw); ok {
+			dest = d
+		} else {
+			logger.Warn("refused return_to destination", "raw", raw, "resolved", d)
+		}
+	}
 
 	sess, ok := middleware.SessionFromContext(r.Context())
 	if !ok {
 		logger.Error("session not found in context")
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		redirectLoginError(w, r, "oauth2_failed", dest)
 		return
 	}
 
-	if raw := r.URL.Query().Get("return_to"); raw != "" {
-		dest, ok := sanitizeReturnTo(raw)
-		if ok {
-			sess.Set(sessionKeyReturnTo, dest)
-		} else {
-			logger.Warn("refused return_to destination", "raw", raw, "resolved", dest)
-		}
+	if dest != "" {
+		sess.Set(sessionKeyReturnTo, dest)
 	}
 
 	codeVerifier := oauth2.GenerateVerifier()
