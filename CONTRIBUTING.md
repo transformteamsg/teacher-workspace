@@ -6,34 +6,41 @@ Teacher Workspace is a unified platform that consolidates teacher-facing applica
 
 ### Prerequisites
 
-- **Go** 1.26.5
-- **Node.js** 24.19.0
-- **pnpm** 11.22.0
+- **[mise](https://mise.jdx.dev/installing-mise.html)** 2026.3.5 or newer, which installs and pins the tools below
+  - **Go** 1.26.5
+  - **Node.js** 24.19.0
+  - **pnpm** 11.22.0
+  - **golangci-lint** 2.12.2
 - **Docker**, for the local Valkey and for the session store tests
+
+`mise.lock` pins each tool and records how it was verified, so a tampered download is caught before
+it is installed. Only mise [2026.3.5](https://github.com/jdx/mise/releases/tag/v2026.3.5) and newer
+writes and checks that record; older versions install the tools without it. `mise.toml` sets
+`min_version` so that nobody misses the check.
 
 Note that the server depends on [valkey-glide](https://github.com/valkey-io/valkey-glide),
 which is cgo-based and ships prebuilt native libraries for Linux and macOS only.
 Builds require `CGO_ENABLED=1` (the default), and Windows is not supported.
 
-Recommended install on macOS:
+Install mise on macOS:
 
 ```bash
 brew install mise
-mise use --global go@1.26.5 node@24.19.0 npm:pnpm@11.22.0
 ```
 
-`mise use` records the versions but does not put them on `PATH`. Follow mise's [activation guide](https://mise.jdx.dev/getting-started.html) for your shell, and add `~/.local/share/mise/shims` to `PATH` as well, so the tools also resolve when git and your editor run outside an interactive shell.
+[Activate mise](https://mise.jdx.dev/getting-started.html#activate-mise) for your shell, then add `~/.local/share/mise/shims` to `PATH` for your editor and git hooks.
 
-On Linux or Windows, install [mise](https://mise.jdx.dev/) via your package manager, then run the same `mise use` command.
+GitHub rate limits downloads without a [token](https://mise.jdx.dev/dev-tools/github-tokens.html) (403 or 429 errors), so run `gh auth login` or set `MISE_GITHUB_TOKEN`.
 
 ### First-time setup
 
 From the repo root:
 
 ```bash
+mise trust
+mise install
 cp .env.example .env
 pnpm install
-make install-tools
 ```
 
 Edit `.env` to set the `TW_*` variables for your environment.
@@ -126,8 +133,8 @@ Server:
 go test -race ./...                    # all tests, as CI runs them
 go test ./server/internal/config       # single package
 go test -run TestName ./server/...     # single test
-make fmt                               # golangci-lint fmt, rewrites files in place
-make lint                              # golangci-lint run, reports without fixing
+mise run fmt                           # rewrites files in place
+mise run lint                          # reports without fixing
 go build -o build/tw ./server/cmd/tw   # production binary
 ```
 
@@ -185,7 +192,7 @@ Use **keyed struct literals** (field names) even when every field is set, includ
 - Yes: `User{Name: "a", Age: 1}`
 - No: `User{"a", 1}`
 
-Formatting: `make fmt`. Linting and static analysis: `make lint`.
+Formatting: `mise run fmt`. Linting and static analysis: `mise run lint`.
 
 #### Doc comments
 

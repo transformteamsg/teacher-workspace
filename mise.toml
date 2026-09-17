@@ -1,0 +1,19 @@
+min_version = "2026.3.5"
+
+[tasks.fmt]
+description = "Go formatter"
+run = "golangci-lint fmt"
+
+[tasks.lint]
+description = "Go linter"
+run = "golangci-lint run"
+
+[tools]
+"github:golangci/golangci-lint" = "2.12.2"
+go = "1.26.5"
+node = "24.19.0"
+"npm:pnpm" = "11.22.0"
+
+[settings]
+lockfile = true
+lockfile_platforms = ["macos-arm64"]
