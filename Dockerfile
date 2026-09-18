@@ -61,8 +61,6 @@ ENV TW_ENV=production \
 RUN mkdir /app
 WORKDIR /app
 
-# The Valkey and Edupass OIDC clients verify TLS against the system trust
-# store, which the Debian base images do not ship.
 RUN apt-get update && \
         apt-get install --yes --no-install-recommends ca-certificates && \
         rm -rf /var/lib/apt/lists/*
