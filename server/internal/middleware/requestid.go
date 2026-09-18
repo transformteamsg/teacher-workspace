@@ -46,3 +46,8 @@ func LoggerFromContext(ctx context.Context) *slog.Logger {
 	}
 	return slog.Default()
 }
+
+// WithLogger attaches logger to ctx. Useful in tests to capture log output.
+func WithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	return context.WithValue(ctx, ctxKeyLogger{}, logger)
+}
