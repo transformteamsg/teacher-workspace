@@ -12,7 +12,7 @@ func sanitizeReturnTo(raw string) (string, bool) {
 		return "/", false
 	}
 	// Guards against unbounded session writes.
-	if len(raw) > 2048 {
+	if len(raw) > 1024 {
 		return "/", false
 	}
 

@@ -68,7 +68,8 @@ func TestSanitizeReturnTo(t *testing.T) {
 		{name: "preserves percent-encoded path segment", raw: "/groups/P5%2F3", wantPath: "/groups/P5%2F3", wantOK: true},
 
 		// Length limit
-		{name: "rejects path over 2048 bytes", raw: "/" + strings.Repeat("a", 2048), wantPath: "/", wantOK: false},
+		{name: "accepts path of exactly 1024 bytes", raw: "/" + strings.Repeat("a", 1023), wantPath: "/" + strings.Repeat("a", 1023), wantOK: true},
+		{name: "rejects path over 1024 bytes", raw: "/" + strings.Repeat("a", 1024), wantPath: "/", wantOK: false},
 
 		// No leading slash variants
 		{name: "rejects query-only string", raw: "?foo=bar", wantPath: "/", wantOK: false},
