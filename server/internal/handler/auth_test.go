@@ -915,7 +915,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
-		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fposts", rec.Header().Get("Location"); want != got {
+		if want, got := wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts"), rec.Header().Get("Location"); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 		if sess.User() != nil {
@@ -946,7 +946,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
-		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fposts", rec.Header().Get("Location"); want != got {
+		if want, got := wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts"), rec.Header().Get("Location"); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 		if sess.User() != nil {
@@ -972,7 +972,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
-		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fposts%2F123", rec.Header().Get("Location"); want != got {
+		if want, got := wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts/123"), rec.Header().Get("Location"); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})
@@ -993,7 +993,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
-		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fgroups%2F7%2Fmembers", rec.Header().Get("Location"); want != got {
+		if want, got := wantCallbackErrPath+"&return_to="+url.QueryEscape("/groups/7/members"), rec.Header().Get("Location"); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})
