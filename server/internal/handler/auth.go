@@ -6,7 +6,6 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/String-sg/teacher-workspace/server/internal/session"
 	"github.com/String-sg/teacher-workspace/server/pkg/random"
@@ -17,6 +16,9 @@ const (
 	sessionKeyOIDCNonce        = "oidc_nonce"
 	sessionKeyOIDCCodeVerifier = "oidc_code_verifier"
 	sessionKeyReturnTo         = "return_to"
+
+	loginErrorOAuth2         = "oauth2_failed"
+	loginErrorOAuth2Callback = "oauth2_callback_failed"
 )
 
 func popSessionString(sess *session.Session, key string) string {
@@ -50,7 +52,7 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 	sess, ok := middleware.SessionFromContext(r.Context())
 	if !ok {
 		logger.Error("session not found in context")
-		redirectLoginError(w, r, "oauth2_failed", dest)
+		redirectLoginError(w, r, loginErrorOAuth2, dest)
 		return
 	}
 
@@ -81,7 +83,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	sess, ok := middleware.SessionFromContext(r.Context())
 	if !ok {
 		logger.Error("session not found in context")
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, "")
 		return
 	}
 
@@ -95,7 +97,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			"error", errParam,
 			"error_description", r.URL.Query().Get("error_description"),
 		)
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
@@ -103,46 +105,46 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	if code == "" || state == "" {
 		logger.Warn("callback missing state or code")
-		httputil.RenderPlain(w, logger, http.StatusBadRequest)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	if storedState == "" || state != storedState {
 		logger.Warn("state mismatch or missing")
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	if storedVerifier == "" {
 		logger.Warn("code verifier missing from session")
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	token, err := h.rp.OAuth2.Exchange(r.Context(), code, oauth2.VerifierOption(storedVerifier))
 	if err != nil {
 		logger.Error("failed to exchange authorization code", "err", err)
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
 		logger.Error("token response missing id_token")
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	idToken, err := h.rp.Verifier.Verify(r.Context(), rawIDToken)
 	if err != nil {
 		logger.Error("failed to verify ID token", "err", err)
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	if storedNonce == "" || idToken.Nonce != storedNonce {
 		logger.Warn("nonce mismatch or missing")
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
@@ -151,12 +153,12 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		logger.Error("failed to extract claims", "err", err)
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 	if claims.Email == "" {
 		logger.Warn("ID token missing email claim")
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
