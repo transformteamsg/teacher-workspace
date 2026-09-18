@@ -22,7 +22,10 @@ import (
 	"github.com/String-sg/teacher-workspace/server/internal/session"
 )
 
-const wantCallbackErrPath = "/login?error=oauth2_callback_failed"
+const (
+	wantCallbackErrPath = "/login?error=oauth2_callback_failed"
+	wantEdupassErrPath  = "/login?error=oauth2_failed"
+)
 
 // newTestOIDCHandler spins up a minimal OIDC test server and returns a
 // Handler with a real RelyingParty pointed at it.
@@ -305,7 +308,7 @@ func TestHandler_authEdupass(t *testing.T) {
 
 		h.authEdupass(rec, req)
 
-		assertRedirect(t, rec, http.StatusFound, "/login?error=oauth2_failed")
+		assertRedirect(t, rec, http.StatusFound, wantEdupassErrPath)
 	})
 
 	t.Run("redirects to login with error and return_to when session is missing", func(t *testing.T) {
@@ -316,7 +319,7 @@ func TestHandler_authEdupass(t *testing.T) {
 
 		h.authEdupass(rec, req)
 
-		assertRedirect(t, rec, http.StatusFound, "/login?error=oauth2_failed&return_to=%2Fposts%2F123")
+		assertRedirect(t, rec, http.StatusFound, wantEdupassErrPath+"&return_to=%2Fposts%2F123")
 	})
 
 	t.Run("redirects to login with error and no return_to when session is missing and return_to is invalid", func(t *testing.T) {
@@ -327,7 +330,7 @@ func TestHandler_authEdupass(t *testing.T) {
 
 		h.authEdupass(rec, req)
 
-		assertRedirect(t, rec, http.StatusFound, "/login?error=oauth2_failed")
+		assertRedirect(t, rec, http.StatusFound, wantEdupassErrPath)
 	})
 
 	t.Run("generates different state, nonce, and challenge on each request", func(t *testing.T) {
