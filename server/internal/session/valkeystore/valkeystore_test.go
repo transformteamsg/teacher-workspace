@@ -29,13 +29,13 @@ var _ session.Store = (*Store)(nil)
 // isolate by key prefix, since starting a container per test costs seconds.
 var valkeyURL *url.URL
 
-// TestMain runs a single Valkey for the whole package. 8.1 is the newest
-// version offered by both ElastiCache and upstream, so local and deployed can
-// be pinned alike. AWS also offers an 8.2, which upstream never published.
+// TestMain runs a single Valkey for the whole package. 9.1 is offered by both
+// ElastiCache and upstream, so local and deployed are pinned alike. AWS also
+// offers an 8.2, which upstream never published and has no container image.
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	container, err := testcontainers.Run(ctx, "valkey/valkey:8.1-alpine",
+	container, err := testcontainers.Run(ctx, "valkey/valkey:9.1-alpine",
 		testcontainers.WithExposedPorts("6379/tcp"),
 		testcontainers.WithWaitStrategy(wait.ForListeningPort("6379/tcp")),
 	)
