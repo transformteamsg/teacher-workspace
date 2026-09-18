@@ -319,7 +319,7 @@ func TestHandler_authEdupass(t *testing.T) {
 		assertRedirect(t, rec, http.StatusFound, "/login?error=oauth2_failed&return_to=%2Fposts%2F123")
 	})
 
-	t.Run("redirects to login with error and no return_to when return_to is invalid", func(t *testing.T) {
+	t.Run("redirects to login with error and no return_to when session is missing and return_to is invalid", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=https%3A%2F%2Fevil.example", nil)
