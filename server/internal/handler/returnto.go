@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -29,9 +30,11 @@ func sanitizeReturnTo(raw string) (string, bool) {
 		return "/", false
 	}
 
-	// Exact match + slash-prefix: HasPrefix("/auth") alone would also block /authentication and /apikeys.
-	lower := strings.ToLower(u.Path)
-	if lower == "/auth" || lower == "/api" ||
+	// Resolve ".." segments so /x/../auth/edupass cannot bypass the prefix check.
+	cleaned := path.Clean(u.Path)
+
+	lower := strings.ToLower(cleaned)
+	if lower == "/auth" || lower == "/api" || lower == "/login" ||
 		strings.HasPrefix(lower, "/auth/") || strings.HasPrefix(lower, "/api/") {
 		return "/", false
 	}

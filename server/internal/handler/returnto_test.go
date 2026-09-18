@@ -55,6 +55,18 @@ func TestSanitizeReturnTo(t *testing.T) {
 		{name: "rejects /api without trailing slash", raw: "/api", wantPath: "/", wantOK: false},
 		{name: "rejects /API case bypass without trailing slash", raw: "/API", wantPath: "/", wantOK: false},
 
+		// Internal route blocking: /login (exact + prefix, not /loginXX)
+		{name: "rejects /login exact", raw: "/login", wantPath: "/", wantOK: false},
+		{name: "rejects /Login case bypass", raw: "/Login", wantPath: "/", wantOK: false},
+		{name: "rejects /login with query string", raw: "/login?error=oauth2_failed", wantPath: "/", wantOK: false},
+		{name: "accepts /loginXX (not a prefix match)", raw: "/loginXX", wantPath: "/loginXX", wantOK: true},
+
+		// Path traversal: ".." segments resolved before prefix check
+		{name: "rejects dot-dot traversal to /auth/", raw: "/x/../auth/edupass", wantPath: "/", wantOK: false},
+		{name: "rejects dot-dot traversal to /api/", raw: "/x/../api/posts", wantPath: "/", wantOK: false},
+		{name: "rejects dot-dot traversal to /login", raw: "/x/../login", wantPath: "/", wantOK: false},
+		{name: "rejects nested dot-dot traversal", raw: "/a/b/../../auth/edupass", wantPath: "/", wantOK: false},
+
 		// Malformed percent-encoding
 		{name: "rejects malformed percent-encoding", raw: "%ZZ", wantPath: "/", wantOK: false},
 

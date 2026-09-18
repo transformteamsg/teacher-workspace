@@ -8,7 +8,13 @@ import { toast } from '~/components/ui/toast';
 export default function LoginView() {
   const [searchParams] = useSearchParams();
   const errorParam = searchParams.get('error');
+  const returnTo = searchParams.get('return_to');
   const showError = errorParam === 'oauth2_failed' || errorParam === 'oauth2_callback_failed';
+
+  const safeReturnTo = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null;
+  const loginHref = safeReturnTo
+    ? `/auth/edupass?return_to=${encodeURIComponent(safeReturnTo)}`
+    : '/auth/edupass';
 
   useEffect(() => {
     if (!showError) return;
@@ -42,7 +48,7 @@ export default function LoginView() {
             </p>
 
             <Button
-              render={<a href="/auth/edupass" />}
+              render={<a href={loginHref} />}
               nativeButton={false}
               className="tw:mt-6 tw:w-full tw:text-white"
             >
