@@ -61,6 +61,10 @@ ENV TW_ENV=production \
 RUN mkdir /app
 WORKDIR /app
 
+RUN apt-get update && \
+        apt-get install --yes --no-install-recommends ca-certificates && \
+        rm -rf /var/lib/apt/lists/*
+
 # 1. Create a system group named `zero`.
 # 2. Create a system user named `zero` (no home directory, no login shell).
 # 3. Change the permission of `app` folder to user `zero`.
