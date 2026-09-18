@@ -180,6 +180,16 @@ func newSessionWithOIDCAndReturnTo(state, nonce, codeVerifier, returnTo string) 
 	return sess
 }
 
+func assertRedirect(t *testing.T, rec *httptest.ResponseRecorder, wantCode int, wantLocation string) {
+	t.Helper()
+	if want, got := wantCode, rec.Code; want != got {
+		t.Fatalf("want: %d; got: %d", want, got)
+	}
+	if want, got := wantLocation, rec.Header().Get("Location"); want != got {
+		t.Errorf("want: %q; got: %q", want, got)
+	}
+}
+
 func TestHandler_authEdupass(t *testing.T) {
 	t.Run("redirects to the provider authorization endpoint", func(t *testing.T) {
 		h, srv := newTestOIDCHandler(t)
@@ -295,12 +305,7 @@ func TestHandler_authEdupass(t *testing.T) {
 
 		h.authEdupass(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/login?error=oauth2_failed", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, "/login?error=oauth2_failed")
 	})
 
 	t.Run("redirects to login with error and return_to when session is missing", func(t *testing.T) {
@@ -311,12 +316,7 @@ func TestHandler_authEdupass(t *testing.T) {
 
 		h.authEdupass(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/login?error=oauth2_failed&return_to=%2Fposts%2F123", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, "/login?error=oauth2_failed&return_to=%2Fposts%2F123")
 	})
 
 	t.Run("redirects to login with error and no return_to when return_to is invalid", func(t *testing.T) {
@@ -327,12 +327,7 @@ func TestHandler_authEdupass(t *testing.T) {
 
 		h.authEdupass(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/login?error=oauth2_failed", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, "/login?error=oauth2_failed")
 	})
 
 	t.Run("generates different state, nonce, and challenge on each request", func(t *testing.T) {
@@ -526,12 +521,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusSeeOther, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusSeeOther, "/")
 		if sess.User() == nil {
 			t.Fatal("want: non-nil; got: nil")
 		}
@@ -550,12 +540,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 		if sess.User() != nil {
 			t.Error("want: nil; got: non-nil")
 		}
@@ -572,12 +557,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("rejects when no OIDC values in session", func(t *testing.T) {
@@ -590,12 +570,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("rejects provider error response", func(t *testing.T) {
@@ -608,12 +583,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
 			if _, ok := sess.Get(key); ok {
 				t.Errorf("want %q ok: false; got: true", key)
@@ -632,12 +602,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
 			if _, ok := sess.Get(key); ok {
 				t.Errorf("want %q ok: false; got: true", key)
@@ -659,12 +624,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("rejects missing nonce", func(t *testing.T) {
@@ -681,12 +641,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("rejects missing email claim", func(t *testing.T) {
@@ -704,12 +659,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("redirects to login with error when state is missing from callback URL", func(t *testing.T) {
@@ -722,12 +672,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
 			if _, ok := sess.Get(key); ok {
 				t.Errorf("want %q ok: false; got: true", key)
@@ -743,12 +688,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("redirects to login with error when token exchange fails", func(t *testing.T) {
@@ -764,12 +704,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("redirects to login with error when token response is missing id_token", func(t *testing.T) {
@@ -788,12 +723,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("redirects to login with error when ID token is expired", func(t *testing.T) {
@@ -812,12 +742,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath, rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("redirects to the return_to destination after authentication", func(t *testing.T) {
@@ -835,12 +760,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusSeeOther, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/posts?tab=drafts", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusSeeOther, "/posts?tab=drafts")
 		if sess.User() == nil {
 			t.Fatal("want: non-nil; got: nil")
 		}
@@ -864,12 +784,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusSeeOther, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusSeeOther, "/")
 	})
 
 	t.Run("clears all OIDC session keys after successful authentication", func(t *testing.T) {
@@ -912,12 +827,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts"), rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts"))
 		if sess.User() != nil {
 			t.Error("want: nil; got: non-nil")
 		}
@@ -943,12 +853,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts"), rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts"))
 		if sess.User() != nil {
 			t.Error("want: nil; got: non-nil")
 		}
@@ -969,12 +874,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts/123"), rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts/123"))
 	})
 
 	t.Run("preserves return_to when token exchange fails", func(t *testing.T) {
@@ -990,11 +890,6 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := wantCallbackErrPath+"&return_to="+url.QueryEscape("/groups/7/members"), rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath+"&return_to="+url.QueryEscape("/groups/7/members"))
 	})
 }
