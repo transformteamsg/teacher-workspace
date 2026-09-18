@@ -117,6 +117,8 @@ func TestConfig_Validate(t *testing.T) {
 		cfg.OIDC = validOIDCConfig()
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
+		cfg.Session.StoreProvider = SessionStoreProviderValkey
+		cfg.Session.Valkey.URL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:6379"}
 
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("want err: nil; got: %v", err)
@@ -166,6 +168,14 @@ func TestConfig_Validate(t *testing.T) {
 				want: `TW_BUILD_DIR does not exist: "testdata/does-not-exist"`,
 			},
 			{
+				name: "memory session store in production",
+				mutate: func(c *Config) {
+					c.Env = EnvProduction
+					c.Session.StoreProvider = SessionStoreProviderMemory
+				},
+				want: `TW_SESSION_STORE_PROVIDER must be "valkey" when TW_ENV is "production"; got "memory"`,
+			},
+			{
 				name:   "remote manifest url with a non-http scheme",
 				mutate: func(c *Config) { c.Remote.PostsManifestURL = "ftp://pg.test/mf-manifest.json" },
 				want:   `TW_REMOTE_POSTS_MURL must use scheme http or https; got "ftp://pg.test/mf-manifest.json"`,
@@ -192,6 +202,8 @@ func TestConfig_Validate(t *testing.T) {
 		cfg.OIDC = validOIDCConfig()
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
+		cfg.Session.StoreProvider = SessionStoreProviderValkey
+		cfg.Session.Valkey.URL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:6379"}
 		cfg.DevServerURL = &url.URL{}
 
 		if err := cfg.Validate(); err != nil {
@@ -203,6 +215,16 @@ func TestConfig_Validate(t *testing.T) {
 		cfg := Default()
 		cfg.OIDC = validOIDCConfig()
 		cfg.BuildDir = "testdata/does-not-exist"
+
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("accepts the memory session store outside production", func(t *testing.T) {
+		cfg := Default()
+		cfg.OIDC = validOIDCConfig()
+		cfg.Session.StoreProvider = SessionStoreProviderMemory
 
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("want err: nil; got: %v", err)

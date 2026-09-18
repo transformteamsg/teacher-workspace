@@ -155,6 +155,11 @@ func (c Config) Validate() error {
 		} else if _, err := os.Stat(c.BuildDir); os.IsNotExist(err) {
 			errs = append(errs, fmt.Errorf("TW_BUILD_DIR does not exist: %q", c.BuildDir))
 		}
+		// The default memory store is for development only.
+		if c.Session.StoreProvider == SessionStoreProviderMemory {
+			errs = append(errs, fmt.Errorf("TW_SESSION_STORE_PROVIDER must be %q when TW_ENV is %q; got %q",
+				SessionStoreProviderValkey, EnvProduction, c.Session.StoreProvider))
+		}
 	}
 
 	return errors.Join(append(errs, c.Server.validate(), c.Session.validate(), c.APIProxy.validate(), c.Remote.validate(), c.OIDC.validate())...)
