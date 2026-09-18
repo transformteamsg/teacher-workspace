@@ -11,8 +11,9 @@ export default function LoginView() {
   const returnTo = searchParams.get('return_to');
   const showError = errorParam === 'oauth2_failed' || errorParam === 'oauth2_callback_failed';
 
-  const loginHref = returnTo
-    ? `/auth/edupass?return_to=${encodeURIComponent(returnTo)}`
+  const safeReturnTo = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null;
+  const loginHref = safeReturnTo
+    ? `/auth/edupass?return_to=${encodeURIComponent(safeReturnTo)}`
     : '/auth/edupass';
 
   useEffect(() => {
