@@ -355,6 +355,49 @@ func TestHandler_static(t *testing.T) {
 		}
 	})
 
+	t.Run("return 404 for a directory in production environment", func(t *testing.T) {
+		buildDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>Hello world!</html>"), 0o644); err != nil {
+			t.Fatalf("os.WriteFile: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(buildDir, "static", "js"), 0o755); err != nil {
+			t.Fatalf("os.MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(buildDir, "static", "js", "index.abc123.js"), []byte("console.log('Hello world!');"), 0o644); err != nil {
+			t.Fatalf("os.WriteFile: %v", err)
+		}
+
+		h, err := New(&config.Config{
+			Env:      config.EnvProduction,
+			BuildDir: buildDir,
+		}, nil)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		tests := []struct {
+			name   string
+			target string
+		}{
+			{name: "static root", target: "/static/"},
+			{name: "subdirectory", target: "/static/js/"},
+			{name: "subdirectory without trailing slash", target: "/static/js"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+				rec := httptest.NewRecorder()
+
+				h.static(rec, req)
+
+				if want, got := http.StatusNotFound, rec.Code; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
+			})
+		}
+	})
+
 	t.Run("return 404 for an unknown environment", func(t *testing.T) {
 		h, err := New(&config.Config{}, nil)
 		if err != nil {
