@@ -1,10 +1,35 @@
 import Provider from 'oidc-provider';
 
-export const accounts = [
-  { sub: 'teacher-1', email: 'jane.doe@example.com', name: 'Jane Doe' },
-  { sub: 'teacher-2', email: 'john.smith@example.com', name: 'John Smith' },
-  { sub: 'teacher-3', email: 'no-name@example.com' },
+const validAccounts = [
+  {
+    sub: 'staff-1',
+    email: 'john.smith@example.com',
+    name: 'John Smith',
+    groups: ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN'],
+  },
+  {
+    sub: 'staff-2',
+    email: 'alice.tan@example.com',
+    name: 'Alice Tan',
+    groups: ['1234_TW_ROLE_TEACHER'],
+  },
 ];
+
+const invalidAccounts = [
+  {
+    sub: 'iv-staff-01',
+    email: 'jane.doe@example.com',
+    name: 'Jane Doe',
+    groups: ['X_TW_ROLE_TEACHER', 'X_ROLE_COUNSELLOR'],
+  },
+  {
+    sub: 'iv-staff-02',
+    email: 'no-name@example.com',
+    groups: [] as string[],
+  },
+];
+
+export const accounts = [...validAccounts, ...invalidAccounts];
 
 export function createProvider(port: number): Provider {
   const issuer = `http://localhost:${port}`;
@@ -22,7 +47,7 @@ export function createProvider(port: number): Provider {
     ],
 
     claims: {
-      openid: ['sub', 'email', 'name'],
+      openid: ['sub', 'email', 'name', 'groups'],
     },
 
     extraParams: ['account'],
@@ -55,9 +80,10 @@ export function createProvider(port: number): Provider {
       return {
         accountId: id,
         claims: async () => {
-          const claims: { sub: string; [key: string]: string } = { sub: account.sub };
+          const claims: { sub: string; [key: string]: string | string[] } = { sub: account.sub };
           if (account.email) claims.email = account.email;
           if (account.name) claims.name = account.name;
+          claims.groups = account.groups;
           return claims;
         },
       };

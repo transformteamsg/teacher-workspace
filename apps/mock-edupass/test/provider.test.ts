@@ -184,9 +184,10 @@ describe('mock-edupass OIDC provider', () => {
 
       const idToken = tokenBody.id_token as string;
       const claims = decodeJwtPayload(idToken);
-      assert.equal(claims.sub, 'teacher-1');
-      assert.equal(claims.email, 'jane.doe@example.com');
-      assert.equal(claims.name, 'Jane Doe');
+      assert.equal(claims.sub, 'staff-1');
+      assert.equal(claims.email, 'john.smith@example.com');
+      assert.equal(claims.name, 'John Smith');
+      assert.deepEqual(claims.groups, ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN']);
       assert.equal(claims.iss, BASE_URL);
       assert.equal(claims.nonce, 'test-nonce');
 
@@ -204,9 +205,9 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(valid, 'ID token signature should verify against JWKS');
     });
 
-    it('absent claim is not present in ID token (teacher-3)', async () => {
+    it('absent claim is not present in ID token (iv-staff-02)', async () => {
       const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'teacher-3');
+      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'iv-staff-02');
 
       const tokenRes = await exchangeCode(code, codeVerifier);
       assert.equal(tokenRes.status, 200);
@@ -214,13 +215,42 @@ describe('mock-edupass OIDC provider', () => {
       const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
       const claims = decodeJwtPayload(tokenBody.id_token as string);
 
-      assert.equal(claims.sub, 'teacher-3');
+      assert.equal(claims.sub, 'iv-staff-02');
       assert.equal(claims.email, 'no-name@example.com');
       assert.equal(
         Object.hasOwn(claims, 'name'),
         false,
         'name claim should be absent, not null or empty',
       );
+      assert.deepEqual(claims.groups, [], 'groups claim should be an empty array');
+    });
+
+    it('groups includes teacher role and attribute role (staff-1)', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-1');
+
+      const tokenRes = await exchangeCode(code, codeVerifier);
+      assert.equal(tokenRes.status, 200);
+
+      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
+      const claims = decodeJwtPayload(tokenBody.id_token as string);
+
+      assert.equal(claims.sub, 'staff-1');
+      assert.deepEqual(claims.groups, ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN']);
+    });
+
+    it('groups includes location-specific role (staff-2)', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-2');
+
+      const tokenRes = await exchangeCode(code, codeVerifier);
+      assert.equal(tokenRes.status, 200);
+
+      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
+      const claims = decodeJwtPayload(tokenBody.id_token as string);
+
+      assert.equal(claims.sub, 'staff-2');
+      assert.deepEqual(claims.groups, ['1234_TW_ROLE_TEACHER']);
     });
   });
 
