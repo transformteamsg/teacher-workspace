@@ -87,13 +87,12 @@ func TestDefault(t *testing.T) {
 
 func validOIDCConfig() OIDCConfig {
 	return OIDCConfig{
-		IssuerURL:    &url.URL{Scheme: "http", Host: "localhost:9000"},
-		AuthURL:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
-		TokenURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
-		JWKSURI:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
-		ClientID:     "teacher-workspace",
-		ClientSecret: "teacher-workspace-secret",
-		RedirectURL:  &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
+		IssuerURL:   &url.URL{Scheme: "http", Host: "localhost:9000"},
+		AuthURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
+		TokenURL:    &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
+		JWKSURI:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
+		ClientID:    "teacher-workspace",
+		RedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
 	}
 }
 
@@ -632,30 +631,6 @@ func TestOIDCConfig_validate(t *testing.T) {
 			})
 		}
 	})
-}
-func TestRemoteConfig_validate(t *testing.T) {
-	t.Run("accepts empty manifest urls", func(t *testing.T) {
-		cfg := RemoteConfig{}
-
-		if err := cfg.validate(); err != nil {
-			t.Errorf("want err: nil; got: %v", err)
-		}
-	})
-
-	t.Run("accepts http and https manifest urls", func(t *testing.T) {
-		for _, scheme := range []string{"http", "https"} {
-			t.Run(scheme, func(t *testing.T) {
-				cfg := RemoteConfig{
-					PostsManifestURL:           scheme + "://pg.test/mf-manifest.json",
-					StudentInsightsManifestURL: scheme + "://si.test/mf-manifest.json",
-				}
-
-				if err := cfg.validate(); err != nil {
-					t.Errorf("want err: nil; got: %v", err)
-				}
-			})
-		}
-	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
 		for _, tt := range []struct {
@@ -729,11 +704,6 @@ func TestRemoteConfig_validate(t *testing.T) {
 				want:   "TW_OIDC_CLIENT_ID is required",
 			},
 			{
-				name:   "empty client secret",
-				mutate: func(c *OIDCConfig) { c.ClientSecret = "" },
-				want:   "TW_OIDC_CLIENT_SECRET is required",
-			},
-			{
 				name:   "missing redirect url",
 				mutate: func(c *OIDCConfig) { c.RedirectURL = nil },
 				want:   "TW_OIDC_REDIRECT_URL is required",
@@ -760,6 +730,31 @@ func TestRemoteConfig_validate(t *testing.T) {
 				}
 				if !strings.Contains(err.Error(), tt.want) {
 					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				}
+			})
+		}
+	})
+}
+
+func TestRemoteConfig_validate(t *testing.T) {
+	t.Run("accepts empty manifest urls", func(t *testing.T) {
+		cfg := RemoteConfig{}
+
+		if err := cfg.validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("accepts http and https manifest urls", func(t *testing.T) {
+		for _, scheme := range []string{"http", "https"} {
+			t.Run(scheme, func(t *testing.T) {
+				cfg := RemoteConfig{
+					PostsManifestURL:           scheme + "://pg.test/mf-manifest.json",
+					StudentInsightsManifestURL: scheme + "://si.test/mf-manifest.json",
+				}
+
+				if err := cfg.validate(); err != nil {
+					t.Errorf("want err: nil; got: %v", err)
 				}
 			})
 		}
