@@ -549,6 +549,19 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects state missing", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		sess := newSessionWithOIDC("", "test-nonce", "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state=some-state", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
+	})
+
 	t.Run("rejects missing code verifier", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 

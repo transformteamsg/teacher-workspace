@@ -109,8 +109,13 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if storedState == "" || state != storedState {
-		logger.Warn("state mismatch or missing")
+	if storedState == "" {
+		logger.Warn("stored state missing from session")
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
+		return
+	}
+	if state != storedState {
+		logger.Error("state mismatch")
 		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
@@ -142,8 +147,13 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if storedNonce == "" || idToken.Nonce != storedNonce {
-		logger.Warn("nonce mismatch or missing")
+	if storedNonce == "" {
+		logger.Warn("stored nonce missing from session")
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
+		return
+	}
+	if idToken.Nonce != storedNonce {
+		logger.Error("nonce mismatch")
 		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
@@ -157,7 +167,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if claims.Email == "" {
-		logger.Warn("ID token missing email claim")
+		logger.Error("ID token missing email claim")
 		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
