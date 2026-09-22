@@ -105,21 +105,20 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.rp.OAuth2.Exchange(r.Context(), code, oauth2.VerifierOption(storedVerifier))
+	resp, err := h.rp.Exchange(r.Context(), code, storedVerifier)
 	if err != nil {
 		logger.Error("failed to exchange authorization code", "err", err)
 		httputil.RenderPlain(w, logger, http.StatusForbidden)
 		return
 	}
 
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok {
+	if resp.IDToken == "" {
 		logger.Error("token response missing id_token")
 		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
 		return
 	}
 
-	idToken, err := h.rp.Verifier.Verify(r.Context(), rawIDToken)
+	idToken, err := h.rp.Verifier.Verify(r.Context(), resp.IDToken)
 	if err != nil {
 		logger.Error("failed to verify ID token", "err", err)
 		httputil.RenderPlain(w, logger, http.StatusForbidden)

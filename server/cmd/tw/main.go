@@ -84,14 +84,20 @@ func main() {
 		Secure:           cfg.Env == config.EnvProduction,
 	})
 
+	clientKey, err := oidc.LoadClientKey(cfg.OIDC.ClientPrivateKey, cfg.OIDC.ClientPublicKey)
+	if err != nil {
+		slog.Error("failed to load OIDC client key", "err", err)
+		os.Exit(1)
+	}
+
 	rp := oidc.New(
 		cfg.OIDC.IssuerURL.String(),
 		cfg.OIDC.ClientID,
-		cfg.OIDC.ClientSecret,
 		cfg.OIDC.RedirectURL.String(),
 		cfg.OIDC.AuthURL.String(),
 		cfg.OIDC.TokenURL.String(),
 		cfg.OIDC.JWKSURI.String(),
+		clientKey,
 	)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
