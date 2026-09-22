@@ -1,20 +1,45 @@
 import assert from 'node:assert/strict';
+import { createHash, generateKeyPairSync, X509Certificate } from 'node:crypto';
+import { rmSync } from 'node:fs';
 import type { Server } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 
 import { createApp } from '../src/app.ts';
+import { clientJwk } from '../src/jwks.ts';
 import {
+  BASE_URL,
+  CLIENT_ASSERTION_TYPE,
+  CLIENT_ID,
+  generateClientKeyPair,
   generateCodeChallenge,
   generateCodeVerifier,
   OidcClient,
   parseFormPost,
+  signClientAssertion,
+  TEST_PORT,
 } from './helpers.ts';
 
-const TEST_PORT = 9876;
-const BASE_URL = `http://localhost:${TEST_PORT}`;
-const CLIENT_ID = 'teacher-workspace';
-const CLIENT_SECRET = 'teacher-workspace-secret';
 const REDIRECT_URI = 'http://localhost:3000/auth/edupass/callback';
+
+const keyPair = await generateClientKeyPair();
+
+after(() => {
+  rmSync(keyPair.dir, { recursive: true, force: true });
+});
+
+const certificateThumbprint = createHash('sha256')
+  .update(new X509Certificate(keyPair.certificatePem).raw)
+  .digest('base64url');
+
+function clientAssertion(
+  claims: Record<string, unknown> = {},
+  header: Record<string, unknown> = {},
+): string {
+  return signClientAssertion(keyPair.privateKeyPem, claims, {
+    'x5t#S256': certificateThumbprint,
+    ...header,
+  });
+}
 
 async function obtainAuthorizationCode(
   client: OidcClient,
@@ -44,23 +69,34 @@ async function obtainAuthorizationCode(
   return { code: formParams.code, codeVerifier };
 }
 
-async function exchangeCode(
-  code: string,
-  codeVerifier: string,
-  clientSecret: string = CLIENT_SECRET,
-): Promise<Response> {
+async function postToken(params: Record<string, string>): Promise<Response> {
   return globalThis.fetch(`${BASE_URL}/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: REDIRECT_URI,
-      client_id: CLIENT_ID,
-      client_secret: clientSecret,
-      code_verifier: codeVerifier,
-    }).toString(),
+    body: new URLSearchParams(params).toString(),
   });
+}
+
+async function exchangeCode(
+  code: string,
+  codeVerifier: string,
+  assertion: string = clientAssertion(),
+): Promise<Response> {
+  return postToken({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: REDIRECT_URI,
+    client_id: CLIENT_ID,
+    client_assertion_type: CLIENT_ASSERTION_TYPE,
+    client_assertion: assertion,
+    code_verifier: codeVerifier,
+  });
+}
+
+async function fetchJwks(baseUrl: string): Promise<Record<string, unknown>[]> {
+  const res = await globalThis.fetch(`${baseUrl}/jwks`);
+  const jwks = (await res.json()) as { keys: Record<string, unknown>[] };
+  return jwks.keys;
 }
 
 function decodeJwtPart(jwt: string, index: number): Record<string, unknown> {
@@ -95,7 +131,7 @@ describe('mock-edupass OIDC provider', () => {
   let server: Server;
 
   before(async () => {
-    const { app } = createApp(TEST_PORT);
+    const { app } = createApp(TEST_PORT, clientJwk(keyPair.certificatePem));
     server = app.listen(TEST_PORT);
     await new Promise<void>((resolve, reject) => {
       server.once('listening', resolve);
@@ -127,7 +163,7 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(doc.token_endpoint, 'token_endpoint should be present');
     });
 
-    it('JWKS serves a valid public key', async () => {
+    it('JWKS serves a generated public key', async () => {
       const discoveryRes = await globalThis.fetch(`${BASE_URL}/.well-known/openid-configuration`);
       const doc = (await discoveryRes.json()) as Record<string, unknown>;
 
@@ -141,8 +177,32 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(jwks.keys.length >= 1, 'should have at least one key');
 
       const key = jwks.keys[0];
-      assert.ok(key.kty, 'key should have kty');
-      assert.ok(key.kid, 'key should have kid');
+      assert.equal(key.kty, 'RSA');
+      assert.notEqual(
+        key.kid,
+        'keystore-CHANGE-ME',
+        'the bundled development key must not be used',
+      );
+    });
+
+    it('generates a different signing key on every boot', async () => {
+      const port = TEST_PORT + 1;
+      const { app } = createApp(port, clientJwk(keyPair.certificatePem));
+      const other = app.listen(port);
+      await new Promise<void>((resolve, reject) => {
+        other.once('listening', resolve);
+        other.once('error', reject);
+      });
+
+      try {
+        const [first] = await fetchJwks(BASE_URL);
+        const [second] = await fetchJwks(`http://localhost:${port}`);
+
+        assert.ok(first.kid, 'first instance should publish a kid');
+        assert.notEqual(first.kid, second.kid);
+      } finally {
+        await new Promise<void>((resolve) => other.close(() => resolve()));
+      }
     });
   });
 
@@ -192,11 +252,10 @@ describe('mock-edupass OIDC provider', () => {
 
       // Verify signature against published JWKS
       const header = decodeJwtHeader(idToken);
-      const jwksRes = await globalThis.fetch(`${BASE_URL}/jwks`);
-      const jwks = (await jwksRes.json()) as {
-        keys: Record<string, unknown>[];
-      };
-      const signingKey = jwks.keys.find((k) => k.kid === header.kid);
+      assert.equal(header.alg, 'RS256');
+
+      const keys = await fetchJwks(BASE_URL);
+      const signingKey = keys.find((k) => k.kid === header.kid);
       assert.ok(signingKey, 'JWKS should contain the signing key');
 
       const publicKey = await importJwk(signingKey);
@@ -257,16 +316,6 @@ describe('mock-edupass OIDC provider', () => {
       assert.equal(body.error, 'invalid_grant');
     });
 
-    it('rejects token exchange with wrong client_secret', async () => {
-      const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client);
-
-      const tokenRes = await exchangeCode(code, codeVerifier, 'wrong-secret');
-
-      const body = (await tokenRes.json()) as Record<string, unknown>;
-      assert.equal(body.error, 'invalid_client');
-    });
-
     it('rejects token exchange with reused code', async () => {
       const client = new OidcClient(BASE_URL);
       const { code, codeVerifier } = await obtainAuthorizationCode(client);
@@ -279,6 +328,63 @@ describe('mock-edupass OIDC provider', () => {
       const secondRes = await exchangeCode(code, codeVerifier);
       const body = (await secondRes.json()) as Record<string, unknown>;
       assert.equal(body.error, 'invalid_grant');
+    });
+  });
+
+  describe('rejects client authentication', () => {
+    it('signed with the wrong key', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client);
+
+      const otherKeyPem = generateKeyPairSync('rsa', { modulusLength: 2048 })
+        .privateKey.export({ type: 'pkcs8', format: 'pem' })
+        .toString();
+      const assertion = signClientAssertion(otherKeyPem, {}, { 'x5t#S256': certificateThumbprint });
+
+      const tokenRes = await exchangeCode(code, codeVerifier, assertion);
+
+      assert.equal(tokenRes.status, 401);
+      const body = (await tokenRes.json()) as Record<string, unknown>;
+      assert.equal(body.error, 'invalid_client');
+    });
+
+    it('with a client_secret instead of an assertion', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client);
+
+      const tokenRes = await postToken({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        client_secret: 'teacher-workspace-secret',
+        code_verifier: codeVerifier,
+      });
+
+      const body = (await tokenRes.json()) as Record<string, unknown>;
+      assert.equal(body.error, 'invalid_client');
+    });
+
+    it('with a wrong x5t#S256 header', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client);
+
+      const assertion = clientAssertion({}, { 'x5t#S256': 'not-the-certificate-thumbprint' });
+      const tokenRes = await exchangeCode(code, codeVerifier, assertion);
+
+      const body = (await tokenRes.json()) as Record<string, unknown>;
+      assert.equal(body.error, 'invalid_client');
+    });
+
+    it('with an RS256 assertion', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client);
+
+      const assertion = clientAssertion({}, { alg: 'RS256' });
+      const tokenRes = await exchangeCode(code, codeVerifier, assertion);
+
+      const body = (await tokenRes.json()) as Record<string, unknown>;
+      assert.equal(body.error, 'invalid_client');
     });
   });
 });
