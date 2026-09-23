@@ -67,17 +67,17 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 
-		if want, got := "http://127.0.0.1:3002", cfg.APIProxy.StudentInsightsBaseURL.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
+		if got := cfg.APIProxy.StudentInsightsBaseURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
 		}
-		if want, got := "http://127.0.0.1:3003", cfg.APIProxy.PostsBaseURL.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
+		if got := cfg.APIProxy.PostsBaseURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
 		}
-		if want, got := "a-string-secret-at-least-256-bits-long", cfg.APIProxy.StudentInsightsSigningKey; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
+		if got := cfg.APIProxy.StudentInsightsSigningKey; got != "" {
+			t.Errorf("want: empty; got: %q", got)
 		}
-		if want, got := "a-string-secret-at-least-256-bits-long", cfg.APIProxy.PostsSigningKey; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
+		if got := cfg.APIProxy.PostsSigningKey; got != "" {
+			t.Errorf("want: empty; got: %q", got)
 		}
 		if want, got := time.Minute, cfg.APIProxy.TokenTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
@@ -85,8 +85,15 @@ func TestDefault(t *testing.T) {
 	})
 }
 
-func validOIDCConfig() OIDCConfig {
-	return OIDCConfig{
+// validConfig returns Default with the fields that have no default filled in,
+// so it passes Validate.
+func validConfig() Config {
+	cfg := Default()
+	cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
+	cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
+	cfg.APIProxy.StudentInsightsSigningKey = "a-string-secret-at-least-256-bits-long"
+	cfg.APIProxy.PostsSigningKey = "a-string-secret-at-least-256-bits-long"
+	cfg.OIDC = OIDCConfig{
 		IssuerURL:    &url.URL{Scheme: "http", Host: "localhost:9000"},
 		AuthURL:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
 		TokenURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
@@ -95,14 +102,15 @@ func validOIDCConfig() OIDCConfig {
 		ClientSecret: "teacher-workspace-secret",
 		RedirectURL:  &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
 	}
+
+	return cfg
 }
 
 func TestConfig_Validate(t *testing.T) {
 	t.Run("accepts http and https dev server urls", func(t *testing.T) {
 		for _, scheme := range []string{"http", "https"} {
 			t.Run(scheme, func(t *testing.T) {
-				cfg := Default()
-				cfg.OIDC = validOIDCConfig()
+				cfg := validConfig()
 				cfg.DevServerURL = &url.URL{Scheme: scheme, Host: "127.0.0.1:3001"}
 
 				if err := cfg.Validate(); err != nil {
@@ -113,8 +121,7 @@ func TestConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("accepts production pointing at an existing build dir", func(t *testing.T) {
-		cfg := Default()
-		cfg.OIDC = validOIDCConfig()
+		cfg := validConfig()
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
 
@@ -172,7 +179,7 @@ func TestConfig_Validate(t *testing.T) {
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
-				cfg := Default()
+				cfg := validConfig()
 				tt.mutate(&cfg)
 
 				err := cfg.Validate()
@@ -188,8 +195,7 @@ func TestConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("skips the dev server url outside development", func(t *testing.T) {
-		cfg := Default()
-		cfg.OIDC = validOIDCConfig()
+		cfg := validConfig()
 		cfg.Env = EnvProduction
 		cfg.BuildDir = t.TempDir()
 		cfg.DevServerURL = &url.URL{}
@@ -200,8 +206,7 @@ func TestConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("skips the build dir outside production", func(t *testing.T) {
-		cfg := Default()
-		cfg.OIDC = validOIDCConfig()
+		cfg := validConfig()
 		cfg.BuildDir = "testdata/does-not-exist"
 
 		if err := cfg.Validate(); err != nil {
@@ -210,13 +215,12 @@ func TestConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("reports multiple invalid fields in one error", func(t *testing.T) {
-		cfg := Default()
+		cfg := validConfig()
 		cfg.Env = "staging"
 		cfg.Remote.PostsManifestURL = "ftp://pg.test/mf-manifest.json"
 		cfg.Server.Port = 0
 		cfg.Session.Name = ""
 		cfg.APIProxy.PostsBaseURL = nil
-		cfg.OIDC = validOIDCConfig()
 		cfg.OIDC.ClientID = ""
 
 		err := cfg.Validate()
@@ -228,6 +232,14 @@ func TestConfig_Validate(t *testing.T) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("want err: containing %q; got: %q", want, err)
 			}
+		}
+	})
+
+	t.Run("rejects the default config", func(t *testing.T) {
+		cfg := Default()
+
+		if err := cfg.Validate(); err == nil {
+			t.Error("want err: non-nil; got: nil")
 		}
 	})
 }
@@ -515,7 +527,7 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 	t.Run("accepts http and https base urls", func(t *testing.T) {
 		for _, scheme := range []string{"http", "https"} {
 			t.Run(scheme, func(t *testing.T) {
-				cfgAPIProxy := Default().APIProxy
+				cfgAPIProxy := validConfig().APIProxy
 				cfgAPIProxy.StudentInsightsBaseURL = &url.URL{Scheme: scheme, Host: "student-insights.example.com"}
 				cfgAPIProxy.PostsBaseURL = &url.URL{Scheme: scheme, Host: "posts.example.com"}
 
@@ -599,7 +611,7 @@ func TestAPIProxyConfig_validate(t *testing.T) {
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
-				cfg := Default().APIProxy
+				cfg := validConfig().APIProxy
 				tt.mutate(&cfg)
 
 				err := cfg.validate()
@@ -619,7 +631,7 @@ func TestOIDCConfig_validate(t *testing.T) {
 	t.Run("accepts http and https urls", func(t *testing.T) {
 		for _, scheme := range []string{"http", "https"} {
 			t.Run(scheme, func(t *testing.T) {
-				cfg := validOIDCConfig()
+				cfg := validConfig().OIDC
 				cfg.IssuerURL = &url.URL{Scheme: scheme, Host: "localhost:9000"}
 				cfg.AuthURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/authorize"}
 				cfg.TokenURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/token"}
@@ -750,7 +762,7 @@ func TestRemoteConfig_validate(t *testing.T) {
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
-				cfg := validOIDCConfig()
+				cfg := validConfig().OIDC
 				tt.mutate(&cfg)
 
 				err := cfg.validate()

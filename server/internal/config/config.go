@@ -94,7 +94,8 @@ type APIProxyConfig struct {
 	TokenTTL                  time.Duration `dotenv:"TW_API_PROXY_TOKEN_TTL"`
 }
 
-// Default returns the default configuration for the application.
+// Default returns the default configuration for the application. It only sets
+// fields with a value that is safe in every environment.
 func Default() Config {
 	return Config{
 		Env:      EnvDevelopment,
@@ -120,11 +121,7 @@ func Default() Config {
 			},
 		},
 		APIProxy: APIProxyConfig{
-			StudentInsightsBaseURL:    must(url.Parse("http://127.0.0.1:3002")),
-			PostsBaseURL:              must(url.Parse("http://127.0.0.1:3003")),
-			StudentInsightsSigningKey: "a-string-secret-at-least-256-bits-long",
-			PostsSigningKey:           "a-string-secret-at-least-256-bits-long",
-			TokenTTL:                  1 * time.Minute,
+			TokenTTL: 1 * time.Minute,
 		},
 	}
 }
