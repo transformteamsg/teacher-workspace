@@ -248,6 +248,32 @@ func TestStore_Commit(t *testing.T) {
 		}
 	})
 
+	t.Run("records whether the snapshot carried a user", func(t *testing.T) {
+		// The flag decides what the store gives up first, so it has to follow
+		// the snapshot rather than the order entries arrived in.
+		for _, tt := range []struct {
+			name string
+			user *session.User
+			want bool
+		}{
+			{name: "with a user", user: &session.User{Email: "alice@example.com"}, want: true},
+			{name: "without a user", user: nil, want: false},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				store := New()
+				snapshot := &session.Snapshot{ID: "id-1", CSRFToken: "csrf-1", User: tt.user}
+
+				if err := store.Commit(context.Background(), snapshot, time.Minute); err != nil {
+					t.Fatalf("want err: nil; got: %v", err)
+				}
+
+				if got := store.entries["id-1"].authenticated; tt.want != got {
+					t.Errorf("want: %v; got: %v", tt.want, got)
+				}
+			})
+		}
+	})
+
 	t.Run("stores a copy the caller cannot reach", func(t *testing.T) {
 		store := New()
 		snapshot := &session.Snapshot{
@@ -680,6 +706,56 @@ func TestStore_ConcurrentAccess(t *testing.T) {
 		}
 
 		wg.Wait()
+	})
+
+	t.Run("holds its limits while evicting under load", func(t *testing.T) {
+		// A cap this small has nearly every commit culling, so the eviction
+		// path runs under contention, where `go test -race` can see it.
+		const (
+			maxEntries = 8
+			goroutines = 8
+			iterations = 50
+		)
+
+		store := New(WithMaxEntries(maxEntries), WithMaxBytes(1<<20))
+
+		var wg sync.WaitGroup
+		wg.Add(goroutines)
+
+		for g := range goroutines {
+			go func() {
+				defer wg.Done()
+
+				for i := range iterations {
+					id := "id-" + strconv.Itoa(g) + "-" + strconv.Itoa(i)
+
+					if err := store.Commit(context.Background(), &session.Snapshot{ID: id, CSRFToken: "csrf-1"}, time.Minute); err != nil {
+						t.Errorf("want err: nil; got: %v", err)
+						return
+					}
+					if _, err := store.Prepare(context.Background(), id); err != nil {
+						t.Errorf("want err: nil; got: %v", err)
+						return
+					}
+				}
+			}()
+		}
+
+		wg.Wait()
+
+		if got := len(store.entries); got > maxEntries {
+			t.Errorf("want: at most %d; got: %d", maxEntries, got)
+		}
+
+		// The byte total is kept by hand on every path that adds or removes an
+		// entry, so it has to still match what the store holds.
+		var want int
+		for _, e := range store.entries {
+			want += len(e.data)
+		}
+		if got := store.bytes; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
 	})
 
 	t.Run("concurrent Commit and Prepare on shared keys stay consistent", func(t *testing.T) {
