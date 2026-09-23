@@ -68,10 +68,20 @@ type SessionConfig struct {
 	StoreProvider    SessionStoreProvider `dotenv:"TW_SESSION_STORE_PROVIDER"`
 
 	Valkey SessionValkeyConfig `dotenv:",squash"`
+	Memory SessionMemoryConfig `dotenv:",squash"`
 }
 type SessionValkeyConfig struct {
 	URL    *url.URL `dotenv:"TW_SESSION_VALKEY_URL"`
 	Prefix string   `dotenv:"TW_SESSION_VALKEY_PREFIX"`
+}
+
+// SessionMemoryConfig bounds the in-memory session store, which drops expired
+// sessions first and never evicts a signed-in one to make room.
+type SessionMemoryConfig struct {
+	// MaxEntries is how many sessions the store holds.
+	MaxEntries int `dotenv:"TW_SESSION_MEMORY_MAX_ENTRIES"`
+	// MaxBytes is the total size of the sessions the store holds.
+	MaxBytes int `dotenv:"TW_SESSION_MEMORY_MAX_BYTES"`
 }
 
 // OIDCConfig represents the configuration for the Edupass OIDC relying party.
@@ -118,6 +128,11 @@ func Default() Config {
 			StoreProvider:    SessionStoreProviderMemory,
 			Valkey: SessionValkeyConfig{
 				Prefix: "session:",
+			},
+			// ~64 MiB at either the typical or the worst-case session size.
+			Memory: SessionMemoryConfig{
+				MaxEntries: 50_000,
+				MaxBytes:   64 << 20,
 			},
 		},
 		APIProxy: APIProxyConfig{
@@ -205,6 +220,22 @@ func (c SessionConfig) validate() error {
 	}
 	if c.StoreProvider == SessionStoreProviderValkey {
 		errs = append(errs, c.Valkey.validate())
+	}
+	if c.StoreProvider == SessionStoreProviderMemory {
+		errs = append(errs, c.Memory.validate())
+	}
+
+	return errors.Join(errs...)
+}
+
+func (c SessionMemoryConfig) validate() error {
+	var errs []error
+
+	if c.MaxEntries < 1 {
+		errs = append(errs, fmt.Errorf("TW_SESSION_MEMORY_MAX_ENTRIES must be at least 1; got %d", c.MaxEntries))
+	}
+	if c.MaxBytes < 1 {
+		errs = append(errs, fmt.Errorf("TW_SESSION_MEMORY_MAX_BYTES must be at least 1; got %d", c.MaxBytes))
 	}
 
 	return errors.Join(errs...)

@@ -56,6 +56,12 @@ func TestDefault(t *testing.T) {
 		if want, got := "session:", cfg.Session.Valkey.Prefix; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
+		if want, got := 50_000, cfg.Session.Memory.MaxEntries; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := 64<<20, cfg.Session.Memory.MaxBytes; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
 
 		if want, got := time.Minute, cfg.APIProxy.TokenTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
@@ -465,6 +471,16 @@ func TestSessionConfig_validate(t *testing.T) {
 				},
 				want: "TW_SESSION_VALKEY_URL is required",
 			},
+			{
+				name:   "zero memory entry limit",
+				mutate: func(c *SessionConfig) { c.Memory.MaxEntries = 0 },
+				want:   "TW_SESSION_MEMORY_MAX_ENTRIES must be at least 1; got 0",
+			},
+			{
+				name:   "negative memory byte limit",
+				mutate: func(c *SessionConfig) { c.Memory.MaxBytes = -1 },
+				want:   "TW_SESSION_MEMORY_MAX_BYTES must be at least 1; got -1",
+			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				cfg := Default().Session
@@ -501,6 +517,17 @@ func TestSessionConfig_validate(t *testing.T) {
 		cfg := Default().Session
 		cfg.Valkey.URL = &url.URL{Scheme: "nonsense"}
 		cfg.Valkey.Prefix = ""
+
+		if err := cfg.validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("skips the memory limits when the provider is valkey", func(t *testing.T) {
+		cfg := Default().Session
+		cfg.StoreProvider = SessionStoreProviderValkey
+		cfg.Valkey.URL = &url.URL{Scheme: "valkey", Host: "127.0.0.1:6379"}
+		cfg.Memory = SessionMemoryConfig{}
 
 		if err := cfg.validate(); err != nil {
 			t.Errorf("want err: nil; got: %v", err)
