@@ -63,6 +63,12 @@ async function exchangeCode(
   });
 }
 
+async function fetchJwks(baseUrl: string): Promise<Record<string, unknown>[]> {
+  const res = await globalThis.fetch(`${baseUrl}/jwks`);
+  const jwks = (await res.json()) as { keys: Record<string, unknown>[] };
+  return jwks.keys;
+}
+
 function decodeJwtPart(jwt: string, index: number): Record<string, unknown> {
   return JSON.parse(Buffer.from(jwt.split('.')[index], 'base64url').toString());
 }
@@ -127,7 +133,7 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(doc.token_endpoint, 'token_endpoint should be present');
     });
 
-    it('JWKS serves a valid public key', async () => {
+    it('JWKS serves a generated public key', async () => {
       const discoveryRes = await globalThis.fetch(`${BASE_URL}/.well-known/openid-configuration`);
       const doc = (await discoveryRes.json()) as Record<string, unknown>;
 
@@ -141,8 +147,32 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(jwks.keys.length >= 1, 'should have at least one key');
 
       const key = jwks.keys[0];
-      assert.ok(key.kty, 'key should have kty');
-      assert.ok(key.kid, 'key should have kid');
+      assert.equal(key.kty, 'RSA');
+      assert.notEqual(
+        key.kid,
+        'keystore-CHANGE-ME',
+        'the bundled development key must not be used',
+      );
+    });
+
+    it('generates a different signing key on every boot', async () => {
+      const port = TEST_PORT + 1;
+      const { app } = createApp(port);
+      const other = app.listen(port);
+      await new Promise<void>((resolve, reject) => {
+        other.once('listening', resolve);
+        other.once('error', reject);
+      });
+
+      try {
+        const [first] = await fetchJwks(BASE_URL);
+        const [second] = await fetchJwks(`http://localhost:${port}`);
+
+        assert.ok(first.kid, 'first instance should publish a kid');
+        assert.notEqual(first.kid, second.kid);
+      } finally {
+        await new Promise<void>((resolve) => other.close(() => resolve()));
+      }
     });
   });
 
@@ -192,11 +222,10 @@ describe('mock-edupass OIDC provider', () => {
 
       // Verify signature against published JWKS
       const header = decodeJwtHeader(idToken);
-      const jwksRes = await globalThis.fetch(`${BASE_URL}/jwks`);
-      const jwks = (await jwksRes.json()) as {
-        keys: Record<string, unknown>[];
-      };
-      const signingKey = jwks.keys.find((k) => k.kid === header.kid);
+      assert.equal(header.alg, 'RS256');
+
+      const keys = await fetchJwks(BASE_URL);
+      const signingKey = keys.find((k) => k.kid === header.kid);
       assert.ok(signingKey, 'JWKS should contain the signing key');
 
       const publicKey = await importJwk(signingKey);
