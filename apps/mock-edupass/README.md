@@ -56,7 +56,7 @@ There is no login page or consent screen. Authentication and consent complete au
 
 ## Signing Keys
 
-The provider generates its own RSA-2048 signing key on every boot and publishes the public half at `jwks_uri`. It is not configurable and is not persisted, so the `kid` changes on every restart and a relying party has to refetch the JWKS. ID tokens stay `RS256`.
+The provider generates its own RSA-2048 signing key on every boot and publishes the public half at `jwks_uri`. It is not configurable and is not persisted, so the `kid` changes on every restart and a relying party has to refetch the JWKS.
 
 This replaces the development keystore bundled in the `oidc-provider` package, whose private half is public and which the library warns about at startup.
 
