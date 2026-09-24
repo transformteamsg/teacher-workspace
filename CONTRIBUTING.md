@@ -40,9 +40,15 @@ pnpm install
 
 Edit `.env` to set the `TW_*` variables for your environment.
 
+Sign-in needs a client key pair. The backend authenticates to Edupass with `private_key_jwt`, signing a JWT assertion with a private key it holds, and the provider verifies it against the matching certificate.
+
+Locally the pair is generated for you, but it is not wired up for you: `pnpm --filter @teacher-workspace/mock-edupass dev` writes `.certs/private.key` and `.certs/public.cer` at the repo root on its first run and reuses them afterwards, while the paths to them come from `.env`. That is why `cp .env.example .env` above is not optional: it points `TW_OIDC_CLIENT_PRIVATE_KEY` and `TW_OIDC_CLIENT_PUBLIC_KEY` at those two files for the server, and `MOCK_EDUPASS_TW_PUBLIC_KEY` at the certificate for mock-edupass, which loads the same `.env`. Delete `.certs/` to mint a fresh pair.
+
+Both halves are gitignored: never commit a private key. Each variable takes the key material itself or a path to a file holding it, so a deployment can hold the whole certificate in the environment.
+
 ### Running locally
 
-Run both processes from the repo root, in separate terminals:
+Run the three processes from the repo root, in separate terminals:
 
 ```bash
 # Terminal 1: host dev server on http://127.0.0.1:3001
@@ -50,9 +56,16 @@ pnpm dev
 ```
 
 ```bash
-# Terminal 2: Go server on http://localhost:3000
+# Terminal 2: mock Edupass provider on http://localhost:9000
+pnpm --filter @teacher-workspace/mock-edupass dev
+```
+
+```bash
+# Terminal 3: Go server on http://localhost:3000
 go run ./server/cmd/tw
 ```
+
+mock-edupass stands in for Edupass locally, and `.env.example` points the `TW_OIDC_*` endpoints at it. Sign-in fails without it. Start it before the Go server on a fresh clone: `dev` writes the client key pair into `.certs/`, and the server parses both halves at startup and exits non-zero when they are missing. It generates its own signing key on every boot, so restarting it is safe: the server refetches the key set when it meets a key id it does not recognise. See [`apps/mock-edupass/README.md`](apps/mock-edupass/README.md).
 
 By default the server keeps sessions in memory, so they are lost on restart and are not shared between processes. To run against a shared store instead, start the local Valkey and point the server at it:
 
