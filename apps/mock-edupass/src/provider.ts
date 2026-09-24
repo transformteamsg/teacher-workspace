@@ -1,15 +1,25 @@
 import Provider from 'oidc-provider';
 
+import { generateSigningJwk } from './jwks.ts';
+
 export const accounts = [
   { sub: 'teacher-1', email: 'jane.doe@example.com', name: 'Jane Doe' },
   { sub: 'teacher-2', email: 'john.smith@example.com', name: 'John Smith' },
   { sub: 'teacher-3', email: 'no-name@example.com' },
 ];
 
+/**
+ * Returns the mock Edupass provider, signing with a key generated per boot, never the bundled one.
+ *
+ * @param port - Port the provider is reached on, fixing the issuer at `http://localhost:<port>`.
+ * @returns A provider carrying the backend as its only registered client.
+ */
 export function createProvider(port: number): Provider {
   const issuer = `http://localhost:${port}`;
 
   return new Provider(issuer, {
+    jwks: { keys: [generateSigningJwk()] },
+
     clients: [
       {
         client_id: 'teacher-workspace',
