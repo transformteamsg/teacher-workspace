@@ -25,6 +25,11 @@ func sanitizeReturnTo(raw string) (string, bool) {
 		return "", false
 	}
 
+	// Browsers treat \ as / in http(s) paths (WHATWG URL spec).
+	// Normalize after parsing so path.Clean and prefix checks match browser resolution.
+	// This also catches percent-encoded %5C, which url.Parse decodes to \ in u.Path.
+	u.Path = strings.ReplaceAll(u.Path, "\\", "/")
+
 	// Browsers treat //host and /\host as off-site redirects.
 	if len(u.Path) > 1 && (u.Path[1] == '/' || u.Path[1] == '\\') {
 		return "", false

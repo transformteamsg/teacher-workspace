@@ -34,6 +34,14 @@ func TestSanitizeReturnTo(t *testing.T) {
 		// Off-site: backslash trick
 		{name: "rejects backslash after slash", raw: "/\\evil.example", wantPath: "", wantOK: false},
 
+		// Backslash normalization: browsers treat \ as / in HTTP paths (WHATWG URL spec)
+		{name: "rejects backslash dot-dot traversal to /auth/", raw: "/foo\\..\\auth\\edupass", wantPath: "", wantOK: false},
+		{name: "rejects backslash dot-dot traversal to /api/", raw: "/foo\\..\\api\\posts", wantPath: "", wantOK: false},
+		{name: "rejects backslash dot-dot traversal to /login", raw: "/foo\\..\\login", wantPath: "", wantOK: false},
+		{name: "rejects deep backslash traversal", raw: "/a\\b\\..\\..\\auth\\edupass", wantPath: "", wantOK: false},
+		{name: "rejects mixed slash backslash traversal", raw: "/foo\\../auth/edupass", wantPath: "", wantOK: false},
+		{name: "rejects percent-encoded backslash traversal", raw: "/foo%5C..%5Cauth%5Cedupass", wantPath: "", wantOK: false},
+
 		// Off-site: encoded bypasses
 		{name: "rejects double-encoded protocol-relative", raw: "%2F%2Fevil.example", wantPath: "", wantOK: false},
 		{name: "rejects lowercase double-encoded", raw: "%2f%2fevil.example", wantPath: "", wantOK: false},
