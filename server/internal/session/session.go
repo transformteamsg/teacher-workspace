@@ -28,6 +28,17 @@ type Store interface {
 // User identifies the authenticated principal attached to a session.
 type User struct {
 	Email string `json:"email"`
+	// Roles contains every base role Edupass recognized for the teacher,
+	// stripped of location and environment prefix. Sign-in is refused
+	// unless resolution finds exactly one, so this holds exactly one entry
+	// whenever User is non-nil.
+	Roles []string `json:"roles"`
+	// EffectiveRole is the sole entry in Roles.
+	EffectiveRole string `json:"effective_role"`
+	// Attributes contains every attribute Edupass recognized for the
+	// teacher, stripped of location and environment prefix, unranked and in
+	// arrival order.
+	Attributes []string `json:"attributes"`
 }
 
 // Snapshot is the wire/storage form of a Session. The Data map is shared with
