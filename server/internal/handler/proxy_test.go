@@ -43,7 +43,7 @@ func TestHandler_proxy(t *testing.T) {
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
 		cfg.APIProxy.StudentInsightsBaseURL = studentInsightsBackendURL
 
-		h, err := New(&cfg, testRP())
+		h, err := New(&cfg, testRP(t))
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -103,7 +103,7 @@ func TestHandler_proxy(t *testing.T) {
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
 		cfg.APIProxy.StudentInsightsBaseURL = studentInsightsBackendURL
 
-		h, err := New(&cfg, testRP())
+		h, err := New(&cfg, testRP(t))
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -134,7 +134,7 @@ func TestHandler_proxy(t *testing.T) {
 		cfg := config.Default()
 		cfg.APIProxy.PostsBaseURL = backendURL
 
-		h, err := New(&cfg, testRP())
+		h, err := New(&cfg, testRP(t))
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -167,7 +167,7 @@ func TestHandler_proxy(t *testing.T) {
 		cfg := config.Default()
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
 
-		h, err := New(&cfg, testRP())
+		h, err := New(&cfg, testRP(t))
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -215,7 +215,7 @@ func TestHandler_proxy(t *testing.T) {
 		ttl := 2 * time.Minute
 		cfg.APIProxy.TokenTTL = ttl
 
-		h, err := New(&cfg, testRP())
+		h, err := New(&cfg, testRP(t))
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}

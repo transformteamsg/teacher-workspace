@@ -1,29 +1,72 @@
 package handler
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"io/fs"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/oidc"
 )
 
-func testRP() *oidc.RelyingParty {
+// newTestClientKey generates an RSA key and a self-signed certificate for it, once per package.
+var newTestClientKey = sync.OnceValues(func() (oidc.ClientKey, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return oidc.ClientKey{}, err
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "teacher-workspace"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		return oidc.ClientKey{}, err
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return oidc.ClientKey{}, err
+	}
+	return oidc.ClientKey{Key: key, Cert: cert}, nil
+})
+
+// testClientKey returns the key pair test relying parties authenticate with.
+func testClientKey(t *testing.T) oidc.ClientKey {
+	t.Helper()
+
+	clientKey, err := newTestClientKey()
+	if err != nil {
+		t.Fatalf("newTestClientKey: %v", err)
+	}
+	return clientKey
+}
+
+func testRP(t *testing.T) *oidc.RelyingParty {
+	t.Helper()
+
 	return oidc.New(
 		"http://test-issuer",
 		"test-client",
-		"test-secret",
 		"http://test-issuer/callback",
 		"http://test-issuer/authorize",
 		"http://test-issuer/token",
 		"http://test-issuer/jwks",
+		testClientKey(t),
 	)
 }
 
@@ -33,7 +76,7 @@ func TestNew(t *testing.T) {
 		cfg.Env = config.EnvProduction
 		cfg.BuildDir = t.TempDir()
 
-		_, err := New(&cfg, testRP())
+		_, err := New(&cfg, testRP(t))
 
 		if !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("want err: %v; got: %v", fs.ErrNotExist, err)
@@ -50,7 +93,7 @@ func TestNew(t *testing.T) {
 		cfg.Env = config.EnvProduction
 		cfg.BuildDir = buildDir
 
-		_, err := New(&cfg, testRP())
+		_, err := New(&cfg, testRP(t))
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
@@ -89,7 +132,7 @@ func TestHandler_Register(t *testing.T) {
 		cfg.BuildDir = buildDir
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
 
-		h, err := New(&cfg, testRP())
+		h, err := New(&cfg, testRP(t))
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -145,7 +188,7 @@ func TestHandler_Register(t *testing.T) {
 		cfg.BuildDir = buildDir
 		cfg.APIProxy.PostsBaseURL = postsBackendURL
 
-		h, err := New(&cfg, testRP())
+		h, err := New(&cfg, testRP(t))
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -201,7 +244,7 @@ func TestHandler_Register(t *testing.T) {
 		cfg.Env = config.EnvProduction
 		cfg.BuildDir = buildDir
 
-		h, err := New(&cfg, testRP())
+		h, err := New(&cfg, testRP(t))
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
