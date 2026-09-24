@@ -30,8 +30,8 @@ func sanitizeReturnTo(raw string) (string, bool) {
 	// This also catches percent-encoded %5C, which url.Parse decodes to \ in u.Path.
 	u.Path = strings.ReplaceAll(u.Path, "\\", "/")
 
-	// Browsers treat //host and /\host as off-site redirects.
-	if len(u.Path) > 1 && (u.Path[1] == '/' || u.Path[1] == '\\') {
+	// Browsers treat //host as an off-site redirect; /\host is normalized to //host above.
+	if len(u.Path) > 1 && u.Path[1] == '/' {
 		return "", false
 	}
 
