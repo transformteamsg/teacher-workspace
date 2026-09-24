@@ -452,50 +452,6 @@ func TestHandler_authEdupass(t *testing.T) {
 		}
 	})
 
-	t.Run("forwards account query parameter to the authorization URL", func(t *testing.T) {
-		h, _ := newTestOIDCHandler(t)
-
-		sess := session.New()
-		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?account=staff-1", nil)
-		req = req.WithContext(middleware.WithSession(req.Context(), sess))
-		rec := httptest.NewRecorder()
-
-		h.authEdupass(rec, req)
-
-		if want, got := http.StatusFound, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-
-		loc := rec.Header().Get("Location")
-		u, err := url.Parse(loc)
-		if err != nil {
-			t.Fatalf("parse Location: %v", err)
-		}
-		if want, got := "staff-1", u.Query().Get("account"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-	})
-
-	t.Run("does not include account parameter when absent", func(t *testing.T) {
-		h, _ := newTestOIDCHandler(t)
-
-		sess := session.New()
-		req := httptest.NewRequest(http.MethodGet, "/auth/edupass", nil)
-		req = req.WithContext(middleware.WithSession(req.Context(), sess))
-		rec := httptest.NewRecorder()
-
-		h.authEdupass(rec, req)
-
-		loc := rec.Header().Get("Location")
-		u, err := url.Parse(loc)
-		if err != nil {
-			t.Fatalf("parse Location: %v", err)
-		}
-		if u.Query().Has("account") {
-			t.Errorf("want: account absent; got: %q", u.Query().Get("account"))
-		}
-	})
-
 	t.Run("does not store return_to when the value is an empty string", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 

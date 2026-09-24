@@ -52,18 +52,11 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 	sess.Set(sessionKeyOIDCNonce, nonce)
 	sess.Set(sessionKeyOIDCCodeVerifier, codeVerifier)
 
-	authOpts := []oauth2.AuthCodeOption{
+	authURL := h.rp.OAuth2.AuthCodeURL(
+		state,
 		oauth2.S256ChallengeOption(codeVerifier),
 		oauth2.SetAuthURLParam("nonce", nonce),
-	}
-
-	//TODO: guard this parameter so it is not available in production
-	if account := r.URL.Query().Get("account"); account != "" {
-		authOpts = append(authOpts, oauth2.SetAuthURLParam("account", account))
-		authOpts = append(authOpts, oauth2.SetAuthURLParam("prompt", "login"))
-	}
-
-	authURL := h.rp.OAuth2.AuthCodeURL(state, authOpts...)
+	)
 
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
@@ -140,8 +133,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
-		Email  string   `json:"email"`
-		Groups []string `json:"groups"`
+		Email string `json:"email"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		logger.Error("failed to extract claims", "err", err)
@@ -153,9 +145,6 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		httputil.RenderPlain(w, logger, http.StatusForbidden)
 		return
 	}
-
-	//TODO: remove before PR (debug only)
-	logger.Info("user authenticated", "email", claims.Email, "groups", claims.Groups)
 
 	sess.SetUser(&session.User{Email: claims.Email})
 
