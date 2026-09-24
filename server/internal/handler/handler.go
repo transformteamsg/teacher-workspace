@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"io/fs"
 	"net/http"
 	stdhttputil "net/http/httputil"
 	"path/filepath"
@@ -53,7 +54,7 @@ func New(cfg *config.Config, rp *oidc.RelyingParty) (*Handler, error) {
 		h.devProxy = stdhttputil.NewSingleHostReverseProxy(cfg.DevServerURL)
 		h.executor = htmlutil.NewDevelopmentTemplateExecutor(cfg.DevServerURL.String())
 	case config.EnvProduction:
-		h.assets = http.FileServer(http.Dir(cfg.BuildDir))
+		h.assets = http.FileServer(fileOnlyFS{http.Dir(cfg.BuildDir)})
 
 		executor, err := htmlutil.NewProductionTemplateExecutor(filepath.Join(cfg.BuildDir, "index.html"))
 		if err != nil {
@@ -63,6 +64,29 @@ func New(cfg *config.Config, rp *oidc.RelyingParty) (*Handler, error) {
 	}
 
 	return h, nil
+}
+
+type fileOnlyFS struct {
+	http.FileSystem
+}
+
+func (fsys fileOnlyFS) Open(name string) (http.File, error) {
+	f, err := fsys.FileSystem.Open(name)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	if info.IsDir() {
+		_ = f.Close()
+		return nil, fs.ErrNotExist
+	}
+
+	return f, nil
 }
 
 // Register registers all application routes on the given HTTP server mux.
