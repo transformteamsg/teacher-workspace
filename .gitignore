@@ -25,3 +25,6 @@ tmp
 # Ignore environment variables.
 *.env*
 !.env.example
+
+# Ignore certificates/keys.
+.certs/
