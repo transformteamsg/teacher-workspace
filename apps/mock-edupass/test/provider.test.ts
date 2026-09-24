@@ -187,7 +187,7 @@ describe('mock-edupass OIDC provider', () => {
       assert.equal(claims.sub, 'staff-1');
       assert.equal(claims.email, 'john.smith@example.com');
       assert.equal(claims.name, 'John Smith');
-      assert.deepEqual(claims.groups, ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN']);
+      assert.deepEqual(claims.groups, ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_ADMIN']);
       assert.equal(claims.iss, BASE_URL);
       assert.equal(claims.nonce, 'test-nonce');
 
@@ -205,40 +205,6 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(valid, 'ID token signature should verify against JWKS');
     });
 
-    it('absent claim is not present in ID token (iv-staff-02)', async () => {
-      const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'iv-staff-02');
-
-      const tokenRes = await exchangeCode(code, codeVerifier);
-      assert.equal(tokenRes.status, 200);
-
-      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
-      const claims = decodeJwtPayload(tokenBody.id_token as string);
-
-      assert.equal(claims.sub, 'iv-staff-02');
-      assert.equal(claims.email, 'no-name@example.com');
-      assert.equal(
-        Object.hasOwn(claims, 'name'),
-        false,
-        'name claim should be absent, not null or empty',
-      );
-      assert.deepEqual(claims.groups, [], 'groups claim should be an empty array');
-    });
-
-    it('groups includes teacher role and attribute role (staff-1)', async () => {
-      const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-1');
-
-      const tokenRes = await exchangeCode(code, codeVerifier);
-      assert.equal(tokenRes.status, 200);
-
-      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
-      const claims = decodeJwtPayload(tokenBody.id_token as string);
-
-      assert.equal(claims.sub, 'staff-1');
-      assert.deepEqual(claims.groups, ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN']);
-    });
-
     it('groups includes location-specific role (staff-2)', async () => {
       const client = new OidcClient(BASE_URL);
       const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-2');
@@ -251,6 +217,96 @@ describe('mock-edupass OIDC provider', () => {
 
       assert.equal(claims.sub, 'staff-2');
       assert.deepEqual(claims.groups, ['1234_TW_ROLE_TEACHER']);
+    });
+
+    it('groups includes global role and attribute (staff-3)', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-3');
+
+      const tokenRes = await exchangeCode(code, codeVerifier);
+      assert.equal(tokenRes.status, 200);
+
+      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
+      const claims = decodeJwtPayload(tokenBody.id_token as string);
+
+      assert.equal(claims.sub, 'staff-3');
+      assert.deepEqual(claims.groups, ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN']);
+    });
+
+    it('groups includes conflict roles at same location (staff-4)', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-4');
+
+      const tokenRes = await exchangeCode(code, codeVerifier);
+      assert.equal(tokenRes.status, 200);
+
+      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
+      const claims = decodeJwtPayload(tokenBody.id_token as string);
+
+      assert.equal(claims.sub, 'staff-4');
+      assert.deepEqual(claims.groups, ['0001_TW_ROLE_TEACHER', '0001_TW_ROLE_HOD']);
+    });
+
+    it('groups includes pre-prod TWSTG codes (staff-5)', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-5');
+
+      const tokenRes = await exchangeCode(code, codeVerifier);
+      assert.equal(tokenRes.status, 200);
+
+      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
+      const claims = decodeJwtPayload(tokenBody.id_token as string);
+
+      assert.equal(claims.sub, 'staff-5');
+      assert.deepEqual(claims.groups, ['0001_TWSTG_ROLE_TEACHER']);
+    });
+
+    it('groups includes roles across multiple schools (staff-6)', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-6');
+
+      const tokenRes = await exchangeCode(code, codeVerifier);
+      assert.equal(tokenRes.status, 200);
+
+      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
+      const claims = decodeJwtPayload(tokenBody.id_token as string);
+
+      assert.equal(claims.sub, 'staff-6');
+      assert.deepEqual(claims.groups, ['0001_TW_ROLE_TEACHER', '1001_TW_ROLE_HOD']);
+    });
+
+    it('groups includes non-TW role alongside TW role (staff-7)', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-7');
+
+      const tokenRes = await exchangeCode(code, codeVerifier);
+      assert.equal(tokenRes.status, 200);
+
+      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
+      const claims = decodeJwtPayload(tokenBody.id_token as string);
+
+      assert.equal(claims.sub, 'staff-7');
+      assert.deepEqual(claims.groups, ['X_TW_ROLE_TEACHER', 'X_ROLE_COUNSELLOR']);
+    });
+
+    it('absent claim is not present in ID token (staff-8)', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-8');
+
+      const tokenRes = await exchangeCode(code, codeVerifier);
+      assert.equal(tokenRes.status, 200);
+
+      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
+      const claims = decodeJwtPayload(tokenBody.id_token as string);
+
+      assert.equal(claims.sub, 'staff-8');
+      assert.equal(claims.email, 'no-name@example.com');
+      assert.equal(
+        Object.hasOwn(claims, 'name'),
+        false,
+        'name claim should be absent, not null or empty',
+      );
+      assert.deepEqual(claims.groups, [], 'groups claim should be an empty array');
     });
   });
 

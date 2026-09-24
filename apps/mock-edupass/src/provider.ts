@@ -1,11 +1,11 @@
 import Provider from 'oidc-provider';
 
-const validAccounts = [
+export const accounts = [
   {
     sub: 'staff-1',
     email: 'john.smith@example.com',
     name: 'John Smith',
-    groups: ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN'],
+    groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_ADMIN'],
   },
   {
     sub: 'staff-2',
@@ -13,23 +13,42 @@ const validAccounts = [
     name: 'Alice Tan',
     groups: ['1234_TW_ROLE_TEACHER'],
   },
-];
-
-const invalidAccounts = [
   {
-    sub: 'iv-staff-01',
+    sub: 'staff-3',
+    email: 'bob.chen@example.com',
+    name: 'Bob Chen',
+    groups: ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN'],
+  },
+  {
+    sub: 'staff-4',
+    email: 'carol.lim@example.com',
+    name: 'Carol Lim',
+    groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ROLE_HOD'],
+  },
+  {
+    sub: 'staff-5',
+    email: 'david.ng@example.com',
+    name: 'David Ng',
+    groups: ['0001_TWSTG_ROLE_TEACHER'],
+  },
+  {
+    sub: 'staff-6',
+    email: 'elena.foo@example.com',
+    name: 'Elena Foo',
+    groups: ['0001_TW_ROLE_TEACHER', '1001_TW_ROLE_HOD'],
+  },
+  {
+    sub: 'staff-7',
     email: 'jane.doe@example.com',
     name: 'Jane Doe',
     groups: ['X_TW_ROLE_TEACHER', 'X_ROLE_COUNSELLOR'],
   },
   {
-    sub: 'iv-staff-02',
+    sub: 'staff-8',
     email: 'no-name@example.com',
     groups: [] as string[],
   },
 ];
-
-export const accounts = [...validAccounts, ...invalidAccounts];
 
 export function createProvider(port: number): Provider {
   const issuer = `http://localhost:${port}`;
