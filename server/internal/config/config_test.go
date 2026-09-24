@@ -104,7 +104,10 @@ func TestDefault(t *testing.T) {
 		if got := cfg.OIDC.ClientID; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
-		if got := cfg.OIDC.ClientSecret; got != "" {
+		if got := cfg.OIDC.ClientPrivateKey; got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+		if got := cfg.OIDC.ClientPublicKey; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
 		if got := cfg.OIDC.RedirectURL; got != nil {
@@ -122,13 +125,12 @@ func validConfig() Config {
 	cfg.APIProxy.StudentInsightsSigningKey = "a-string-secret-at-least-256-bits-long"
 	cfg.APIProxy.PostsSigningKey = "a-string-secret-at-least-256-bits-long"
 	cfg.OIDC = OIDCConfig{
-		IssuerURL:    &url.URL{Scheme: "http", Host: "localhost:9000"},
-		AuthURL:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
-		TokenURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
-		JWKSURI:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
-		ClientID:     "teacher-workspace",
-		ClientSecret: "teacher-workspace-secret",
-		RedirectURL:  &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
+		IssuerURL:   &url.URL{Scheme: "http", Host: "localhost:9000"},
+		AuthURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
+		TokenURL:    &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
+		JWKSURI:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
+		ClientID:    "teacher-workspace",
+		RedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
 	}
 
 	return cfg
@@ -830,11 +832,6 @@ func TestOIDCConfig_validate(t *testing.T) {
 				name:   "empty client ID",
 				mutate: func(c *OIDCConfig) { c.ClientID = "" },
 				want:   "TW_OIDC_CLIENT_ID is required",
-			},
-			{
-				name:   "empty client secret",
-				mutate: func(c *OIDCConfig) { c.ClientSecret = "" },
-				want:   "TW_OIDC_CLIENT_SECRET is required",
 			},
 			{
 				name:   "missing redirect URL",
