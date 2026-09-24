@@ -176,10 +176,7 @@ func newSessionWithOIDC(state, nonce, codeVerifier string) *session.Session {
 
 func newSessionWithOIDCAndReturnTo(state, nonce, codeVerifier, returnTo string) *session.Session {
 	sess := newSessionWithOIDC(state, nonce, codeVerifier)
-	// mirrors authEdupass: empty return_to is never stored
-	if returnTo != "" {
-		sess.Set(sessionKeyReturnTo, returnTo)
-	}
+	sess.Set(sessionKeyReturnTo, returnTo)
 	return sess
 }
 
@@ -388,7 +385,7 @@ func TestHandler_authEdupass(t *testing.T) {
 		}
 	})
 
-	t.Run("does not store return_to when the value is refused", func(t *testing.T) {
+	t.Run("stores empty return_to when the value is refused", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		var logBuf bytes.Buffer
@@ -407,8 +404,9 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
 		}
 
 		var entry struct {
@@ -430,7 +428,7 @@ func TestHandler_authEdupass(t *testing.T) {
 		}
 	})
 
-	t.Run("does not store return_to when the parameter is absent", func(t *testing.T) {
+	t.Run("stores empty return_to when the parameter is absent", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		sess := session.New()
@@ -444,12 +442,13 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
 		}
 	})
 
-	t.Run("does not store return_to when the value targets /auth/", func(t *testing.T) {
+	t.Run("stores empty return_to when the value targets /auth/", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		sess := session.New()
@@ -463,12 +462,13 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
 		}
 	})
 
-	t.Run("does not store return_to when the value targets /api/", func(t *testing.T) {
+	t.Run("stores empty return_to when the value targets /api/", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		sess := session.New()
@@ -482,12 +482,13 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
 		}
 	})
 
-	t.Run("does not store return_to when the value is an empty string", func(t *testing.T) {
+	t.Run("stores empty return_to when the value is an empty string", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		sess := session.New()
@@ -501,8 +502,47 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
+		}
+	})
+
+	t.Run("clears stale return_to when restarting login without return_to", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+
+		req1 := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fposts%2F42", nil)
+		req1 = req1.WithContext(middleware.WithSession(req1.Context(), sess))
+		h.authEdupass(httptest.NewRecorder(), req1)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/auth/edupass", nil)
+		req2 = req2.WithContext(middleware.WithSession(req2.Context(), sess))
+		h.authEdupass(httptest.NewRecorder(), req2)
+
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q (stale value cleared); got: %q", "", got)
+		}
+	})
+
+	t.Run("clears stale return_to when restarting login with invalid return_to", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+
+		req1 := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fposts%2F42", nil)
+		req1 = req1.WithContext(middleware.WithSession(req1.Context(), sess))
+		h.authEdupass(httptest.NewRecorder(), req1)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=https%3A%2F%2Fevil.example", nil)
+		req2 = req2.WithContext(middleware.WithSession(req2.Context(), sess))
+		h.authEdupass(httptest.NewRecorder(), req2)
+
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q (stale value cleared); got: %q", "", got)
 		}
 	})
 
@@ -907,5 +947,32 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		env.h.authEdupassCallback(rec, req)
 
 		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath+"&return_to="+url.QueryEscape("/groups/7/members"))
+	})
+
+	t.Run("redirects to / after abandoned return_to flow is restarted without return_to", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+		sess := session.New()
+
+		req1 := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fposts%2F42", nil)
+		req1 = req1.WithContext(middleware.WithSession(req1.Context(), sess))
+		env.h.authEdupass(httptest.NewRecorder(), req1)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/auth/edupass", nil)
+		req2 = req2.WithContext(middleware.WithSession(req2.Context(), sess))
+		env.h.authEdupass(httptest.NewRecorder(), req2)
+
+		stateVal, _ := sess.Get(sessionKeyOIDCState)
+		state := stateVal.(string)
+		nonceVal, _ := sess.Get(sessionKeyOIDCNonce)
+		nonce := nonceVal.(string)
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+
+		req3 := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req3 = req3.WithContext(middleware.WithSession(req3.Context(), sess))
+		rec := httptest.NewRecorder()
+		env.h.authEdupassCallback(rec, req3)
+
+		assertRedirect(t, rec, http.StatusSeeOther, "/")
 	})
 }

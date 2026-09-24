@@ -45,7 +45,7 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 		if d, ok := sanitizeReturnTo(raw); ok {
 			dest = d
 		} else {
-			logger.Warn("refused return_to destination", "raw", raw, "resolved", d)
+			logger.Warn("refused return_to destination", "raw", raw)
 		}
 	}
 
@@ -56,9 +56,7 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if dest != "" {
-		sess.Set(sessionKeyReturnTo, dest)
-	}
+	sess.Set(sessionKeyReturnTo, dest)
 
 	codeVerifier := oauth2.GenerateVerifier()
 	nonce := random.Base62(32)

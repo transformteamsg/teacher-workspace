@@ -7,14 +7,14 @@ import (
 )
 
 // sanitizeReturnTo validates a raw return_to query value and returns (path, ok).
-// ok is true when path is safe to redirect to; false when the value was absent, malformed, or refused (path is "/" in all false cases).
+// ok is true when path is safe to redirect to; false when the value was absent, malformed, or refused (path is "" in all false cases).
 func sanitizeReturnTo(raw string) (string, bool) {
 	if raw == "" {
-		return "/", false
+		return "", false
 	}
 	// Guards against unbounded session writes.
 	if len(raw) > 1024 {
-		return "/", false
+		return "", false
 	}
 
 	// Guards inspect u.Path (decoded); raw is returned as-is to preserve percent-encoding.
@@ -22,12 +22,12 @@ func sanitizeReturnTo(raw string) (string, bool) {
 	// (e.g. evil.example) which have neither scheme nor host.
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "" || u.Host != "" || !strings.HasPrefix(u.Path, "/") {
-		return "/", false
+		return "", false
 	}
 
 	// Browsers treat //host and /\host as off-site redirects.
 	if len(u.Path) > 1 && (u.Path[1] == '/' || u.Path[1] == '\\') {
-		return "/", false
+		return "", false
 	}
 
 	// Resolve ".." segments so /x/../auth/edupass cannot bypass the prefix check.
@@ -36,7 +36,7 @@ func sanitizeReturnTo(raw string) (string, bool) {
 	lower := strings.ToLower(cleaned)
 	if lower == "/auth" || lower == "/api" || lower == "/login" ||
 		strings.HasPrefix(lower, "/auth/") || strings.HasPrefix(lower, "/api/") {
-		return "/", false
+		return "", false
 	}
 
 	return raw, true
