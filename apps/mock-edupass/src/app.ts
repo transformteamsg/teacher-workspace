@@ -1,9 +1,17 @@
 import express, { Router } from 'express';
 
+import type { ClientKey } from './jwks.ts';
 import { accounts, createProvider } from './provider.ts';
 
-export function createApp(port: number) {
-  const provider = createProvider(port);
+/**
+ * Builds the mock Edupass app, with the provider mounted behind the interaction routes.
+ *
+ * @param port - Port the app is served on, which fixes the provider's issuer.
+ * @param clientKey - The backend client's JWK and certificate thumbprint.
+ * @returns The express app and the provider it wraps.
+ */
+export function createApp(port: number, clientKey: ClientKey) {
+  const provider = createProvider(port, clientKey);
 
   const router = Router();
 
