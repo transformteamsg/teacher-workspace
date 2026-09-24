@@ -17,11 +17,12 @@ import (
 )
 
 const (
-	// defaultMaxEntries and defaultMaxBytes bound a store built without
-	// limits. A session holds ~280 bytes signed out and ~1.5 KB with a sign-in
-	// underway, so the byte limit is what binds first in the worst case.
-	defaultMaxEntries = 50_000
-	defaultMaxBytes   = 64 << 20
+	// DefaultMaxEntries and DefaultMaxBytes bound a store built without limits,
+	// and are what the configuration defaults to. A session holds ~280 bytes
+	// signed out and ~1.5 KB with a sign-in underway, so the byte limit is what
+	// binds first in the worst case.
+	DefaultMaxEntries = 50_000
+	DefaultMaxBytes   = 64 << 20
 
 	// cullBatch and cullDivisor bound how much a cull frees beyond the write
 	// that triggered it: at most 64 entries, and at most a tenth of the entry
@@ -89,8 +90,8 @@ type entry struct {
 func New(opts ...Option) *Store {
 	s := &Store{
 		entries:    make(map[string]entry),
-		maxEntries: defaultMaxEntries,
-		maxBytes:   defaultMaxBytes,
+		maxEntries: DefaultMaxEntries,
+		maxBytes:   DefaultMaxBytes,
 		now:        time.Now,
 	}
 

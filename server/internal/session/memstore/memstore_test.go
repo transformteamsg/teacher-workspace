@@ -38,10 +38,10 @@ func TestNew(t *testing.T) {
 	t.Run("defaults the limits", func(t *testing.T) {
 		store := New()
 
-		if want, got := defaultMaxEntries, store.maxEntries; want != got {
+		if want, got := DefaultMaxEntries, store.maxEntries; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
-		if want, got := defaultMaxBytes, store.maxBytes; want != got {
+		if want, got := DefaultMaxBytes, store.maxBytes; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
 	})
@@ -68,10 +68,10 @@ func TestNew(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				store := New(WithMaxEntries(tt.limit), WithMaxBytes(tt.limit))
 
-				if want, got := defaultMaxEntries, store.maxEntries; want != got {
+				if want, got := DefaultMaxEntries, store.maxEntries; want != got {
 					t.Errorf("want: %d; got: %d", want, got)
 				}
-				if want, got := defaultMaxBytes, store.maxBytes; want != got {
+				if want, got := DefaultMaxBytes, store.maxBytes; want != got {
 					t.Errorf("want: %d; got: %d", want, got)
 				}
 			})

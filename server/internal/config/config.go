@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"time"
+
+	"github.com/String-sg/teacher-workspace/server/internal/session/memstore"
 )
 
 type Environment string
@@ -129,10 +131,9 @@ func Default() Config {
 			Valkey: SessionValkeyConfig{
 				Prefix: "session:",
 			},
-			// ~64 MiB at either the typical or the worst-case session size.
 			Memory: SessionMemoryConfig{
-				MaxEntries: 50_000,
-				MaxBytes:   64 << 20,
+				MaxEntries: memstore.DefaultMaxEntries,
+				MaxBytes:   memstore.DefaultMaxBytes,
 			},
 		},
 		APIProxy: APIProxyConfig{
