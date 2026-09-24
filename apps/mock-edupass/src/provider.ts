@@ -1,6 +1,13 @@
 import Provider from 'oidc-provider';
 
-export const accounts = [
+interface Account {
+  sub: string;
+  email?: string;
+  name?: string;
+  groups: string[];
+}
+
+export const accounts: Account[] = [
   {
     sub: 'staff-1',
     email: 'john.smith@example.com',
@@ -46,7 +53,7 @@ export const accounts = [
   {
     sub: 'staff-8',
     email: 'no-name@example.com',
-    groups: [] as string[],
+    groups: [],
   },
 ];
 
@@ -102,6 +109,7 @@ export function createProvider(port: number): Provider {
           const claims: { sub: string; [key: string]: string | string[] } = { sub: account.sub };
           if (account.email) claims.email = account.email;
           if (account.name) claims.name = account.name;
+          // Always emit groups per Edupass spec: the claim is never absent, only empty.
           claims.groups = account.groups;
           return claims;
         },

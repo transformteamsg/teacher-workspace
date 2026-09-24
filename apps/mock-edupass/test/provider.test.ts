@@ -205,91 +205,48 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(valid, 'ID token signature should verify against JWKS');
     });
 
-    it('groups includes location-specific role (staff-2)', async () => {
-      const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-2');
+    const groupsFixtures: { account: string; title: string; groups: string[] }[] = [
+      { account: 'staff-2', title: 'location-specific role', groups: ['1234_TW_ROLE_TEACHER'] },
+      {
+        account: 'staff-3',
+        title: 'global role and attribute',
+        groups: ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN'],
+      },
+      {
+        account: 'staff-4',
+        title: 'conflict roles at same location',
+        groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ROLE_HOD'],
+      },
+      { account: 'staff-5', title: 'pre-prod TWSTG codes', groups: ['0001_TWSTG_ROLE_TEACHER'] },
+      {
+        account: 'staff-6',
+        title: 'roles across multiple schools',
+        groups: ['0001_TW_ROLE_TEACHER', '1001_TW_ROLE_HOD'],
+      },
+      {
+        account: 'staff-7',
+        title: 'non-TW role alongside TW role',
+        groups: ['X_TW_ROLE_TEACHER', 'X_ROLE_COUNSELLOR'],
+      },
+    ];
 
-      const tokenRes = await exchangeCode(code, codeVerifier);
-      assert.equal(tokenRes.status, 200);
+    for (const { account, title, groups } of groupsFixtures) {
+      it(`groups includes ${title} (${account})`, async () => {
+        const client = new OidcClient(BASE_URL);
+        const { code, codeVerifier } = await obtainAuthorizationCode(client, account);
 
-      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
-      const claims = decodeJwtPayload(tokenBody.id_token as string);
+        const tokenRes = await exchangeCode(code, codeVerifier);
+        assert.equal(tokenRes.status, 200);
 
-      assert.equal(claims.sub, 'staff-2');
-      assert.deepEqual(claims.groups, ['1234_TW_ROLE_TEACHER']);
-    });
+        const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
+        const claims = decodeJwtPayload(tokenBody.id_token as string);
 
-    it('groups includes global role and attribute (staff-3)', async () => {
-      const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-3');
+        assert.equal(claims.sub, account);
+        assert.deepEqual(claims.groups, groups);
+      });
+    }
 
-      const tokenRes = await exchangeCode(code, codeVerifier);
-      assert.equal(tokenRes.status, 200);
-
-      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
-      const claims = decodeJwtPayload(tokenBody.id_token as string);
-
-      assert.equal(claims.sub, 'staff-3');
-      assert.deepEqual(claims.groups, ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN']);
-    });
-
-    it('groups includes conflict roles at same location (staff-4)', async () => {
-      const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-4');
-
-      const tokenRes = await exchangeCode(code, codeVerifier);
-      assert.equal(tokenRes.status, 200);
-
-      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
-      const claims = decodeJwtPayload(tokenBody.id_token as string);
-
-      assert.equal(claims.sub, 'staff-4');
-      assert.deepEqual(claims.groups, ['0001_TW_ROLE_TEACHER', '0001_TW_ROLE_HOD']);
-    });
-
-    it('groups includes pre-prod TWSTG codes (staff-5)', async () => {
-      const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-5');
-
-      const tokenRes = await exchangeCode(code, codeVerifier);
-      assert.equal(tokenRes.status, 200);
-
-      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
-      const claims = decodeJwtPayload(tokenBody.id_token as string);
-
-      assert.equal(claims.sub, 'staff-5');
-      assert.deepEqual(claims.groups, ['0001_TWSTG_ROLE_TEACHER']);
-    });
-
-    it('groups includes roles across multiple schools (staff-6)', async () => {
-      const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-6');
-
-      const tokenRes = await exchangeCode(code, codeVerifier);
-      assert.equal(tokenRes.status, 200);
-
-      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
-      const claims = decodeJwtPayload(tokenBody.id_token as string);
-
-      assert.equal(claims.sub, 'staff-6');
-      assert.deepEqual(claims.groups, ['0001_TW_ROLE_TEACHER', '1001_TW_ROLE_HOD']);
-    });
-
-    it('groups includes non-TW role alongside TW role (staff-7)', async () => {
-      const client = new OidcClient(BASE_URL);
-      const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-7');
-
-      const tokenRes = await exchangeCode(code, codeVerifier);
-      assert.equal(tokenRes.status, 200);
-
-      const tokenBody = (await tokenRes.json()) as Record<string, unknown>;
-      const claims = decodeJwtPayload(tokenBody.id_token as string);
-
-      assert.equal(claims.sub, 'staff-7');
-      assert.deepEqual(claims.groups, ['X_TW_ROLE_TEACHER', 'X_ROLE_COUNSELLOR']);
-    });
-
-    it('absent claim is not present in ID token (staff-8)', async () => {
+    it('groups claim is empty array for account with no roles (staff-8)', async () => {
       const client = new OidcClient(BASE_URL);
       const { code, codeVerifier } = await obtainAuthorizationCode(client, 'staff-8');
 
