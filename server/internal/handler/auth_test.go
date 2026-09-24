@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,7 @@ type callbackTestEnv struct {
 	srv          *httptest.Server
 	tokenNonce   *string
 	tokenEmail   *string
+	tokenRoles   *[]string
 	tokenErr     *string // when non-empty, mock returns {"error": <value>} with 400
 	skipIDToken  *bool   // when true, mock omits id_token from the response
 	tokenExpired *bool   // when true, mock sets exp to the past
@@ -67,11 +69,14 @@ func newCallbackTestEnv(t *testing.T) *callbackTestEnv {
 		t.Fatalf("rsa.GenerateKey: %v", err)
 	}
 
-	var tokenNonce, tokenEmail, tokenErr string
+	var tokenNonce, tokenEmail string
+	var tokenRoles []string
+	var tokenErr string
 	var skipIDToken, tokenExpired bool
 	env := &callbackTestEnv{
 		tokenNonce:   &tokenNonce,
 		tokenEmail:   &tokenEmail,
+		tokenRoles:   &tokenRoles,
 		tokenErr:     &tokenErr,
 		skipIDToken:  &skipIDToken,
 		tokenExpired: &tokenExpired,
@@ -114,6 +119,9 @@ func newCallbackTestEnv(t *testing.T) *callbackTestEnv {
 			"nonce": *env.tokenNonce,
 			"iat":   time.Now().Unix(),
 			"exp":   expiry,
+		}
+		if len(*env.tokenRoles) > 0 {
+			claims["roles"] = *env.tokenRoles
 		}
 		claimsJSON, err := json.Marshal(claims)
 		if err != nil {
@@ -481,6 +489,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		nonce := "test-nonce"
 		*env.tokenNonce = nonce
 		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_TEACHER"}
 
 		sess := newSessionWithOIDC(state, nonce, "test-verifier")
 		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
@@ -751,6 +760,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		nonce := "test-nonce"
 		*env.tokenNonce = nonce
 		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_TEACHER"}
 
 		sess := newSessionWithOIDCAndReturnTo(state, nonce, "test-verifier", "/posts?tab=drafts")
 		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
@@ -780,6 +790,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		nonce := "test-nonce"
 		*env.tokenNonce = nonce
 		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_TEACHER"}
 
 		sess := newSessionWithOIDC(state, nonce, "test-verifier")
 		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state+"&return_to=/evil", nil)
@@ -846,6 +857,286 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			if _, ok := sess.Get(key); ok {
 				t.Errorf("session key %q should be absent after failed callback; got present", key)
 			}
+		}
+	})
+
+	t.Run("resolves a single base role onto the session", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_TEACHER"}
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if sess.User() == nil {
+			t.Fatal("want: non-nil; got: nil")
+		}
+		if want, got := []string{"ROLE_TEACHER"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("Roles: want: %v; got: %v", want, got)
+		}
+		if want, got := "ROLE_TEACHER", sess.User().EffectiveRole; want != got {
+			t.Errorf("EffectiveRole: want: %q; got: %q", want, got)
+		}
+		if want, got := []string{}, sess.User().Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("Attributes: want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("keeps every recognized attribute alongside the base role", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_PG_ADMIN", "1234_TW_ATTR_CCE"}
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if sess.User() == nil {
+			t.Fatal("want: non-nil; got: nil")
+		}
+		if want, got := []string{"ATTR_PG_ADMIN", "ATTR_CCE"}, sess.User().Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("Attributes: want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("refuses sign-in when more than one recognized base role shares a location", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		var logBuf bytes.Buffer
+		testLogger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_PRINCIPAL", "1234_TW_ROLE_TEACHER"}
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		ctx := middleware.WithSession(req.Context(), sess)
+		ctx = middleware.WithLogger(ctx, testLogger)
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := loginFailedRedirect, rec.Header().Get("Location"); want != got {
+			t.Errorf("Location: want: %q; got: %q", want, got)
+		}
+		if sess.User() != nil {
+			t.Error("want: nil; got: non-nil")
+		}
+
+		var entry struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+		}
+		if err := json.NewDecoder(&logBuf).Decode(&entry); err != nil {
+			t.Fatalf("want a log entry; got decode error: %v", err)
+		}
+		if want, got := "WARN", entry.Level; want != got {
+			t.Errorf("log level: want %q; got %q", want, got)
+		}
+		if want, got := "teacher does not have exactly one recognized base role", entry.Msg; want != got {
+			t.Errorf("log msg: want %q; got %q", want, got)
+		}
+	})
+
+	t.Run("refuses sign-in when recognized base roles span more than one location", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_TEACHER", "5678_TW_ROLE_TEACHER"}
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := loginFailedRedirect, rec.Header().Get("Location"); want != got {
+			t.Errorf("Location: want: %q; got: %q", want, got)
+		}
+		if sess.User() != nil {
+			t.Error("want: nil; got: non-nil")
+		}
+	})
+
+	t.Run("discards unrecognized codes and logs them without blocking sign-in", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		var logBuf bytes.Buffer
+		testLogger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_SUPERINTENDENT"}
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		ctx := middleware.WithSession(req.Context(), sess)
+		ctx = middleware.WithLogger(ctx, testLogger)
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if sess.User() == nil {
+			t.Fatal("want: non-nil; got: nil")
+		}
+		if want, got := []string{"ROLE_TEACHER"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("Roles: want: %v; got: %v", want, got)
+		}
+
+		var entry struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+		}
+		if err := json.NewDecoder(&logBuf).Decode(&entry); err != nil {
+			t.Fatalf("want a log entry; got decode error: %v", err)
+		}
+		if want, got := "WARN", entry.Level; want != got {
+			t.Errorf("log level: want %q; got %q", want, got)
+		}
+		if want, got := "discarded unrecognized Edupass role/attribute codes", entry.Msg; want != got {
+			t.Errorf("log msg: want %q; got %q", want, got)
+		}
+	})
+
+	t.Run("resolves pre-prod codes the same as production codes", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TWSTG_ROLE_TEACHER"}
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := []string{"ROLE_TEACHER"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("Roles: want: %v; got: %v", want, got)
+		}
+		if want, got := "ROLE_TEACHER", sess.User().EffectiveRole; want != got {
+			t.Errorf("EffectiveRole: want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("refuses sign-in when the token carries no recognized base role", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if want, got := loginFailedRedirect, rec.Header().Get("Location"); want != got {
+			t.Errorf("Location: want: %q; got: %q", want, got)
+		}
+		if sess.User() != nil {
+			t.Error("want: nil; got: non-nil")
+		}
+	})
+
+	t.Run("reflects the new token's roles on a second sign-in, carrying nothing over", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		firstState := "test-state-1"
+		firstNonce := "test-nonce-1"
+		*env.tokenNonce = firstNonce
+		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_TEACHER"}
+
+		sess := newSessionWithOIDC(firstState, firstNonce, "test-verifier-1")
+		firstReq := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+firstState, nil)
+		firstReq = firstReq.WithContext(middleware.WithSession(firstReq.Context(), sess))
+		firstRec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(firstRec, firstReq)
+
+		if want, got := []string{"ROLE_TEACHER"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
+			t.Fatalf("first sign-in Roles: want: %v; got: %v", want, got)
+		}
+
+		secondState := "test-state-2"
+		secondNonce := "test-nonce-2"
+		*env.tokenNonce = secondNonce
+		*env.tokenRoles = []string{"1234_TW_ROLE_HOD"}
+		sess.Set(sessionKeyOIDCState, secondState)
+		sess.Set(sessionKeyOIDCNonce, secondNonce)
+		sess.Set(sessionKeyOIDCCodeVerifier, "test-verifier-2")
+
+		secondReq := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+secondState, nil)
+		secondReq = secondReq.WithContext(middleware.WithSession(secondReq.Context(), sess))
+		secondRec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(secondRec, secondReq)
+
+		if want, got := http.StatusSeeOther, secondRec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if sess.User() == nil {
+			t.Fatal("want: non-nil; got: nil")
+		}
+		if want, got := []string{"ROLE_HOD"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("Roles: want: %v; got: %v", want, got)
+		}
+		if want, got := "ROLE_HOD", sess.User().EffectiveRole; want != got {
+			t.Errorf("EffectiveRole: want: %q; got: %q", want, got)
 		}
 	})
 
