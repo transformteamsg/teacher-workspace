@@ -48,7 +48,7 @@ export const accounts: Account[] = [
     sub: 'staff-7',
     email: 'jane.doe@example.com',
     name: 'Jane Doe',
-    groups: ['X_TW_ROLE_TEACHER', 'X_ROLE_COUNSELLOR'],
+    groups: ['X_TW_ROLE_TEACHER', 'X_XX_ROLE_COUNSELLOR'],
   },
   {
     sub: 'staff-8',
