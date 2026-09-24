@@ -1,6 +1,6 @@
 import Provider from 'oidc-provider';
 
-interface Account {
+export interface Account {
   sub: string;
   email?: string;
   name?: string;
