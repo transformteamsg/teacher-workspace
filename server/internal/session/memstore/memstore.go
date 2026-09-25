@@ -23,11 +23,10 @@ const (
 	defaultMaxEntries = 50_000
 	defaultMaxBytes   = 64 << 20
 
-	// cullBatch and cullDivisor bound how much a cull frees beyond the write
-	// that triggered it: at most 64 entries, and at most a tenth of the entry
-	// limit. Freeing a batch amortises the scan it costs over the writes that
-	// follow, and capping the batch keeps a store whose byte limit binds first
-	// from signing out thousands of visitors to make room for one.
+	// cullBatch and cullDivisor set how much a cull frees beyond the write that
+	// triggered it, so the scan it costs is amortised over the writes that
+	// follow. A cull frees this many signed-out entries even when the write
+	// needed one, and more when the byte limit still does not fit.
 	cullBatch   = 64
 	cullDivisor = 10
 )
