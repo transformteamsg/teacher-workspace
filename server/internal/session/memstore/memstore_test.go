@@ -397,8 +397,8 @@ func seedEntry(s *Store, id string, e entry) {
 func TestStore_Limits(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	// Every snapshot below encodes to 35 bytes, so the byte cases can count in
-	// whole entries.
+	// The snapshots that the byte cases count encode to 35 bytes each, so those
+	// limits read in whole entries.
 	const entryBytes = 35
 
 	newStore := func(maxEntries, maxBytes int) *Store {
@@ -580,12 +580,12 @@ func TestStore_Limits(t *testing.T) {
 		// the entry limit is far off.
 		store := newStore(10, entryBytes*2)
 		seedEntry(store, "idle", entry{
-			data:        []byte(`{"id":"idle","csrf_token":"csr-1"}`),
+			data:        []byte(`{"id":"old","csrf_token":"csrf-01"}`),
 			expiresAt:   now.Add(time.Hour),
 			committedAt: now.Add(-time.Hour),
 		})
 		seedEntry(store, "recent", entry{
-			data:        []byte(`{"id":"recnt","csrf_token":"csr-2"}`),
+			data:        []byte(`{"id":"new","csrf_token":"csrf-02"}`),
 			expiresAt:   now.Add(time.Hour),
 			committedAt: now.Add(-time.Minute),
 		})

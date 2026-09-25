@@ -479,7 +479,12 @@ func TestSessionConfig_validate(t *testing.T) {
 			{
 				name:   "negative memory byte limit",
 				mutate: func(c *SessionConfig) { c.Memory.MaxBytes = -1 },
-				want:   "TW_SESSION_MEMORY_MAX_BYTES must be at least 1; got -1",
+				want:   "TW_SESSION_MEMORY_MAX_BYTES must be at least 65536; got -1",
+			},
+			{
+				name:   "memory byte limit too small to hold a session",
+				mutate: func(c *SessionConfig) { c.Memory.MaxBytes = 100 },
+				want:   "TW_SESSION_MEMORY_MAX_BYTES must be at least 65536; got 100",
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {

@@ -53,6 +53,10 @@ type ServerConfig struct {
 	IdleTimeout       time.Duration `dotenv:"TW_SERVER_IDLE_TIMEOUT"`
 }
 
+// minSessionMemoryMaxBytes is the smallest in-memory store that holds a useful
+// number of sessions, at roughly 40 of the largest a session gets.
+const minSessionMemoryMaxBytes = 64 << 10
+
 type SessionStoreProvider string
 
 const (
@@ -234,8 +238,11 @@ func (c SessionMemoryConfig) validate() error {
 	if c.MaxEntries < 1 {
 		errs = append(errs, fmt.Errorf("TW_SESSION_MEMORY_MAX_ENTRIES must be at least 1; got %d", c.MaxEntries))
 	}
-	if c.MaxBytes < 1 {
-		errs = append(errs, fmt.Errorf("TW_SESSION_MEMORY_MAX_BYTES must be at least 1; got %d", c.MaxBytes))
+	// A session runs to ~1.5 KB with a sign-in underway, so a limit below this
+	// leaves the server starting cleanly and then refusing the writes that
+	// carry sign-in state, with nothing but a log line to show for it.
+	if c.MaxBytes < minSessionMemoryMaxBytes {
+		errs = append(errs, fmt.Errorf("TW_SESSION_MEMORY_MAX_BYTES must be at least %d; got %d", minSessionMemoryMaxBytes, c.MaxBytes))
 	}
 
 	return errors.Join(errs...)
