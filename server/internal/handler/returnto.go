@@ -7,7 +7,7 @@ import (
 )
 
 // sanitizeReturnTo validates a raw return_to query value and returns (path, ok).
-// ok is true when path is safe to redirect to; false when the value was absent, malformed, or refused (path is "" in all false cases).
+// ok is true when path is safe to redirect to; on failure, path is "" and the caller applies any fallback default.
 func sanitizeReturnTo(raw string) (string, bool) {
 	if raw == "" {
 		return "", false
