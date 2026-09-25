@@ -13,7 +13,7 @@ func TestSanitizeReturnTo(t *testing.T) {
 		wantOK   bool
 	}{
 		// Empty / absent
-		{name: "returns fallback for empty string", raw: "", wantPath: "/", wantOK: false},
+		{name: "returns fallback for empty string", raw: "", wantPath: "", wantOK: false},
 
 		// Valid same-site paths
 		{name: "accepts root path", raw: "/", wantPath: "/", wantOK: true},
@@ -25,54 +25,74 @@ func TestSanitizeReturnTo(t *testing.T) {
 		{name: "accepts path starting with /apikeys", raw: "/apikeys", wantPath: "/apikeys", wantOK: true},
 
 		// Off-site: absolute URLs
-		{name: "rejects https absolute URL", raw: "https://evil.example/x", wantPath: "/", wantOK: false},
-		{name: "rejects http absolute URL", raw: "http://evil.example", wantPath: "/", wantOK: false},
+		{name: "rejects https absolute URL", raw: "https://evil.example/x", wantPath: "", wantOK: false},
+		{name: "rejects http absolute URL", raw: "http://evil.example", wantPath: "", wantOK: false},
 
 		// Off-site: protocol-relative
-		{name: "rejects protocol-relative URL", raw: "//evil.example/x", wantPath: "/", wantOK: false},
+		{name: "rejects protocol-relative URL", raw: "//evil.example/x", wantPath: "", wantOK: false},
 
 		// Off-site: backslash trick
-		{name: "rejects backslash after slash", raw: "/\\evil.example", wantPath: "/", wantOK: false},
+		{name: "rejects backslash after slash", raw: "/\\evil.example", wantPath: "", wantOK: false},
+
+		// Backslash normalization: browsers treat \ as / in HTTP paths (WHATWG URL spec)
+		{name: "rejects backslash dot-dot traversal to /auth/", raw: "/foo\\..\\auth\\edupass", wantPath: "", wantOK: false},
+		{name: "rejects backslash dot-dot traversal to /api/", raw: "/foo\\..\\api\\posts", wantPath: "", wantOK: false},
+		{name: "rejects backslash dot-dot traversal to /login", raw: "/foo\\..\\login", wantPath: "", wantOK: false},
+		{name: "rejects deep backslash traversal", raw: "/a\\b\\..\\..\\auth\\edupass", wantPath: "", wantOK: false},
+		{name: "rejects mixed slash backslash traversal", raw: "/foo\\../auth/edupass", wantPath: "", wantOK: false},
+		{name: "rejects percent-encoded backslash traversal", raw: "/foo%5C..%5Cauth%5Cedupass", wantPath: "", wantOK: false},
 
 		// Off-site: encoded bypasses
-		{name: "rejects double-encoded protocol-relative", raw: "%2F%2Fevil.example", wantPath: "/", wantOK: false},
-		{name: "rejects lowercase double-encoded", raw: "%2f%2fevil.example", wantPath: "/", wantOK: false},
+		{name: "rejects double-encoded protocol-relative", raw: "%2F%2Fevil.example", wantPath: "", wantOK: false},
+		{name: "rejects lowercase double-encoded", raw: "%2f%2fevil.example", wantPath: "", wantOK: false},
 
 		// Off-site: no leading slash
-		{name: "rejects relative URL without leading slash", raw: "evil.example", wantPath: "/", wantOK: false},
+		{name: "rejects relative URL without leading slash", raw: "evil.example", wantPath: "", wantOK: false},
 
 		// Internal route blocking (Q2)
-		{name: "rejects /auth/ prefix", raw: "/auth/edupass", wantPath: "/", wantOK: false},
-		{name: "rejects /auth/ callback", raw: "/auth/edupass/callback", wantPath: "/", wantOK: false},
-		{name: "rejects /Auth/ case bypass", raw: "/Auth/Edupass", wantPath: "/", wantOK: false},
-		{name: "rejects /api/ prefix", raw: "/api/posts/hello", wantPath: "/", wantOK: false},
-		{name: "rejects /API/ case bypass", raw: "/API/posts", wantPath: "/", wantOK: false},
-		{name: "rejects /api/ root", raw: "/api/", wantPath: "/", wantOK: false},
+		{name: "rejects /auth/ prefix", raw: "/auth/edupass", wantPath: "", wantOK: false},
+		{name: "rejects /auth/ callback", raw: "/auth/edupass/callback", wantPath: "", wantOK: false},
+		{name: "rejects /Auth/ case bypass", raw: "/Auth/Edupass", wantPath: "", wantOK: false},
+		{name: "rejects /api/ prefix", raw: "/api/posts/hello", wantPath: "", wantOK: false},
+		{name: "rejects /API/ case bypass", raw: "/API/posts", wantPath: "", wantOK: false},
+		{name: "rejects /api/ root", raw: "/api/", wantPath: "", wantOK: false},
 
 		// Boundary: /auth and /api are blocked by exact match; /authentication and /apikeys are accepted
-		{name: "rejects /auth without trailing slash", raw: "/auth", wantPath: "/", wantOK: false},
-		{name: "rejects /Auth case bypass without trailing slash", raw: "/Auth", wantPath: "/", wantOK: false},
-		{name: "rejects /api without trailing slash", raw: "/api", wantPath: "/", wantOK: false},
-		{name: "rejects /API case bypass without trailing slash", raw: "/API", wantPath: "/", wantOK: false},
+		{name: "rejects /auth without trailing slash", raw: "/auth", wantPath: "", wantOK: false},
+		{name: "rejects /Auth case bypass without trailing slash", raw: "/Auth", wantPath: "", wantOK: false},
+		{name: "rejects /api without trailing slash", raw: "/api", wantPath: "", wantOK: false},
+		{name: "rejects /API case bypass without trailing slash", raw: "/API", wantPath: "", wantOK: false},
+
+		// Internal route blocking: /login (exact + prefix, not /loginXX)
+		{name: "rejects /login exact", raw: "/login", wantPath: "", wantOK: false},
+		{name: "rejects /Login case bypass", raw: "/Login", wantPath: "", wantOK: false},
+		{name: "rejects /login with query string", raw: "/login?error=oauth2_failed", wantPath: "", wantOK: false},
+		{name: "accepts /loginXX (not a prefix match)", raw: "/loginXX", wantPath: "/loginXX", wantOK: true},
+
+		// Path traversal: ".." segments resolved before prefix check
+		{name: "rejects dot-dot traversal to /auth/", raw: "/x/../auth/edupass", wantPath: "", wantOK: false},
+		{name: "rejects dot-dot traversal to /api/", raw: "/x/../api/posts", wantPath: "", wantOK: false},
+		{name: "rejects dot-dot traversal to /login", raw: "/x/../login", wantPath: "", wantOK: false},
+		{name: "rejects nested dot-dot traversal", raw: "/a/b/../../auth/edupass", wantPath: "", wantOK: false},
 
 		// Malformed percent-encoding
-		{name: "rejects malformed percent-encoding", raw: "%ZZ", wantPath: "/", wantOK: false},
+		{name: "rejects malformed percent-encoding", raw: "%ZZ", wantPath: "", wantOK: false},
 
 		// Encoded backslash bypass: %5C decodes to \, caught after QueryUnescape
-		{name: "rejects encoded backslash", raw: "/%5Cevil.example", wantPath: "/", wantOK: false},
+		{name: "rejects encoded backslash", raw: "/%5Cevil.example", wantPath: "", wantOK: false},
 
 		// XSS via javascript: scheme -- rejected by no-leading-slash check
-		{name: "rejects javascript scheme", raw: "javascript:alert(1)", wantPath: "/", wantOK: false},
+		{name: "rejects javascript scheme", raw: "javascript:alert(1)", wantPath: "", wantOK: false},
 
 		// Percent-encoded data preserved (would fail with double-decode)
 		{name: "preserves percent-encoded path segment", raw: "/groups/P5%2F3", wantPath: "/groups/P5%2F3", wantOK: true},
 
 		// Length limit
 		{name: "accepts path of exactly 1024 bytes", raw: "/" + strings.Repeat("a", 1023), wantPath: "/" + strings.Repeat("a", 1023), wantOK: true},
-		{name: "rejects path over 1024 bytes", raw: "/" + strings.Repeat("a", 1024), wantPath: "/", wantOK: false},
+		{name: "rejects path over 1024 bytes", raw: "/" + strings.Repeat("a", 1024), wantPath: "", wantOK: false},
 
 		// No leading slash variants
-		{name: "rejects query-only string", raw: "?foo=bar", wantPath: "/", wantOK: false},
+		{name: "rejects query-only string", raw: "?foo=bar", wantPath: "", wantOK: false},
 	}
 
 	for _, tt := range tests {

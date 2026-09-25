@@ -2,10 +2,10 @@ package handler
 
 import (
 	"net/http"
+	"net/url"
 
 	"golang.org/x/oauth2"
 
-	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/String-sg/teacher-workspace/server/internal/session"
 	"github.com/String-sg/teacher-workspace/server/pkg/random"
@@ -16,6 +16,9 @@ const (
 	sessionKeyOIDCNonce        = "oidc_nonce"
 	sessionKeyOIDCCodeVerifier = "oidc_code_verifier"
 	sessionKeyReturnTo         = "return_to"
+
+	loginErrorOAuth2         = "oauth2_failed"
+	loginErrorOAuth2Callback = "oauth2_callback_failed"
 )
 
 func popSessionString(sess *session.Session, key string) string {
@@ -25,24 +28,35 @@ func popSessionString(sess *session.Session, key string) string {
 	return s
 }
 
+func redirectLoginError(w http.ResponseWriter, r *http.Request, errorCode string, returnTo string) {
+	q := url.Values{}
+	q.Set("error", errorCode)
+	if returnTo != "" {
+		q.Set("return_to", returnTo)
+	}
+	http.Redirect(w, r, "/login?"+q.Encode(), http.StatusFound)
+}
+
 func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 	logger := middleware.LoggerFromContext(r.Context())
+
+	var dest string
+	if raw := r.URL.Query().Get("return_to"); raw != "" {
+		if d, ok := sanitizeReturnTo(raw); ok {
+			dest = d
+		} else {
+			logger.Warn("refused return_to destination", "raw", raw)
+		}
+	}
 
 	sess, ok := middleware.SessionFromContext(r.Context())
 	if !ok {
 		logger.Error("session not found in context")
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		redirectLoginError(w, r, loginErrorOAuth2, dest)
 		return
 	}
 
-	if raw := r.URL.Query().Get("return_to"); raw != "" {
-		dest, ok := sanitizeReturnTo(raw)
-		if ok {
-			sess.Set(sessionKeyReturnTo, dest)
-		} else {
-			logger.Warn("refused return_to destination", "raw", raw, "resolved", dest)
-		}
-	}
+	sess.Set(sessionKeyReturnTo, dest)
 
 	codeVerifier := oauth2.GenerateVerifier()
 	nonce := random.Base62(32)
@@ -67,7 +81,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	sess, ok := middleware.SessionFromContext(r.Context())
 	if !ok {
 		logger.Error("session not found in context")
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, "")
 		return
 	}
 
@@ -81,7 +95,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			"error", errParam,
 			"error_description", r.URL.Query().Get("error_description"),
 		)
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
@@ -89,46 +103,56 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	if code == "" || state == "" {
 		logger.Warn("callback missing state or code")
-		httputil.RenderPlain(w, logger, http.StatusBadRequest)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
-	if storedState == "" || state != storedState {
-		logger.Warn("state mismatch or missing")
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+	if storedState == "" {
+		logger.Warn("stored state missing from session")
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
+		return
+	}
+	if state != storedState {
+		logger.Error("state mismatch")
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	if storedVerifier == "" {
 		logger.Warn("code verifier missing from session")
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	token, err := h.rp.OAuth2.Exchange(r.Context(), code, oauth2.VerifierOption(storedVerifier))
 	if err != nil {
 		logger.Error("failed to exchange authorization code", "err", err)
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
 		logger.Error("token response missing id_token")
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
 	idToken, err := h.rp.Verifier.Verify(r.Context(), rawIDToken)
 	if err != nil {
 		logger.Error("failed to verify ID token", "err", err)
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
-	if storedNonce == "" || idToken.Nonce != storedNonce {
-		logger.Warn("nonce mismatch or missing")
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+	if storedNonce == "" {
+		logger.Warn("stored nonce missing from session")
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
+		return
+	}
+	if idToken.Nonce != storedNonce {
+		logger.Error("nonce mismatch")
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 
@@ -137,12 +161,12 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		logger.Error("failed to extract claims", "err", err)
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 	if claims.Email == "" {
-		logger.Warn("ID token missing email claim")
-		httputil.RenderPlain(w, logger, http.StatusForbidden)
+		logger.Error("ID token missing email claim")
+		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
 	}
 

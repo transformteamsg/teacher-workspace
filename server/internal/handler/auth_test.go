@@ -22,6 +22,11 @@ import (
 	"github.com/String-sg/teacher-workspace/server/internal/session"
 )
 
+const (
+	wantCallbackErrPath = "/login?error=oauth2_callback_failed"
+	wantEdupassErrPath  = "/login?error=oauth2_failed"
+)
+
 // newTestOIDCHandler spins up a minimal OIDC test server and returns a
 // Handler with a real RelyingParty pointed at it.
 func newTestOIDCHandler(t *testing.T) (*Handler, *httptest.Server) {
@@ -171,11 +176,18 @@ func newSessionWithOIDC(state, nonce, codeVerifier string) *session.Session {
 
 func newSessionWithOIDCAndReturnTo(state, nonce, codeVerifier, returnTo string) *session.Session {
 	sess := newSessionWithOIDC(state, nonce, codeVerifier)
-	// mirrors authEdupass: empty return_to is never stored
-	if returnTo != "" {
-		sess.Set(sessionKeyReturnTo, returnTo)
-	}
+	sess.Set(sessionKeyReturnTo, returnTo)
 	return sess
+}
+
+func assertRedirect(t *testing.T, rec *httptest.ResponseRecorder, wantCode int, wantLocation string) {
+	t.Helper()
+	if want, got := wantCode, rec.Code; want != got {
+		t.Fatalf("want: %d; got: %d", want, got)
+	}
+	if want, got := wantLocation, rec.Header().Get("Location"); want != got {
+		t.Errorf("want: %q; got: %q", want, got)
+	}
 }
 
 func TestHandler_authEdupass(t *testing.T) {
@@ -285,7 +297,7 @@ func TestHandler_authEdupass(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 500 when session is missing from context", func(t *testing.T) {
+	t.Run("redirects to login with error when session is missing from context", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		req := httptest.NewRequest(http.MethodGet, "/auth/edupass", nil)
@@ -293,9 +305,29 @@ func TestHandler_authEdupass(t *testing.T) {
 
 		h.authEdupass(rec, req)
 
-		if want, got := http.StatusInternalServerError, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantEdupassErrPath)
+	})
+
+	t.Run("redirects to login with error and return_to when session is missing", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fposts%2F123", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		assertRedirect(t, rec, http.StatusFound, wantEdupassErrPath+"&return_to=%2Fposts%2F123")
+	})
+
+	t.Run("redirects to login with error and no return_to when session is missing and return_to is invalid", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=https%3A%2F%2Fevil.example", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		assertRedirect(t, rec, http.StatusFound, wantEdupassErrPath)
 	})
 
 	t.Run("generates different state, nonce, and challenge on each request", func(t *testing.T) {
@@ -353,7 +385,7 @@ func TestHandler_authEdupass(t *testing.T) {
 		}
 	})
 
-	t.Run("does not store return_to when the value is refused", func(t *testing.T) {
+	t.Run("stores empty return_to when the value is refused", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		var logBuf bytes.Buffer
@@ -372,8 +404,9 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
 		}
 
 		var entry struct {
@@ -395,7 +428,7 @@ func TestHandler_authEdupass(t *testing.T) {
 		}
 	})
 
-	t.Run("does not store return_to when the parameter is absent", func(t *testing.T) {
+	t.Run("stores empty return_to when the parameter is absent", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		sess := session.New()
@@ -409,12 +442,13 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
 		}
 	})
 
-	t.Run("does not store return_to when the value targets /auth/", func(t *testing.T) {
+	t.Run("stores empty return_to when the value targets /auth/", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		sess := session.New()
@@ -428,12 +462,13 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
 		}
 	})
 
-	t.Run("does not store return_to when the value targets /api/", func(t *testing.T) {
+	t.Run("stores empty return_to when the value targets /api/", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		sess := session.New()
@@ -447,12 +482,13 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
 		}
 	})
 
-	t.Run("does not store return_to when the value is an empty string", func(t *testing.T) {
+	t.Run("stores empty return_to when the value is an empty string", func(t *testing.T) {
 		h, _ := newTestOIDCHandler(t)
 
 		sess := session.New()
@@ -466,8 +502,47 @@ func TestHandler_authEdupass(t *testing.T) {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
 
-		if _, ok := sess.Get(sessionKeyReturnTo); ok {
-			t.Error("want ok: false; got: true")
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q; got: %q", "", got)
+		}
+	})
+
+	t.Run("clears stale return_to when restarting login without return_to", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+
+		req1 := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fposts%2F42", nil)
+		req1 = req1.WithContext(middleware.WithSession(req1.Context(), sess))
+		h.authEdupass(httptest.NewRecorder(), req1)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/auth/edupass", nil)
+		req2 = req2.WithContext(middleware.WithSession(req2.Context(), sess))
+		h.authEdupass(httptest.NewRecorder(), req2)
+
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q (stale value cleared); got: %q", "", got)
+		}
+	})
+
+	t.Run("clears stale return_to when restarting login with invalid return_to", func(t *testing.T) {
+		h, _ := newTestOIDCHandler(t)
+
+		sess := session.New()
+
+		req1 := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fposts%2F42", nil)
+		req1 = req1.WithContext(middleware.WithSession(req1.Context(), sess))
+		h.authEdupass(httptest.NewRecorder(), req1)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=https%3A%2F%2Fevil.example", nil)
+		req2 = req2.WithContext(middleware.WithSession(req2.Context(), sess))
+		h.authEdupass(httptest.NewRecorder(), req2)
+
+		val, _ := sess.Get(sessionKeyReturnTo)
+		if got, _ := val.(string); got != "" {
+			t.Errorf("want: %q (stale value cleared); got: %q", "", got)
 		}
 	})
 
@@ -489,12 +564,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusSeeOther, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusSeeOther, "/")
 		if sess.User() == nil {
 			t.Fatal("want: non-nil; got: nil")
 		}
@@ -513,12 +583,23 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 		if sess.User() != nil {
 			t.Error("want: nil; got: non-nil")
 		}
+	})
+
+	t.Run("rejects state missing", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		sess := newSessionWithOIDC("", "test-nonce", "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state=some-state", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("rejects missing code verifier", func(t *testing.T) {
@@ -532,9 +613,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("rejects when no OIDC values in session", func(t *testing.T) {
@@ -547,9 +626,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("rejects provider error response", func(t *testing.T) {
@@ -562,9 +639,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
 			if _, ok := sess.Get(key); ok {
 				t.Errorf("want %q ok: false; got: true", key)
@@ -583,9 +658,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusBadRequest, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
 			if _, ok := sess.Get(key); ok {
 				t.Errorf("want %q ok: false; got: true", key)
@@ -607,9 +680,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("rejects missing nonce", func(t *testing.T) {
@@ -626,9 +697,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("rejects missing email claim", func(t *testing.T) {
@@ -646,12 +715,10 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
-	t.Run("returns 400 when state is missing from callback URL", func(t *testing.T) {
+	t.Run("redirects to login with error when state is missing from callback URL", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 
 		sess := newSessionWithOIDC("test-state", "test-nonce", "test-verifier")
@@ -661,9 +728,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusBadRequest, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 		for _, key := range []string{sessionKeyOIDCState, sessionKeyOIDCNonce, sessionKeyOIDCCodeVerifier, sessionKeyReturnTo} {
 			if _, ok := sess.Get(key); ok {
 				t.Errorf("want %q ok: false; got: true", key)
@@ -671,7 +736,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 500 when session is missing from context", func(t *testing.T) {
+	t.Run("redirects to login with error when session is missing from context", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 
 		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
@@ -679,12 +744,10 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusInternalServerError, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
-	t.Run("returns 403 when token exchange fails", func(t *testing.T) {
+	t.Run("redirects to login with error when token exchange fails", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 
 		state := "test-state"
@@ -697,12 +760,10 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
-	t.Run("returns 500 when token response is missing id_token", func(t *testing.T) {
+	t.Run("redirects to login with error when token response is missing id_token", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 
 		state := "test-state"
@@ -718,12 +779,10 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusInternalServerError, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
-	t.Run("returns 403 when ID token is expired", func(t *testing.T) {
+	t.Run("redirects to login with error when ID token is expired", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 
 		state := "test-state"
@@ -739,9 +798,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
 	})
 
 	t.Run("redirects to the return_to destination after authentication", func(t *testing.T) {
@@ -759,12 +816,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusSeeOther, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/posts?tab=drafts", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusSeeOther, "/posts?tab=drafts")
 		if sess.User() == nil {
 			t.Fatal("want: non-nil; got: nil")
 		}
@@ -788,12 +840,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusSeeOther, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
+		assertRedirect(t, rec, http.StatusSeeOther, "/")
 	})
 
 	t.Run("clears all OIDC session keys after successful authentication", func(t *testing.T) {
@@ -836,9 +883,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts"))
 		if sess.User() != nil {
 			t.Error("want: nil; got: non-nil")
 		}
@@ -864,9 +909,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(rec, req)
 
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Fatalf("want: %d; got: %d", want, got)
-		}
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts"))
 		if sess.User() != nil {
 			t.Error("want: nil; got: non-nil")
 		}
@@ -875,5 +918,61 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				t.Errorf("session key %q should be absent after failed callback; got present", key)
 			}
 		}
+	})
+
+	t.Run("preserves return_to when provider returns error", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		sess := newSessionWithOIDCAndReturnTo("test-state", "test-nonce", "test-verifier", "/posts/123")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?error=access_denied", nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath+"&return_to="+url.QueryEscape("/posts/123"))
+	})
+
+	t.Run("preserves return_to when token exchange fails", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		*env.tokenErr = "invalid_grant"
+
+		sess := newSessionWithOIDCAndReturnTo(state, "test-nonce", "test-verifier", "/groups/7/members")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath+"&return_to="+url.QueryEscape("/groups/7/members"))
+	})
+
+	t.Run("redirects to / after abandoned return_to flow is restarted without return_to", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+		sess := session.New()
+
+		req1 := httptest.NewRequest(http.MethodGet, "/auth/edupass?return_to=%2Fposts%2F42", nil)
+		req1 = req1.WithContext(middleware.WithSession(req1.Context(), sess))
+		env.h.authEdupass(httptest.NewRecorder(), req1)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/auth/edupass", nil)
+		req2 = req2.WithContext(middleware.WithSession(req2.Context(), sess))
+		env.h.authEdupass(httptest.NewRecorder(), req2)
+
+		stateVal, _ := sess.Get(sessionKeyOIDCState)
+		state := stateVal.(string)
+		nonceVal, _ := sess.Get(sessionKeyOIDCNonce)
+		nonce := nonceVal.(string)
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+
+		req3 := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req3 = req3.WithContext(middleware.WithSession(req3.Context(), sess))
+		rec := httptest.NewRecorder()
+		env.h.authEdupassCallback(rec, req3)
+
+		assertRedirect(t, rec, http.StatusSeeOther, "/")
 	})
 }
