@@ -5,6 +5,7 @@ import (
 
 	"golang.org/x/oauth2"
 
+	"github.com/String-sg/teacher-workspace/server/internal/edupassrole"
 	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/String-sg/teacher-workspace/server/internal/session"
@@ -17,6 +18,11 @@ const (
 	sessionKeyOIDCCodeVerifier = "oidc_code_verifier"
 	sessionKeyReturnTo         = "return_to"
 )
+
+// loginFailedRedirect is where authEdupassCallback sends the browser when
+// sign-in can't complete. LoginView reads this exact error value to show the
+// failure toast; #174 tracks giving each failure its own copy.
+const loginFailedRedirect = "/login?error=oauth2_callback_failed"
 
 func popSessionString(sess *session.Session, key string) string {
 	val, _ := sess.Get(key)
@@ -133,7 +139,8 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
-		Email string `json:"email"`
+		Email string   `json:"email"`
+		Roles []string `json:"roles"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		logger.Error("failed to extract claims", "err", err)
@@ -146,7 +153,28 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess.SetUser(&session.User{Email: claims.Email})
+	resolved := edupassrole.Resolve(claims.Roles)
+	if len(resolved.Unrecognized) > 0 {
+		logger.Warn("discarded unrecognized Edupass role/attribute codes",
+			"subject", idToken.Subject,
+			"codes", resolved.Unrecognized,
+		)
+	}
+	if len(resolved.Roles) != 1 {
+		logger.Warn("teacher does not have exactly one recognized base role",
+			"subject", idToken.Subject,
+			"roles", resolved.Roles,
+		)
+		http.Redirect(w, r, loginFailedRedirect, http.StatusSeeOther)
+		return
+	}
+
+	sess.SetUser(&session.User{
+		Email:         claims.Email,
+		Roles:         resolved.Roles,
+		EffectiveRole: resolved.EffectiveRole,
+		Attributes:    resolved.Attributes,
+	})
 
 	if returnTo == "" {
 		returnTo = "/"
