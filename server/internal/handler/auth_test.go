@@ -69,9 +69,8 @@ func newCallbackTestEnv(t *testing.T) *callbackTestEnv {
 		t.Fatalf("rsa.GenerateKey: %v", err)
 	}
 
-	var tokenNonce, tokenEmail string
+	var tokenNonce, tokenEmail, tokenErr string
 	var tokenRoles []string
-	var tokenErr string
 	var skipIDToken, tokenExpired bool
 	env := &callbackTestEnv{
 		tokenNonce:   &tokenNonce,
@@ -1039,7 +1038,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("resolves pre-prod codes the same as production codes", func(t *testing.T) {
+	t.Run("resolves pre-prod codes onto the session the same as production codes", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 
 		state := "test-state"
