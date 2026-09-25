@@ -226,7 +226,7 @@ describe('mock-edupass OIDC provider', () => {
       {
         account: 'staff-7',
         title: 'non-TW role alongside TW role',
-        groups: ['X_TW_ROLE_TEACHER', 'X_ROLE_COUNSELLOR'],
+        groups: ['X_TW_ROLE_TEACHER', 'X_XX_ROLE_COUNSELLOR'],
       },
     ];
 
