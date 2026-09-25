@@ -66,7 +66,7 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 	// Rendered into a buffer, so a failure part-way through never leaves the
 	// browser with half a page and a success status.
 	var page bytes.Buffer
-	if err := h.executor.Execute(r.Context(), &page, h.runtime); err != nil {
+	if err := h.indexTemplate.Execute(r.Context(), &page, h.runtime); err != nil {
 		logger.Error("failed to render index.html", "err", err)
 
 		// In development the page comes from the dev server, so a failure to

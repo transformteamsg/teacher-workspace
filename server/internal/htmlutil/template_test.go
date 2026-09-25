@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-func TestDevelopmentTemplateExecutor_Execute(t *testing.T) {
+func TestURLTemplate_Execute(t *testing.T) {
 	t.Run("renders the page fetched from the url with the data", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(`<html>Hello {{.Name}}</html>`))
@@ -21,7 +21,7 @@ func TestDevelopmentTemplateExecutor_Execute(t *testing.T) {
 		t.Cleanup(server.Close)
 
 		var page bytes.Buffer
-		err := NewDevelopmentTemplateExecutor(server.URL).Execute(t.Context(), &page, struct{ Name string }{Name: "world"})
+		err := NewURLTemplate(server.URL).Execute(t.Context(), &page, struct{ Name string }{Name: "world"})
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -44,7 +44,7 @@ func TestDevelopmentTemplateExecutor_Execute(t *testing.T) {
 		t.Cleanup(server.Close)
 
 		var page bytes.Buffer
-		err := NewDevelopmentTemplateExecutor(server.URL).Execute(t.Context(), &page, nil)
+		err := NewURLTemplate(server.URL).Execute(t.Context(), &page, nil)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -56,7 +56,7 @@ func TestDevelopmentTemplateExecutor_Execute(t *testing.T) {
 
 	t.Run("returns error when the url is malformed", func(t *testing.T) {
 		var page bytes.Buffer
-		err := NewDevelopmentTemplateExecutor("http://%zz").Execute(t.Context(), &page, nil)
+		err := NewURLTemplate("http://%zz").Execute(t.Context(), &page, nil)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
@@ -68,7 +68,7 @@ func TestDevelopmentTemplateExecutor_Execute(t *testing.T) {
 
 	t.Run("returns error when the server is unreachable", func(t *testing.T) {
 		var page bytes.Buffer
-		err := NewDevelopmentTemplateExecutor("http://127.0.0.1:1").Execute(t.Context(), &page, nil)
+		err := NewURLTemplate("http://127.0.0.1:1").Execute(t.Context(), &page, nil)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
@@ -85,7 +85,7 @@ func TestDevelopmentTemplateExecutor_Execute(t *testing.T) {
 		t.Cleanup(server.Close)
 
 		var page bytes.Buffer
-		err := NewDevelopmentTemplateExecutor(server.URL).Execute(t.Context(), &page, nil)
+		err := NewURLTemplate(server.URL).Execute(t.Context(), &page, nil)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
@@ -102,7 +102,7 @@ func TestDevelopmentTemplateExecutor_Execute(t *testing.T) {
 		t.Cleanup(server.Close)
 
 		var page bytes.Buffer
-		err := NewDevelopmentTemplateExecutor(server.URL).Execute(t.Context(), &page, nil)
+		err := NewURLTemplate(server.URL).Execute(t.Context(), &page, nil)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
@@ -122,7 +122,7 @@ func TestDevelopmentTemplateExecutor_Execute(t *testing.T) {
 		cancel()
 
 		var page bytes.Buffer
-		err := NewDevelopmentTemplateExecutor(server.URL).Execute(ctx, &page, nil)
+		err := NewURLTemplate(server.URL).Execute(ctx, &page, nil)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
@@ -130,25 +130,25 @@ func TestDevelopmentTemplateExecutor_Execute(t *testing.T) {
 	})
 }
 
-func TestNewProductionTemplateExecutor(t *testing.T) {
+func TestNewFileTemplate(t *testing.T) {
 	t.Run("parses a valid template file", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "index.html")
 		if err := os.WriteFile(path, []byte(`<html>{{.Name}}</html>`), 0o644); err != nil {
 			t.Fatalf("os.WriteFile: %v", err)
 		}
 
-		executor, err := NewProductionTemplateExecutor(path)
+		tmpl, err := NewFileTemplate(path)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
-		if executor == nil {
+		if tmpl == nil {
 			t.Error("want: non-nil; got: nil")
 		}
 	})
 
 	t.Run("returns error when the file does not exist", func(t *testing.T) {
-		_, err := NewProductionTemplateExecutor(filepath.Join(t.TempDir(), "index.html"))
+		_, err := NewFileTemplate(filepath.Join(t.TempDir(), "index.html"))
 
 		if !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("want err: %v; got: %v", fs.ErrNotExist, err)
@@ -161,7 +161,7 @@ func TestNewProductionTemplateExecutor(t *testing.T) {
 			t.Fatalf("os.WriteFile: %v", err)
 		}
 
-		_, err := NewProductionTemplateExecutor(path)
+		_, err := NewFileTemplate(path)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
@@ -172,20 +172,20 @@ func TestNewProductionTemplateExecutor(t *testing.T) {
 	})
 }
 
-func TestProductionTemplateExecutor_Execute(t *testing.T) {
+func TestFileTemplate_Execute(t *testing.T) {
 	t.Run("renders the template with the data", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "index.html")
 		if err := os.WriteFile(path, []byte(`<html>Hello {{.Name}}</html>`), 0o644); err != nil {
 			t.Fatalf("os.WriteFile: %v", err)
 		}
 
-		executor, err := NewProductionTemplateExecutor(path)
+		tmpl, err := NewFileTemplate(path)
 		if err != nil {
-			t.Fatalf("NewProductionTemplateExecutor: %v", err)
+			t.Fatalf("NewFileTemplate: %v", err)
 		}
 
 		var page bytes.Buffer
-		err = executor.Execute(t.Context(), &page, struct{ Name string }{Name: "world"})
+		err = tmpl.Execute(t.Context(), &page, struct{ Name string }{Name: "world"})
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -201,13 +201,13 @@ func TestProductionTemplateExecutor_Execute(t *testing.T) {
 			t.Fatalf("os.WriteFile: %v", err)
 		}
 
-		executor, err := NewProductionTemplateExecutor(path)
+		tmpl, err := NewFileTemplate(path)
 		if err != nil {
-			t.Fatalf("NewProductionTemplateExecutor: %v", err)
+			t.Fatalf("NewFileTemplate: %v", err)
 		}
 
 		var page bytes.Buffer
-		err = executor.Execute(t.Context(), &page, struct{ Name string }{Name: "world"})
+		err = tmpl.Execute(t.Context(), &page, struct{ Name string }{Name: "world"})
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")

@@ -24,7 +24,7 @@ type Handler struct {
 	studentInsightsProxy *stdhttputil.ReverseProxy
 	postsProxy           *stdhttputil.ReverseProxy
 	assets               http.Handler
-	executor             htmlutil.TemplateExecutor
+	indexTemplate        htmlutil.Template
 	runtime              runtimeConfig
 }
 
@@ -52,15 +52,15 @@ func New(cfg *config.Config, rp *oidc.RelyingParty) (*Handler, error) {
 	switch cfg.Env {
 	case config.EnvDevelopment:
 		h.devProxy = stdhttputil.NewSingleHostReverseProxy(cfg.DevServerURL)
-		h.executor = htmlutil.NewDevelopmentTemplateExecutor(cfg.DevServerURL.String())
+		h.indexTemplate = htmlutil.NewURLTemplate(cfg.DevServerURL.String())
 	case config.EnvProduction:
 		h.assets = http.FileServer(fileOnlyFS{http.Dir(cfg.BuildDir)})
 
-		executor, err := htmlutil.NewProductionTemplateExecutor(filepath.Join(cfg.BuildDir, "index.html"))
+		tmpl, err := htmlutil.NewFileTemplate(filepath.Join(cfg.BuildDir, "index.html"))
 		if err != nil {
 			return nil, fmt.Errorf("index.html: %w", err)
 		}
-		h.executor = executor
+		h.indexTemplate = tmpl
 	}
 
 	return h, nil
