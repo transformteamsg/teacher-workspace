@@ -213,7 +213,10 @@ func (s *Store) cull(now time.Time, id string, size int) {
 			s.remove(entryID, e)
 			continue
 		}
-		if !e.authenticated {
+		// Evicting the entry being replaced frees nothing, since the write
+		// already credits its size, and costs its owner the session when the
+		// write is refused anyway.
+		if !e.authenticated && entryID != id {
 			candidates = append(candidates, candidate{id: entryID, committedAt: e.committedAt})
 		}
 	}

@@ -540,6 +540,41 @@ func TestStore_Limits(t *testing.T) {
 		}
 	})
 
+	t.Run("keeps the entry being replaced when the write is refused", func(t *testing.T) {
+		// Evicting it would free nothing, and the refusal would otherwise
+		// leave its owner signed out with no record that anything was lost.
+		store := newStore(10, entryBytes*6)
+		seedEntry(store, "id-1", entry{
+			data:        []byte(`{"id":"id-1","csrf_token":"csrf-1"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Hour),
+		})
+		for i := range 5 {
+			seedEntry(store, "signed-in-"+strconv.Itoa(i), entry{
+				data:          []byte(`{"id":"auth","csrf_token":"csrf-1"}`),
+				expiresAt:     now.Add(time.Hour),
+				committedAt:   now,
+				authenticated: true,
+			})
+		}
+
+		// Larger than the snapshot it replaces, so only the byte limit can
+		// refuse it.
+		snapshot := &session.Snapshot{ID: "id-1", CSRFToken: "csrf-1", Data: map[string]any{"k": "v"}}
+
+		err := store.Commit(context.Background(), snapshot, time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if _, ok := store.entries["id-1"]; !ok {
+			t.Error("want ok: true; got: false")
+		}
+		if want, got := entryBytes*6, store.bytes; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+	})
+
 	t.Run("evicts to stay within the byte limit", func(t *testing.T) {
 		// Room for two entries, so the third has to displace one even though
 		// the entry limit is far off.
