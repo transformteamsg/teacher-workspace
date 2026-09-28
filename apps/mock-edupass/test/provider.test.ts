@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 
+import type { JWK } from 'oidc-provider';
+
 import { createApp } from '../src/app.ts';
 import {
   generateCodeChallenge,
@@ -74,7 +76,7 @@ function decodeJwtPayload(jwt: string) {
   return decodeJwtPart(jwt, 1);
 }
 
-async function importJwk(jwk: Record<string, unknown>): Promise<CryptoKey> {
+async function importJwk(jwk: JWK): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'jwk',
     jwk,
@@ -138,9 +140,9 @@ describe('mock-edupass OIDC provider', () => {
 
       try {
         const firstRes = await globalThis.fetch(`${BASE_URL}/jwks`);
-        const [first] = ((await firstRes.json()) as { keys: Record<string, unknown>[] }).keys;
+        const [first] = ((await firstRes.json()) as { keys: JWK[] }).keys;
         const secondRes = await globalThis.fetch(`http://localhost:${port}/jwks`);
-        const [second] = ((await secondRes.json()) as { keys: Record<string, unknown>[] }).keys;
+        const [second] = ((await secondRes.json()) as { keys: JWK[] }).keys;
 
         assert.ok(first.kid, 'first instance should publish a kid');
         assert.notEqual(first.kid, second.kid);
@@ -200,7 +202,7 @@ describe('mock-edupass OIDC provider', () => {
       assert.equal(header.alg, 'RS256');
 
       const jwksRes = await globalThis.fetch(`${BASE_URL}/jwks`);
-      const { keys } = (await jwksRes.json()) as { keys: Record<string, unknown>[] };
+      const { keys } = (await jwksRes.json()) as { keys: JWK[] };
       const signingKey = keys.find((k) => k.kid === header.kid);
       assert.ok(signingKey, 'JWKS should contain the signing key');
 
