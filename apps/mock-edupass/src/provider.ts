@@ -1,3 +1,5 @@
+import { generateKeyPairSync } from 'node:crypto';
+
 import Provider from 'oidc-provider';
 
 export interface Account {
@@ -57,10 +59,20 @@ export const accounts: Account[] = [
   },
 ];
 
+/**
+ * Returns the mock Edupass provider.
+ *
+ * @param port - The port the provider is reached on.
+ * @returns A provider carrying the backend as its registered client.
+ */
 export function createProvider(port: number): Provider {
-  const issuer = `http://localhost:${port}`;
+  return new Provider(`http://localhost:${port}`, {
+    jwks: {
+      keys: [
+        generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ format: 'jwk' }),
+      ],
+    },
 
-  return new Provider(issuer, {
     clients: [
       {
         client_id: 'teacher-workspace',

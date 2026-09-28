@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import type { Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { after, before, describe, it } from 'node:test';
+
+import type { JWK } from 'oidc-provider';
 
 import { createApp } from '../src/app.ts';
 import {
@@ -74,7 +76,7 @@ function decodeJwtPayload(jwt: string) {
   return decodeJwtPart(jwt, 1);
 }
 
-async function importJwk(jwk: Record<string, unknown>): Promise<CryptoKey> {
+async function importJwk(jwk: JWK): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'jwk',
     jwk,
@@ -96,7 +98,10 @@ describe('mock-edupass OIDC provider', () => {
 
   before(async () => {
     const { app } = createApp(TEST_PORT);
-    server = app.listen(TEST_PORT);
+    server = createServer((req, res) => {
+      res.setHeader('Connection', 'close');
+      app(req, res);
+    }).listen(TEST_PORT);
     await new Promise<void>((resolve, reject) => {
       server.once('listening', resolve);
       server.once('error', reject);
@@ -127,22 +132,27 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(doc.token_endpoint, 'token_endpoint should be present');
     });
 
-    it('JWKS serves a valid public key', async () => {
-      const discoveryRes = await globalThis.fetch(`${BASE_URL}/.well-known/openid-configuration`);
-      const doc = (await discoveryRes.json()) as Record<string, unknown>;
+    it('generates a different signing key on server restart', async () => {
+      const firstJwksRes = await globalThis.fetch(`${BASE_URL}/jwks`);
+      const [firstKey] = ((await firstJwksRes.json()) as { keys: JWK[] }).keys;
 
-      const jwksRes = await globalThis.fetch(doc.jwks_uri as string);
-      assert.equal(jwksRes.status, 200);
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const { app } = createApp(TEST_PORT);
+      server = createServer((req, res) => {
+        res.setHeader('Connection', 'close');
+        app(req, res);
+      }).listen(TEST_PORT);
+      await new Promise<void>((resolve, reject) => {
+        server.once('listening', resolve);
+        server.once('error', reject);
+      });
 
-      const jwks = (await jwksRes.json()) as {
-        keys: Record<string, unknown>[];
-      };
-      assert.ok(Array.isArray(jwks.keys), 'keys should be an array');
-      assert.ok(jwks.keys.length >= 1, 'should have at least one key');
+      const secondJwksRes = await globalThis.fetch(`${BASE_URL}/jwks`);
+      const [secondKey] = ((await secondJwksRes.json()) as { keys: JWK[] }).keys;
 
-      const key = jwks.keys[0];
-      assert.ok(key.kty, 'key should have kty');
-      assert.ok(key.kid, 'key should have kid');
+      assert.ok(firstKey.kid, 'first server start should publish a kid');
+      assert.ok(secondKey.kid, 'restarted server should publish a kid');
+      assert.notEqual(firstKey.kid, secondKey.kid);
     });
   });
 
@@ -193,11 +203,11 @@ describe('mock-edupass OIDC provider', () => {
 
       // Verify signature against published JWKS
       const header = decodeJwtHeader(idToken);
+      assert.equal(header.alg, 'RS256');
+
       const jwksRes = await globalThis.fetch(`${BASE_URL}/jwks`);
-      const jwks = (await jwksRes.json()) as {
-        keys: Record<string, unknown>[];
-      };
-      const signingKey = jwks.keys.find((k) => k.kid === header.kid);
+      const { keys } = (await jwksRes.json()) as { keys: JWK[] };
+      const signingKey = keys.find((k) => k.kid === header.kid);
       assert.ok(signingKey, 'JWKS should contain the signing key');
 
       const publicKey = await importJwk(signingKey);
