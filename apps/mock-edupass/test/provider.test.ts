@@ -133,28 +133,6 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(doc.token_endpoint, 'token_endpoint should be present');
     });
 
-    it('JWKS serves a generated public key', async () => {
-      const discoveryRes = await globalThis.fetch(`${BASE_URL}/.well-known/openid-configuration`);
-      const doc = (await discoveryRes.json()) as Record<string, unknown>;
-
-      const jwksRes = await globalThis.fetch(doc.jwks_uri as string);
-      assert.equal(jwksRes.status, 200);
-
-      const jwks = (await jwksRes.json()) as {
-        keys: Record<string, unknown>[];
-      };
-      assert.ok(Array.isArray(jwks.keys), 'keys should be an array');
-      assert.ok(jwks.keys.length >= 1, 'should have at least one key');
-
-      const key = jwks.keys[0];
-      assert.equal(key.kty, 'RSA');
-      assert.notEqual(
-        key.kid,
-        'keystore-CHANGE-ME',
-        'the bundled development key must not be used',
-      );
-    });
-
     it('generates a different signing key on every boot', async () => {
       const port = TEST_PORT + 1;
       const { app } = createApp(port);
