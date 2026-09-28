@@ -151,6 +151,7 @@ describe('mock-edupass OIDC provider', () => {
       const [secondKey] = ((await secondJwksRes.json()) as { keys: JWK[] }).keys;
 
       assert.ok(firstKey.kid, 'first server start should publish a kid');
+      assert.ok(secondKey.kid, 'restarted server should publish a kid');
       assert.notEqual(firstKey.kid, secondKey.kid);
     });
   });
