@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 
 import type { JWK } from 'oidc-provider';
@@ -98,7 +98,10 @@ describe('mock-edupass OIDC provider', () => {
 
   before(async () => {
     const { app } = createApp(TEST_PORT);
-    server = app.listen(TEST_PORT);
+    server = createServer((req, res) => {
+      res.setHeader('Connection', 'close');
+      app(req, res);
+    }).listen(TEST_PORT);
     await new Promise<void>((resolve, reject) => {
       server.once('listening', resolve);
       server.once('error', reject);
@@ -129,26 +132,26 @@ describe('mock-edupass OIDC provider', () => {
       assert.ok(doc.token_endpoint, 'token_endpoint should be present');
     });
 
-    it('generates a different signing key on every boot', async () => {
-      const port = TEST_PORT + 1;
-      const { app } = createApp(port);
-      const other = app.listen(port);
+    it('generates a different signing key on server restart', async () => {
+      const firstJwksRes = await globalThis.fetch(`${BASE_URL}/jwks`);
+      const [firstKey] = ((await firstJwksRes.json()) as { keys: JWK[] }).keys;
+
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const { app } = createApp(TEST_PORT);
+      server = createServer((req, res) => {
+        res.setHeader('Connection', 'close');
+        app(req, res);
+      }).listen(TEST_PORT);
       await new Promise<void>((resolve, reject) => {
-        other.once('listening', resolve);
-        other.once('error', reject);
+        server.once('listening', resolve);
+        server.once('error', reject);
       });
 
-      try {
-        const firstRes = await globalThis.fetch(`${BASE_URL}/jwks`);
-        const [first] = ((await firstRes.json()) as { keys: JWK[] }).keys;
-        const secondRes = await globalThis.fetch(`http://localhost:${port}/jwks`);
-        const [second] = ((await secondRes.json()) as { keys: JWK[] }).keys;
+      const secondJwksRes = await globalThis.fetch(`${BASE_URL}/jwks`);
+      const [secondKey] = ((await secondJwksRes.json()) as { keys: JWK[] }).keys;
 
-        assert.ok(first.kid, 'first instance should publish a kid');
-        assert.notEqual(first.kid, second.kid);
-      } finally {
-        await new Promise<void>((resolve) => other.close(() => resolve()));
-      }
+      assert.ok(firstKey.kid, 'first server start should publish a kid');
+      assert.notEqual(firstKey.kid, secondKey.kid);
     });
   });
 
