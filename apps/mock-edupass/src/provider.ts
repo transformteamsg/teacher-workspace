@@ -1,6 +1,6 @@
-import Provider from 'oidc-provider';
+import { generateKeyPairSync } from 'node:crypto';
 
-import { generateSigningJwk } from './jwks.ts';
+import Provider from 'oidc-provider';
 
 export const accounts = [
   { sub: 'teacher-1', email: 'jane.doe@example.com', name: 'Jane Doe' },
@@ -9,16 +9,18 @@ export const accounts = [
 ];
 
 /**
- * Returns the mock Edupass provider, signing with a key generated per boot, never the bundled one.
+ * Returns the mock Edupass provider.
  *
- * @param port - Port the provider is reached on, fixing the issuer at `http://localhost:<port>`.
- * @returns A provider carrying the backend as its only registered client.
+ * @param port - The port the provider is reached on.
+ * @returns A provider carrying the backend as its registered client.
  */
 export function createProvider(port: number): Provider {
-  const issuer = `http://localhost:${port}`;
-
-  return new Provider(issuer, {
-    jwks: { keys: [generateSigningJwk()] },
+  return new Provider(`http://localhost:${port}`, {
+    jwks: {
+      keys: [
+        generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ format: 'jwk' }),
+      ],
+    },
 
     clients: [
       {
