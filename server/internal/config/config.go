@@ -76,13 +76,14 @@ type SessionValkeyConfig struct {
 
 // OIDCConfig represents the configuration for the Edupass OIDC relying party.
 type OIDCConfig struct {
-	IssuerURL    *url.URL `dotenv:"TW_OIDC_ISSUER_URL"`
-	AuthURL      *url.URL `dotenv:"TW_OIDC_AUTH_URL"`
-	TokenURL     *url.URL `dotenv:"TW_OIDC_TOKEN_URL"`
-	JWKSURI      *url.URL `dotenv:"TW_OIDC_JWKS_URI"`
-	ClientID     string   `dotenv:"TW_OIDC_CLIENT_ID"`
-	ClientSecret string   `dotenv:"TW_OIDC_CLIENT_SECRET"`
-	RedirectURL  *url.URL `dotenv:"TW_OIDC_REDIRECT_URL"`
+	IssuerURL        *url.URL `dotenv:"TW_OIDC_ISSUER_URL"`
+	AuthURL          *url.URL `dotenv:"TW_OIDC_AUTH_URL"`
+	TokenURL         *url.URL `dotenv:"TW_OIDC_TOKEN_URL"`
+	JWKSURI          *url.URL `dotenv:"TW_OIDC_JWKS_URI"`
+	ClientID         string   `dotenv:"TW_OIDC_CLIENT_ID"`
+	ClientPrivateKey string   `dotenv:"TW_OIDC_CLIENT_PRIVATE_KEY"`
+	ClientPublicKey  string   `dotenv:"TW_OIDC_CLIENT_PUBLIC_KEY"`
+	RedirectURL      *url.URL `dotenv:"TW_OIDC_REDIRECT_URL"`
 }
 
 // APIProxyConfig represents the configuration for the backend proxies.
@@ -308,9 +309,6 @@ func (c OIDCConfig) validate() error {
 	errs = append(errs, validateHTTPURL("TW_OIDC_JWKS_URI", c.JWKSURI)...)
 	if c.ClientID == "" {
 		errs = append(errs, errors.New("TW_OIDC_CLIENT_ID is required"))
-	}
-	if c.ClientSecret == "" {
-		errs = append(errs, errors.New("TW_OIDC_CLIENT_SECRET is required"))
 	}
 	errs = append(errs, validateHTTPURL("TW_OIDC_REDIRECT_URL", c.RedirectURL)...)
 
