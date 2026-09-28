@@ -63,12 +63,6 @@ async function exchangeCode(
   });
 }
 
-async function fetchJwks(baseUrl: string): Promise<Record<string, unknown>[]> {
-  const res = await globalThis.fetch(`${baseUrl}/jwks`);
-  const jwks = (await res.json()) as { keys: Record<string, unknown>[] };
-  return jwks.keys;
-}
-
 function decodeJwtPart(jwt: string, index: number): Record<string, unknown> {
   return JSON.parse(Buffer.from(jwt.split('.')[index], 'base64url').toString());
 }
@@ -143,8 +137,10 @@ describe('mock-edupass OIDC provider', () => {
       });
 
       try {
-        const [first] = await fetchJwks(BASE_URL);
-        const [second] = await fetchJwks(`http://localhost:${port}`);
+        const firstRes = await globalThis.fetch(`${BASE_URL}/jwks`);
+        const [first] = ((await firstRes.json()) as { keys: Record<string, unknown>[] }).keys;
+        const secondRes = await globalThis.fetch(`http://localhost:${port}/jwks`);
+        const [second] = ((await secondRes.json()) as { keys: Record<string, unknown>[] }).keys;
 
         assert.ok(first.kid, 'first instance should publish a kid');
         assert.notEqual(first.kid, second.kid);
@@ -202,7 +198,8 @@ describe('mock-edupass OIDC provider', () => {
       const header = decodeJwtHeader(idToken);
       assert.equal(header.alg, 'RS256');
 
-      const keys = await fetchJwks(BASE_URL);
+      const jwksRes = await globalThis.fetch(`${BASE_URL}/jwks`);
+      const { keys } = (await jwksRes.json()) as { keys: Record<string, unknown>[] };
       const signingKey = keys.find((k) => k.kid === header.kid);
       assert.ok(signingKey, 'JWKS should contain the signing key');
 
