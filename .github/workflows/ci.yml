@@ -148,8 +148,6 @@ jobs:
     name: Build and push mock-edupass image
     runs-on: ubuntu-24.04-arm
     needs: [format, lint]
-    # A fork pull request cannot be granted `id-token: write`, so it has no way
-    # to assume the push role. Skip the job rather than fail the check.
     if: github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
@@ -175,8 +173,6 @@ jobs:
         id: metadata
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         env:
-          # Tag and label the head commit, not the merge commit a pull request
-          # event defaults to, which is unreachable from any branch.
           DOCKER_METADATA_PR_HEAD_SHA: true
         with:
           images: ${{ steps.login-ecr.outputs.registry }}/transform/mock-edupass
