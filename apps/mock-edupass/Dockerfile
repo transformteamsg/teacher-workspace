@@ -1,9 +1,5 @@
 # syntax=docker/dockerfile:1
 
-# Build from the repository root, which holds the pnpm lockfile and workspace:
-#
-#   docker build -f apps/mock-edupass/Dockerfile .
-
 # ----------------------------------------
 # Dependencies stage
 # ----------------------------------------
@@ -19,9 +15,7 @@ RUN mkdir $PNPM_HOME && \
         wget -qO- "https://github.com/pnpm/pnpm/releases/download/v11.22.0/pnpm-linux-arm64.tar.gz" | tar -xzf - -C "$PNPM_HOME" && \
         ln -s $PNPM_HOME/pnpm /usr/local/bin/pnpm
 
-# Fetch all dependencies into the store. Fetching also fills node_modules with
-# every workspace package, so drop it and let the install below link only
-# what mock-edupass needs.
+# Fetch all dependencies into the store, dropping the node_modules it also fills.
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm fetch --prod && rm -rf node_modules
 
@@ -41,8 +35,7 @@ ENV MOCK_EDUPASS_PORT=9000
 
 WORKDIR /app
 
-# Node runs the TypeScript sources directly, so there is no build step. The
-# app's node_modules holds symlinks into the root virtual store, so both move.
+# No build step: Node runs the TypeScript sources directly.
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/mock-edupass/node_modules ./apps/mock-edupass/node_modules
 COPY apps/mock-edupass/package.json ./apps/mock-edupass/package.json
