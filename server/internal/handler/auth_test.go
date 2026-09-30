@@ -927,11 +927,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if sess.User() == nil {
 			t.Fatal("want: non-nil; got: nil")
 		}
-		if want, got := []string{"ROLE_TEACHER"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("Roles: want: %v; got: %v", want, got)
-		}
-		if want, got := "ROLE_TEACHER", sess.User().EffectiveRole; want != got {
-			t.Errorf("EffectiveRole: want: %q; got: %q", want, got)
+		if want, got := "ROLE_TEACHER", sess.User().Role; want != got {
+			t.Errorf("Role: want: %q; got: %q", want, got)
 		}
 		if want, got := []string{}, sess.User().Attributes; !reflect.DeepEqual(want, got) {
 			t.Errorf("Attributes: want: %v; got: %v", want, got)
@@ -1055,8 +1052,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if sess.User() == nil {
 			t.Fatal("want: non-nil; got: nil")
 		}
-		if want, got := []string{"ROLE_TEACHER"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("Roles: want: %v; got: %v", want, got)
+		if want, got := "ROLE_TEACHER", sess.User().Role; want != got {
+			t.Errorf("Role: want: %q; got: %q", want, got)
 		}
 
 		var entry struct {
@@ -1093,11 +1090,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusSeeOther, rec.Code; want != got {
 			t.Fatalf("want: %d; got: %d", want, got)
 		}
-		if want, got := []string{"ROLE_TEACHER"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("Roles: want: %v; got: %v", want, got)
-		}
-		if want, got := "ROLE_TEACHER", sess.User().EffectiveRole; want != got {
-			t.Errorf("EffectiveRole: want: %q; got: %q", want, got)
+		if want, got := "ROLE_TEACHER", sess.User().Role; want != got {
+			t.Errorf("Role: want: %q; got: %q", want, got)
 		}
 	})
 
@@ -1138,8 +1132,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		env.h.authEdupassCallback(firstRec, firstReq)
 
-		if want, got := []string{"ROLE_TEACHER"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
-			t.Fatalf("first sign-in Roles: want: %v; got: %v", want, got)
+		if want, got := "ROLE_TEACHER", sess.User().Role; want != got {
+			t.Fatalf("first sign-in Role: want: %q; got: %q", want, got)
 		}
 
 		secondState := "test-state-2"
@@ -1162,11 +1156,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if sess.User() == nil {
 			t.Fatal("want: non-nil; got: nil")
 		}
-		if want, got := []string{"ROLE_HOD"}, sess.User().Roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("Roles: want: %v; got: %v", want, got)
-		}
-		if want, got := "ROLE_HOD", sess.User().EffectiveRole; want != got {
-			t.Errorf("EffectiveRole: want: %q; got: %q", want, got)
+		if want, got := "ROLE_HOD", sess.User().Role; want != got {
+			t.Errorf("Role: want: %q; got: %q", want, got)
 		}
 	})
 
