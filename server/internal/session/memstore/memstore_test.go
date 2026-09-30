@@ -248,32 +248,6 @@ func TestStore_Commit(t *testing.T) {
 		}
 	})
 
-	t.Run("records whether the snapshot carried a user", func(t *testing.T) {
-		// The flag decides what the store gives up first, so it has to follow
-		// the snapshot rather than the order entries arrived in.
-		for _, tt := range []struct {
-			name string
-			user *session.User
-			want bool
-		}{
-			{name: "with a user", user: &session.User{Email: "alice@example.com"}, want: true},
-			{name: "without a user", user: nil, want: false},
-		} {
-			t.Run(tt.name, func(t *testing.T) {
-				store := New()
-				snapshot := &session.Snapshot{ID: "id-1", CSRFToken: "csrf-1", User: tt.user}
-
-				if err := store.Commit(context.Background(), snapshot, time.Minute); err != nil {
-					t.Fatalf("want err: nil; got: %v", err)
-				}
-
-				if got := store.entries["id-1"].authenticated; tt.want != got {
-					t.Errorf("want: %v; got: %v", tt.want, got)
-				}
-			})
-		}
-	})
-
 	t.Run("stores a copy the caller cannot reach", func(t *testing.T) {
 		store := New()
 		snapshot := &session.Snapshot{
@@ -438,7 +412,7 @@ func TestStore_Limits(t *testing.T) {
 		}
 	})
 
-	t.Run("evicts the least recently committed unauthenticated entry", func(t *testing.T) {
+	t.Run("evicts the least recently committed entry", func(t *testing.T) {
 		store := newStore(2, 1<<20)
 		seedEntry(store, "idle", entry{
 			data:        []byte(`{"id":"idle","csrf_token":"csrf-1"}`),
@@ -464,67 +438,37 @@ func TestStore_Limits(t *testing.T) {
 		}
 	})
 
-	t.Run("keeps authenticated entries while unauthenticated ones remain", func(t *testing.T) {
-		// The authenticated entry is the older of the two, so recency alone
-		// would have taken it.
-		store := newStore(2, 1<<20)
-		seedEntry(store, "signed-in", entry{
-			data:          []byte(`{"id":"signed-in","csrf_token":"csrf-1"}`),
-			expiresAt:     now.Add(time.Hour),
-			committedAt:   now.Add(-time.Hour),
-			authenticated: true,
-		})
-		seedEntry(store, "signed-out", entry{
-			data:        []byte(`{"id":"signed-out","csrf_token":"csrf-2"}`),
+	t.Run("rejects a snapshot larger than the whole store", func(t *testing.T) {
+		// Every other entry can be evicted, so this is the one write that a
+		// cull cannot make room for.
+		store := newStore(10, entryBytes*4)
+		seedEntry(store, "id-1", entry{
+			data:        []byte(`{"id":"id-1","csrf_token":"csrf-1"}`),
 			expiresAt:   now.Add(time.Hour),
-			committedAt: now.Add(-time.Minute),
+			committedAt: now.Add(-time.Hour),
 		})
 
-		err := store.Commit(context.Background(), &session.Snapshot{ID: "id-3", CSRFToken: "csrf-3"}, time.Minute)
+		snapshot := &session.Snapshot{ID: "id-2", CSRFToken: "csrf-2", Data: map[string]any{"k": strings.Repeat("v", entryBytes*4)}}
 
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-		if _, ok := store.entries["signed-in"]; !ok {
-			t.Error("want ok: true; got: false")
-		}
-		if _, ok := store.entries["signed-out"]; ok {
-			t.Error("want ok: false; got: true")
-		}
-	})
-
-	t.Run("rejects a new session when only authenticated ones remain", func(t *testing.T) {
-		store := newStore(1, 1<<20)
-		seedEntry(store, "signed-in", entry{
-			data:          []byte(`{"id":"signed-in","csrf_token":"csrf-1"}`),
-			expiresAt:     now.Add(time.Hour),
-			committedAt:   now.Add(-time.Hour),
-			authenticated: true,
-		})
-
-		err := store.Commit(context.Background(), &session.Snapshot{ID: "id-2", CSRFToken: "csrf-2"}, time.Minute)
+		err := store.Commit(context.Background(), snapshot, time.Minute)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		if want := "store is full"; !strings.Contains(err.Error(), want) {
+		if want := "does not fit"; !strings.Contains(err.Error(), want) {
 			t.Errorf("want err: containing %q; got: %q", want, err)
 		}
 		if _, ok := store.entries["id-2"]; ok {
 			t.Error("want ok: false; got: true")
-		}
-		if _, ok := store.entries["signed-in"]; !ok {
-			t.Error("want ok: true; got: false")
 		}
 	})
 
 	t.Run("replaces an existing entry at the limit without evicting", func(t *testing.T) {
 		store := newStore(1, 1<<20)
 		seedEntry(store, "id-1", entry{
-			data:          []byte(`{"id":"id-1","csrf_token":"csrf-1"}`),
-			expiresAt:     now.Add(time.Hour),
-			committedAt:   now.Add(-time.Hour),
-			authenticated: true,
+			data:        []byte(`{"id":"id-1","csrf_token":"csrf-1"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Hour),
 		})
 
 		err := store.Commit(context.Background(), &session.Snapshot{ID: "id-1", CSRFToken: "csrf-2"}, time.Minute)
@@ -541,26 +485,17 @@ func TestStore_Limits(t *testing.T) {
 	})
 
 	t.Run("keeps the entry being replaced when the write is refused", func(t *testing.T) {
-		// Evicting it would free nothing, and the refusal would otherwise
-		// leave its owner signed out with no record that anything was lost.
-		store := newStore(10, entryBytes*6)
+		// Evicting it would free nothing, since the write already credits its
+		// size, and would leave its owner signed out for a write that failed.
+		store := newStore(10, entryBytes*4)
 		seedEntry(store, "id-1", entry{
 			data:        []byte(`{"id":"id-1","csrf_token":"csrf-1"}`),
 			expiresAt:   now.Add(time.Hour),
 			committedAt: now.Add(-time.Hour),
 		})
-		for i := range 5 {
-			seedEntry(store, "signed-in-"+strconv.Itoa(i), entry{
-				data:          []byte(`{"id":"auth","csrf_token":"csrf-1"}`),
-				expiresAt:     now.Add(time.Hour),
-				committedAt:   now,
-				authenticated: true,
-			})
-		}
 
-		// Larger than the snapshot it replaces, so only the byte limit can
-		// refuse it.
-		snapshot := &session.Snapshot{ID: "id-1", CSRFToken: "csrf-1", Data: map[string]any{"k": "v"}}
+		// Too large for the store however much it frees.
+		snapshot := &session.Snapshot{ID: "id-1", CSRFToken: "csrf-1", Data: map[string]any{"k": strings.Repeat("v", entryBytes*4)}}
 
 		err := store.Commit(context.Background(), snapshot, time.Minute)
 
@@ -570,7 +505,7 @@ func TestStore_Limits(t *testing.T) {
 		if _, ok := store.entries["id-1"]; !ok {
 			t.Error("want ok: true; got: false")
 		}
-		if want, got := entryBytes*6, store.bytes; want != got {
+		if want, got := entryBytes, store.bytes; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
 	})

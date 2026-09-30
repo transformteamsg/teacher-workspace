@@ -1,8 +1,8 @@
 // Package memstore implements session.Store with an in-process map. Snapshots
 // are stored as JSON, so callers share no state with the store or each other.
 // Entries are evicted lazily on read once their TTL elapses, and at the store's
-// entry or byte limit the oldest unauthenticated ones go first. It is intended
-// for development and tests; production deployments should use a shared store.
+// entry or byte limit the least recently used ones go first. It is intended for
+// development and tests; production deployments should use a shared store.
 package memstore
 
 import (
@@ -25,8 +25,8 @@ const (
 
 	// cullBatch and cullDivisor set how much a cull frees beyond the write that
 	// triggered it, so the scan it costs is amortised over the writes that
-	// follow. A cull frees this many signed-out entries even when the write
-	// needed one, and more when the byte limit still does not fit.
+	// follow. A cull frees this many entries even when the write needed one,
+	// and more when the byte limit still does not fit.
 	cullBatch   = 64
 	cullDivisor = 10
 )
@@ -79,9 +79,6 @@ type entry struct {
 	// on every request, so the oldest is the one whose session has gone
 	// longest without being used.
 	committedAt time.Time
-	// authenticated reports whether the snapshot carried a user, which is what
-	// keeps an entry out of the eviction candidates.
-	authenticated bool
 }
 
 // New returns a Store with optional overrides for the clock and the limits.
@@ -149,16 +146,17 @@ func (s *Store) Commit(_ context.Context, snap *session.Snapshot, ttl time.Durat
 	if !ok {
 		s.cull(now, snap.ID, len(data))
 
+		// Everything else can be evicted, so the only write that still does not
+		// fit is one larger than the store itself.
 		if bytes, ok = s.fits(snap.ID, len(data)); !ok {
-			return fmt.Errorf("memstore: store is full at %d entries and %d bytes, with no unauthenticated session to evict", len(s.entries), s.bytes)
+			return fmt.Errorf("memstore: snapshot of %d bytes does not fit a store limited to %d", len(data), s.maxBytes)
 		}
 	}
 
 	s.entries[snap.ID] = entry{
-		data:          data,
-		expiresAt:     now.Add(ttl),
-		committedAt:   now,
-		authenticated: snap.User != nil,
+		data:        data,
+		expiresAt:   now.Add(ttl),
+		committedAt: now,
 	}
 	s.bytes = bytes
 
@@ -193,12 +191,11 @@ func (s *Store) fits(id string, size int) (int, bool) {
 	return bytes, entries <= s.maxEntries && bytes <= s.maxBytes
 }
 
-// cull frees room for a snapshot of size bytes stored under id. Expired
-// entries go first, and live ones are touched only when that is not enough:
-// evicting a session signs its owner out, so the store gives up the least
-// recently committed unauthenticated entries and never an authenticated one.
-// It removes a batch rather than the single entry needed, so the scan is paid
-// once for many writes.
+// cull frees room for a snapshot of size bytes stored under id. Expired entries
+// go first, and live ones are touched only when that is not enough: evicting a
+// session signs its owner out, so the store gives up the least recently
+// committed first. It removes a batch rather than the single entry needed, so
+// the scan is paid once for many writes.
 func (s *Store) cull(now time.Time, id string, size int) {
 	type candidate struct {
 		id          string
@@ -213,9 +210,8 @@ func (s *Store) cull(now time.Time, id string, size int) {
 			continue
 		}
 		// Evicting the entry being replaced frees nothing, since the write
-		// already credits its size, and costs its owner the session when the
-		// write is refused anyway.
-		if !e.authenticated && entryID != id {
+		// already credits its size.
+		if entryID != id {
 			candidates = append(candidates, candidate{id: entryID, committedAt: e.committedAt})
 		}
 	}
