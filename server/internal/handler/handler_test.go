@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
+	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/String-sg/teacher-workspace/server/internal/oidc"
+	"github.com/String-sg/teacher-workspace/server/internal/session"
 )
 
 func testRP() *oidc.RelyingParty {
@@ -95,7 +97,7 @@ func TestHandler_Register(t *testing.T) {
 		}
 
 		mux := http.NewServeMux()
-		h.Register(mux, func(next http.Handler) http.Handler { return next })
+		h.Register(mux, func(next http.Handler) http.Handler { return next }, func(next http.Handler) http.Handler { return next })
 
 		tests := []struct {
 			name     string
@@ -169,7 +171,7 @@ func TestHandler_Register(t *testing.T) {
 						calls++
 						next.ServeHTTP(w, r)
 					})
-				})
+				}, func(next http.Handler) http.Handler { return next })
 
 				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
 				rec := httptest.NewRecorder()
@@ -214,7 +216,7 @@ func TestHandler_Register(t *testing.T) {
 				calls++
 				next.ServeHTTP(w, r)
 			})
-		})
+		}, func(next http.Handler) http.Handler { return next })
 
 		req := httptest.NewRequest(http.MethodGet, "/static/js/index.abc123.js", nil)
 		rec := httptest.NewRecorder()
@@ -226,6 +228,150 @@ func TestHandler_Register(t *testing.T) {
 		}
 		if want := 0; want != calls {
 			t.Errorf("want: %d; got: %d", want, calls)
+		}
+	})
+}
+
+func TestHandler_Register_authGuard(t *testing.T) {
+	buildDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>Hello world!</html>"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
+
+	postsBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("posts:" + r.URL.RequestURI()))
+	}))
+	t.Cleanup(postsBackend.Close)
+
+	postsBackendURL, err := url.Parse(postsBackend.URL)
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+
+	cfg := config.Default()
+	cfg.Env = config.EnvProduction
+	cfg.BuildDir = buildDir
+	cfg.APIProxy.PostsBaseURL = postsBackendURL
+
+	h, err := New(&cfg, testRP())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// sessionInjector replaces the real session middleware. It injects the
+	// provided session into the context so the auth guard can read it.
+	sessionInjector := func(sess *session.Session) middleware.Middleware {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ctx := middleware.WithSession(r.Context(), sess)
+				next.ServeHTTP(w, r.WithContext(ctx))
+			})
+		}
+	}
+
+	t.Run("redirects unauthenticated browser request to /login with return_to", func(t *testing.T) {
+		mux := http.NewServeMux()
+		h.Register(mux, sessionInjector(session.New()), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodGet, "/posts/123", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := "/login?return_to=%2Fposts%2F123", rec.Header().Get("Location"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("returns 401 JSON for unauthenticated API request", func(t *testing.T) {
+		mux := http.NewServeMux()
+		h.Register(mux, sessionInjector(session.New()), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if want, got := http.StatusUnauthorized, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := "{\"message\":\"Unauthorized\"}\n", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("serves page for authenticated request", func(t *testing.T) {
+		sess := session.New()
+		sess.SetUser(&session.User{Email: "teacher@example.com"})
+
+		mux := http.NewServeMux()
+		h.Register(mux, sessionInjector(sess), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+	})
+
+	t.Run("lets /auth/edupass through without authentication", func(t *testing.T) {
+		mux := http.NewServeMux()
+		h.Register(mux, sessionInjector(session.New()), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusFound && rec.Header().Get("Location") == "/login" {
+			t.Error("auth guard must not redirect /auth/edupass to /login")
+		}
+	})
+
+	t.Run("lets /auth/edupass/callback through without authentication", func(t *testing.T) {
+		mux := http.NewServeMux()
+		h.Register(mux, sessionInjector(session.New()), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusFound && rec.Header().Get("Location") == "/login" {
+			t.Error("auth guard must not redirect /auth/edupass/callback to /login")
+		}
+	})
+
+	t.Run("lets /login through without authentication", func(t *testing.T) {
+		mux := http.NewServeMux()
+		h.Register(mux, sessionInjector(session.New()), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodGet, "/login", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+	})
+
+	t.Run("redirects authenticated user at /login to /", func(t *testing.T) {
+		sess := session.New()
+		sess.SetUser(&session.User{Email: "teacher@example.com"})
+
+		mux := http.NewServeMux()
+		h.Register(mux, sessionInjector(sess), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodGet, "/login", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := "/", rec.Header().Get("Location"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})
 }

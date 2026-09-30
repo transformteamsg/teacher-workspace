@@ -92,7 +92,7 @@ func (fsys fileOnlyFS) Open(name string) (http.File, error) {
 // Register registers all application routes on the given HTTP server mux.
 // Application routes are wrapped in the session middleware; static asset routes
 // are not.
-func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
+func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware, auth middleware.Middleware) {
 	mux.HandleFunc("/static/", h.static)
 
 	// Session-scoped routes: everything registered on this sub-mux runs
@@ -110,5 +110,5 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
 		})
 	})
 
-	mux.Handle("/", session(app))
+	mux.Handle("/", session(auth(app)))
 }
