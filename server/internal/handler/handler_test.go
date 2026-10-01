@@ -325,8 +325,11 @@ func TestHandler_Register_authGuard(t *testing.T) {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 
-		if rec.Code == http.StatusFound && rec.Header().Get("Location") == "/login" {
-			t.Error("auth guard must not redirect /auth/edupass to /login")
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if got := rec.Header().Get("Location"); !strings.HasPrefix(got, "http://test-issuer/authorize") {
+			t.Errorf("want: prefix %q; got: %q", "http://test-issuer/authorize", got)
 		}
 	})
 
@@ -338,8 +341,11 @@ func TestHandler_Register_authGuard(t *testing.T) {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 
-		if rec.Code == http.StatusFound && rec.Header().Get("Location") == "/login" {
-			t.Error("auth guard must not redirect /auth/edupass/callback to /login")
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := "/login?error=oauth2_callback_failed", rec.Header().Get("Location"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})
 
