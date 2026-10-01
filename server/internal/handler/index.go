@@ -3,8 +3,6 @@ package handler
 import (
 	"bytes"
 	"net/http"
-	"strings"
-
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
@@ -41,27 +39,10 @@ func newRuntimeConfig(cfg config.RemoteConfig) runtimeConfig {
 
 // index serves the frontend's application shell with the runtime config
 // embedded. In development it templates the page fetched from the rsbuild dev
-// server and proxies every other request; in production it renders the
-// template parsed at startup for all routes so client-side routing works.
+// server; in production it renders the template parsed at startup. Both modes
+// serve all routes so client-side routing works.
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 	logger := middleware.LoggerFromContext(r.Context())
-
-	switch h.cfg.Env {
-	case config.EnvDevelopment:
-		// Scripts, assets and the hot reload websocket must reach the dev
-		// server untouched, and so must a form submission: it accepts HTML but
-		// templating one would answer a GET the browser never made and drop
-		// the body it posted.
-		if (r.Method != http.MethodGet && r.Method != http.MethodHead) ||
-			!strings.Contains(r.Header.Get("Accept"), httputil.MIMETextHTML) {
-			h.devProxy.ServeHTTP(w, r)
-			return
-		}
-	case config.EnvProduction:
-	default:
-		httputil.RenderPlain(w, logger, http.StatusNotFound)
-		return
-	}
 
 	// Rendered into a buffer, so a failure part-way through never leaves the
 	// browser with half a page and a success status.
