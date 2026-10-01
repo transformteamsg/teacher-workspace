@@ -71,7 +71,10 @@ func main() {
 
 		store = valkeystore.New(client, valkeystore.WithPrefix(cfg.Session.Valkey.Prefix))
 	case config.SessionStoreProviderMemory:
-		store = memstore.New()
+		store = memstore.New(
+			memstore.WithMaxEntries(cfg.Session.Memory.MaxEntries),
+			memstore.WithMaxBytes(cfg.Session.Memory.MaxBytes),
+		)
 	default:
 		slog.Error("unsupported session store provider", "provider", cfg.Session.StoreProvider)
 		os.Exit(1)

@@ -34,6 +34,49 @@ func TestNew(t *testing.T) {
 			t.Errorf("want: %v; got: %v", now, got)
 		}
 	})
+
+	t.Run("defaults the limits", func(t *testing.T) {
+		store := New()
+
+		if want, got := defaultMaxEntries, store.maxEntries; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := defaultMaxBytes, store.maxBytes; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+	})
+
+	t.Run("applies the configured limits", func(t *testing.T) {
+		store := New(WithMaxEntries(7), WithMaxBytes(2048))
+
+		if want, got := 7, store.maxEntries; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := 2048, store.maxBytes; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+	})
+
+	t.Run("keeps the defaults for limits below 1", func(t *testing.T) {
+		for _, tt := range []struct {
+			name  string
+			limit int
+		}{
+			{name: "zero", limit: 0},
+			{name: "negative", limit: -1},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				store := New(WithMaxEntries(tt.limit), WithMaxBytes(tt.limit))
+
+				if want, got := defaultMaxEntries, store.maxEntries; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
+				if want, got := defaultMaxBytes, store.maxBytes; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
+			})
+		}
+	})
 }
 
 func TestStore_Prepare(t *testing.T) {
@@ -317,6 +360,227 @@ func TestStore_Commit(t *testing.T) {
 	})
 }
 
+// seedEntry stores an entry directly and keeps the byte total in step, so a
+// test can arrange a full store without going through Commit, whose eviction
+// is what these tests exercise.
+func seedEntry(s *Store, id string, e entry) {
+	s.entries[id] = e
+	s.bytes += len(e.data)
+}
+
+func TestStore_Limits(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// The snapshots that the byte cases count encode to 35 bytes each, so those
+	// limits read in whole entries.
+	const entryBytes = 35
+
+	newStore := func(maxEntries, maxBytes int) *Store {
+		return New(
+			WithClock(func() time.Time { return now }),
+			WithMaxEntries(maxEntries),
+			WithMaxBytes(maxBytes),
+		)
+	}
+
+	t.Run("drops expired entries before live ones", func(t *testing.T) {
+		store := newStore(2, 1<<20)
+		seedEntry(store, "expired", entry{
+			data:        []byte(`{"id":"expired","csrf_token":"csrf-1"}`),
+			expiresAt:   now.Add(-time.Second),
+			committedAt: now.Add(-time.Hour),
+		})
+		seedEntry(store, "live", entry{
+			data:        []byte(`{"id":"live","csrf_token":"csrf-2"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Minute),
+		})
+
+		err := store.Commit(context.Background(), &session.Snapshot{ID: "id-3", CSRFToken: "csrf-3"}, time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if _, ok := store.entries["expired"]; ok {
+			t.Error("want ok: false; got: true")
+		}
+		if _, ok := store.entries["live"]; !ok {
+			t.Error("want ok: true; got: false")
+		}
+		if _, ok := store.entries["id-3"]; !ok {
+			t.Error("want ok: true; got: false")
+		}
+	})
+
+	t.Run("evicts the least recently committed entry", func(t *testing.T) {
+		store := newStore(2, 1<<20)
+		seedEntry(store, "idle", entry{
+			data:        []byte(`{"id":"idle","csrf_token":"csrf-1"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Hour),
+		})
+		seedEntry(store, "recent", entry{
+			data:        []byte(`{"id":"recent","csrf_token":"csrf-2"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Minute),
+		})
+
+		err := store.Commit(context.Background(), &session.Snapshot{ID: "id-3", CSRFToken: "csrf-3"}, time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if _, ok := store.entries["idle"]; ok {
+			t.Error("want ok: false; got: true")
+		}
+		if _, ok := store.entries["recent"]; !ok {
+			t.Error("want ok: true; got: false")
+		}
+	})
+
+	t.Run("rejects a snapshot larger than the whole store", func(t *testing.T) {
+		// Every other entry can be evicted, so this is the one write that a
+		// cull cannot make room for.
+		store := newStore(10, entryBytes*4)
+		seedEntry(store, "id-1", entry{
+			data:        []byte(`{"id":"id-1","csrf_token":"csrf-1"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Hour),
+		})
+
+		snapshot := &session.Snapshot{ID: "id-2", CSRFToken: "csrf-2", Data: map[string]any{"k": strings.Repeat("v", entryBytes*4)}}
+
+		err := store.Commit(context.Background(), snapshot, time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := "does not fit"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+		if _, ok := store.entries["id-2"]; ok {
+			t.Error("want ok: false; got: true")
+		}
+	})
+
+	t.Run("replaces an existing entry at the limit without evicting", func(t *testing.T) {
+		store := newStore(1, 1<<20)
+		seedEntry(store, "id-1", entry{
+			data:        []byte(`{"id":"id-1","csrf_token":"csrf-1"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Hour),
+		})
+
+		err := store.Commit(context.Background(), &session.Snapshot{ID: "id-1", CSRFToken: "csrf-2"}, time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if want, got := `{"id":"id-1","csrf_token":"csrf-2"}`, string(store.entries["id-1"].data); want != got {
+			t.Errorf("want: %s; got: %s", want, got)
+		}
+		if want, got := 1, len(store.entries); want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+	})
+
+	t.Run("keeps the entry being replaced when the write is refused", func(t *testing.T) {
+		// Evicting it would free nothing, since the write already credits its
+		// size, and would leave its owner signed out for a write that failed.
+		store := newStore(10, entryBytes*4)
+		seedEntry(store, "id-1", entry{
+			data:        []byte(`{"id":"id-1","csrf_token":"csrf-1"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Hour),
+		})
+
+		// Too large for the store however much it frees.
+		snapshot := &session.Snapshot{ID: "id-1", CSRFToken: "csrf-1", Data: map[string]any{"k": strings.Repeat("v", entryBytes*4)}}
+
+		err := store.Commit(context.Background(), snapshot, time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if _, ok := store.entries["id-1"]; !ok {
+			t.Error("want ok: true; got: false")
+		}
+		if want, got := entryBytes, store.bytes; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+	})
+
+	t.Run("evicts to stay within the byte limit", func(t *testing.T) {
+		// Room for two entries, so the third has to displace one even though
+		// the entry limit is far off.
+		store := newStore(10, entryBytes*2)
+		seedEntry(store, "idle", entry{
+			data:        []byte(`{"id":"old","csrf_token":"csrf-01"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Hour),
+		})
+		seedEntry(store, "recent", entry{
+			data:        []byte(`{"id":"new","csrf_token":"csrf-02"}`),
+			expiresAt:   now.Add(time.Hour),
+			committedAt: now.Add(-time.Minute),
+		})
+
+		err := store.Commit(context.Background(), &session.Snapshot{ID: "id-3", CSRFToken: "csrf-3"}, time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if _, ok := store.entries["idle"]; ok {
+			t.Error("want ok: false; got: true")
+		}
+		if want, got := entryBytes*2, store.bytes; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+	})
+
+	t.Run("keeps the byte total in step as entries come and go", func(t *testing.T) {
+		store := newStore(10, 1<<20)
+		ctx := context.Background()
+
+		if err := store.Commit(ctx, &session.Snapshot{ID: "id-1", CSRFToken: "csrf-1"}, time.Minute); err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if want, got := entryBytes, store.bytes; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+
+		if err := store.Drop(ctx, "id-1"); err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if got := store.bytes; got != 0 {
+			t.Errorf("want: 0; got: %d", got)
+		}
+	})
+
+	t.Run("releases bytes when an expired entry is read", func(t *testing.T) {
+		clock := now
+		store := New(
+			WithClock(func() time.Time { return clock }),
+			WithMaxEntries(10),
+			WithMaxBytes(1<<20),
+		)
+		seedEntry(store, "id-1", entry{
+			data:        []byte(`{"id":"id-1","csrf_token":"csrf-1"}`),
+			expiresAt:   now.Add(time.Minute),
+			committedAt: now,
+		})
+
+		clock = now.Add(time.Hour)
+
+		if _, err := store.Prepare(context.Background(), "id-1"); err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if got := store.bytes; got != 0 {
+			t.Errorf("want: 0; got: %d", got)
+		}
+	})
+}
+
 func TestStore_RoundTrip(t *testing.T) {
 	t.Run("returns data in its JSON form", func(t *testing.T) {
 		// Values come back shaped by the encoding, not as the Go types that
@@ -412,6 +676,56 @@ func TestStore_ConcurrentAccess(t *testing.T) {
 		}
 
 		wg.Wait()
+	})
+
+	t.Run("holds its limits while evicting under load", func(t *testing.T) {
+		// A cap this small has nearly every commit culling, so the eviction
+		// path runs under contention, where `go test -race` can see it.
+		const (
+			maxEntries = 8
+			goroutines = 8
+			iterations = 50
+		)
+
+		store := New(WithMaxEntries(maxEntries), WithMaxBytes(1<<20))
+
+		var wg sync.WaitGroup
+		wg.Add(goroutines)
+
+		for g := range goroutines {
+			go func() {
+				defer wg.Done()
+
+				for i := range iterations {
+					id := "id-" + strconv.Itoa(g) + "-" + strconv.Itoa(i)
+
+					if err := store.Commit(context.Background(), &session.Snapshot{ID: id, CSRFToken: "csrf-1"}, time.Minute); err != nil {
+						t.Errorf("want err: nil; got: %v", err)
+						return
+					}
+					if _, err := store.Prepare(context.Background(), id); err != nil {
+						t.Errorf("want err: nil; got: %v", err)
+						return
+					}
+				}
+			}()
+		}
+
+		wg.Wait()
+
+		if got := len(store.entries); got > maxEntries {
+			t.Errorf("want: at most %d; got: %d", maxEntries, got)
+		}
+
+		// The byte total is kept by hand on every path that adds or removes an
+		// entry, so it has to still match what the store holds.
+		var want int
+		for _, e := range store.entries {
+			want += len(e.data)
+		}
+		if got := store.bytes; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
 	})
 
 	t.Run("concurrent Commit and Prepare on shared keys stay consistent", func(t *testing.T) {
