@@ -150,13 +150,13 @@ func TestRequireAuth(t *testing.T) {
 
 			if tt.wantNext {
 				if !nextCalled {
-					t.Error("want next handler to be called")
+					t.Error("want: true; got: false")
 				}
 				return
 			}
 
 			if nextCalled {
-				t.Error("want next handler not to be called")
+				t.Error("want: false; got: true")
 			}
 			if want, got := tt.wantCode, rec.Code; want != got {
 				t.Errorf("want: %d; got: %d", want, got)
