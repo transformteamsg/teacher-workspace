@@ -128,4 +128,21 @@ func TestResolve(t *testing.T) {
 			t.Errorf("Unrecognized: want: %v; got: %v", want, got)
 		}
 	})
+
+	t.Run("resolves an empty groups claim the same as a nil one", func(t *testing.T) {
+		resolved := Resolve([]string{})
+
+		if want, got := []string{}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("Roles: want: %v; got: %v", want, got)
+		}
+		if want, got := "", resolved.EffectiveRole; want != got {
+			t.Errorf("EffectiveRole: want: %q; got: %q", want, got)
+		}
+		if want, got := []string{}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("Attributes: want: %v; got: %v", want, got)
+		}
+		if want, got := []string{}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("Unrecognized: want: %v; got: %v", want, got)
+		}
+	})
 }

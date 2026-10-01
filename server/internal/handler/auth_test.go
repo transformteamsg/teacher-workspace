@@ -75,7 +75,7 @@ func newCallbackTestEnv(t *testing.T) *callbackTestEnv {
 	}
 
 	var tokenNonce, tokenEmail, tokenErr string
-	var tokenRoles []string
+	tokenRoles := []string{}
 	var skipIDToken, tokenExpired bool
 	env := &callbackTestEnv{
 		tokenNonce:   &tokenNonce,
@@ -124,9 +124,9 @@ func newCallbackTestEnv(t *testing.T) *callbackTestEnv {
 			"iat":   time.Now().Unix(),
 			"exp":   expiry,
 		}
-		if len(*env.tokenRoles) > 0 {
-			claims["groups"] = *env.tokenRoles
-		}
+		// Edupass always sends the groups claim, empty array if the teacher
+		// has no assigned roles, never absent.
+		claims["groups"] = *env.tokenRoles
 		claimsJSON, err := json.Marshal(claims)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("marshal claims: %v", err), http.StatusInternalServerError)
