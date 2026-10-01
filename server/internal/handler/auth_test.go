@@ -125,7 +125,7 @@ func newCallbackTestEnv(t *testing.T) *callbackTestEnv {
 			"exp":   expiry,
 		}
 		if len(*env.tokenRoles) > 0 {
-			claims["roles"] = *env.tokenRoles
+			claims["groups"] = *env.tokenRoles
 		}
 		claimsJSON, err := json.Marshal(claims)
 		if err != nil {

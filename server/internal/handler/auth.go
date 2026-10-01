@@ -158,8 +158,8 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
-		Email string   `json:"email"`
-		Roles []string `json:"roles"`
+		Email  string   `json:"email"`
+		Groups []string `json:"groups"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		logger.Error("failed to extract claims", "err", err)
@@ -172,7 +172,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolved := edupassrole.Resolve(claims.Roles)
+	resolved := edupassrole.Resolve(claims.Groups)
 	if len(resolved.Unrecognized) > 0 {
 		logger.Warn("discarded unrecognized Edupass role/attribute codes",
 			"subject", idToken.Subject,
