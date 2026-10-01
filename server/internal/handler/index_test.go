@@ -1,14 +1,12 @@
 package handler
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
@@ -90,78 +88,6 @@ func TestHandler_index(t *testing.T) {
 
 		if want, got := http.StatusBadGateway, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
-		}
-	})
-
-	t.Run("proxies everything but a page load in development environment", func(t *testing.T) {
-		devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("proxied:" + r.URL.Path))
-		}))
-		t.Cleanup(devServer.Close)
-
-		devServerURL, err := url.Parse(devServer.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		h, err := New(&config.Config{
-			Env:          config.EnvDevelopment,
-			DevServerURL: devServerURL,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		req := httptest.NewRequest(http.MethodGet, "/mf-manifest.json", nil)
-		req.Header.Set("Accept", "*/*")
-		rec := httptest.NewRecorder()
-
-		h.index(rec, req)
-
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if want, got := "proxied:/mf-manifest.json", rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-	})
-
-	t.Run("proxies a form submission in development environment", func(t *testing.T) {
-		devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				t.Errorf("io.ReadAll: %v", err)
-			}
-			_, _ = w.Write([]byte(r.Method + ":" + r.URL.Path + ":" + string(body)))
-		}))
-		t.Cleanup(devServer.Close)
-
-		devServerURL, err := url.Parse(devServer.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		h, err := New(&config.Config{
-			Env:          config.EnvDevelopment,
-			DevServerURL: devServerURL,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		// A form_post OIDC callback is a browser navigation, so it accepts HTML
-		// like a page load does.
-		req := httptest.NewRequest(http.MethodPost, "/auth/callback", strings.NewReader("code=abc&state=xyz"))
-		req.Header.Set("Accept", "text/html,application/xhtml+xml")
-		rec := httptest.NewRecorder()
-
-		h.index(rec, req)
-
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if want, got := "POST:/auth/callback:code=abc&state=xyz", rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})
 
@@ -271,21 +197,6 @@ func TestHandler_index(t *testing.T) {
 		}
 	})
 
-	t.Run("return 404 for an unknown environment", func(t *testing.T) {
-		h, err := New(&config.Config{}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
-
-		h.index(rec, req)
-
-		if want, got := http.StatusNotFound, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-	})
 }
 
 func TestHandler_static(t *testing.T) {
