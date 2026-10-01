@@ -114,15 +114,14 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware, au
 	appHandler := session(auth(app))
 
 	if h.cfg.Env == config.EnvDevelopment {
-		// In development, only HTML page navigations and API calls go through
-		// session and auth middleware. Everything else, including manifests,
-		// source maps, hot updates, and rspack lazy compilation POST requests,
-		// must reach rsbuild without auth.
+		// In development, only requests that match a registered app route go
+		// through session and auth middleware. Everything else, including
+		// manifests, source maps, hot updates, and rspack lazy compilation POST
+		// requests, must reach rsbuild without auth.
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			isHTMLPageNav := (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
 				strings.Contains(r.Header.Get("Accept"), httputil.MIMETextHTML)
-			isAPIRequest := r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/")
-			if !isHTMLPageNav && !isAPIRequest {
+			if _, pattern := app.Handler(r); pattern == "/" && !isHTMLPageNav {
 				h.devProxy.ServeHTTP(w, r)
 				return
 			}
