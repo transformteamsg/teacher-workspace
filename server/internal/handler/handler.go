@@ -121,7 +121,8 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware, au
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			isHTMLPageNav := (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
 				strings.Contains(r.Header.Get("Accept"), httputil.MIMETextHTML)
-			if !isHTMLPageNav && !strings.HasPrefix(r.URL.Path, "/api/") {
+			isAPIRequest := r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/")
+			if !isHTMLPageNav && !isAPIRequest {
 				h.devProxy.ServeHTTP(w, r)
 				return
 			}
