@@ -230,6 +230,213 @@ func TestHandler_Register(t *testing.T) {
 			t.Errorf("want: %d; got: %d", want, calls)
 		}
 	})
+
+	t.Run("proxies /rsbuild-hmr without session or auth middleware in development", func(t *testing.T) {
+		devBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("hmr-ok"))
+		}))
+		t.Cleanup(devBackend.Close)
+
+		devBackendURL, err := url.Parse(devBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.Env = config.EnvDevelopment
+		cfg.DevServerURL = devBackendURL
+
+		h, err := New(&cfg, testRP())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var sessionCalls, authCalls int
+
+		mux := http.NewServeMux()
+		h.Register(mux, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				sessionCalls++
+				next.ServeHTTP(w, r)
+			})
+		}, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authCalls++
+				next.ServeHTTP(w, r)
+			})
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/rsbuild-hmr", nil)
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := "hmr-ok", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want := 0; want != sessionCalls {
+			t.Errorf("want: %d; got: %d", want, sessionCalls)
+		}
+		if want := 0; want != authCalls {
+			t.Errorf("want: %d; got: %d", want, authCalls)
+		}
+	})
+
+	t.Run("proxies non-HTML dev assets without session or auth middleware in development", func(t *testing.T) {
+		devBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("manifest-ok"))
+		}))
+		t.Cleanup(devBackend.Close)
+
+		devBackendURL, err := url.Parse(devBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.Env = config.EnvDevelopment
+		cfg.DevServerURL = devBackendURL
+
+		h, err := New(&cfg, testRP())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var sessionCalls, authCalls int
+
+		mux := http.NewServeMux()
+		h.Register(mux, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				sessionCalls++
+				next.ServeHTTP(w, r)
+			})
+		}, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authCalls++
+				next.ServeHTTP(w, r)
+			})
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/mf-manifest.json", nil)
+		req.Header.Set("Accept", "application/json")
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := "manifest-ok", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want := 0; want != sessionCalls {
+			t.Errorf("want: %d; got: %d", want, sessionCalls)
+		}
+		if want := 0; want != authCalls {
+			t.Errorf("want: %d; got: %d", want, authCalls)
+		}
+	})
+
+	t.Run("proxies rspack lazy compilation POST without auth in development", func(t *testing.T) {
+		devBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("trigger-ok"))
+		}))
+		t.Cleanup(devBackend.Close)
+
+		devBackendURL, err := url.Parse(devBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.Env = config.EnvDevelopment
+		cfg.DevServerURL = devBackendURL
+
+		h, err := New(&cfg, testRP())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var sessionCalls, authCalls int
+
+		mux := http.NewServeMux()
+		h.Register(mux, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				sessionCalls++
+				next.ServeHTTP(w, r)
+			})
+		}, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authCalls++
+				next.ServeHTTP(w, r)
+			})
+		})
+
+		req := httptest.NewRequest(http.MethodPost, "/_rspack/lazy/trigger", strings.NewReader("some-module"))
+		req.Header.Set("Content-Type", "text/plain")
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := "trigger-ok", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want := 0; want != sessionCalls {
+			t.Errorf("want: %d; got: %d", want, sessionCalls)
+		}
+		if want := 0; want != authCalls {
+			t.Errorf("want: %d; got: %d", want, authCalls)
+		}
+	})
+
+	t.Run("routes API requests through auth even in development", func(t *testing.T) {
+		devBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("should-not-reach"))
+		}))
+		t.Cleanup(devBackend.Close)
+
+		devBackendURL, err := url.Parse(devBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		cfg := config.Default()
+		cfg.Env = config.EnvDevelopment
+		cfg.DevServerURL = devBackendURL
+
+		h, err := New(&cfg, testRP())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var authCalls int
+
+		mux := http.NewServeMux()
+		h.Register(mux, func(next http.Handler) http.Handler {
+			return next
+		}, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authCalls++
+				w.WriteHeader(http.StatusUnauthorized)
+			})
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/", nil)
+		req.Header.Set("Accept", "application/json")
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+
+		if want := 1; want != authCalls {
+			t.Errorf("want: %d; got: %d", want, authCalls)
+		}
+	})
 }
 
 func TestHandler_Register_authGuard(t *testing.T) {
@@ -377,6 +584,122 @@ func TestHandler_Register_authGuard(t *testing.T) {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
 		if want, got := "/", rec.Header().Get("Location"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not redirect unauthenticated /rsbuild-hmr in development", func(t *testing.T) {
+		devBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("hmr-ok"))
+		}))
+		t.Cleanup(devBackend.Close)
+
+		devBackendURL, err := url.Parse(devBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		devCfg := config.Default()
+		devCfg.Env = config.EnvDevelopment
+		devCfg.DevServerURL = devBackendURL
+
+		devH, err := New(&devCfg, testRP())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		mux := http.NewServeMux()
+		devH.Register(mux, sessionInjector(session.New()), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodGet, "/rsbuild-hmr", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusFound {
+			t.Errorf("want: not 302; got: 302 Location=%q", rec.Header().Get("Location"))
+		}
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := "hmr-ok", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not redirect unauthenticated /mf-manifest.json in development", func(t *testing.T) {
+		devBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"id":"test"}`))
+		}))
+		t.Cleanup(devBackend.Close)
+
+		devBackendURL, err := url.Parse(devBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		devCfg := config.Default()
+		devCfg.Env = config.EnvDevelopment
+		devCfg.DevServerURL = devBackendURL
+
+		devH, err := New(&devCfg, testRP())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		mux := http.NewServeMux()
+		devH.Register(mux, sessionInjector(session.New()), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodGet, "/mf-manifest.json", nil)
+		req.Header.Set("Accept", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusFound {
+			t.Errorf("want: not 302; got: 302 Location=%q", rec.Header().Get("Location"))
+		}
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := `{"id":"test"}`, rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not redirect unauthenticated POST /_rspack/lazy/trigger in development", func(t *testing.T) {
+		devBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("trigger-ok"))
+		}))
+		t.Cleanup(devBackend.Close)
+
+		devBackendURL, err := url.Parse(devBackend.URL)
+		if err != nil {
+			t.Fatalf("url.Parse: %v", err)
+		}
+
+		devCfg := config.Default()
+		devCfg.Env = config.EnvDevelopment
+		devCfg.DevServerURL = devBackendURL
+
+		devH, err := New(&devCfg, testRP())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		mux := http.NewServeMux()
+		devH.Register(mux, sessionInjector(session.New()), middleware.RequireAuth())
+
+		req := httptest.NewRequest(http.MethodPost, "/_rspack/lazy/trigger", strings.NewReader("some-module"))
+		req.Header.Set("Content-Type", "text/plain")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusFound {
+			t.Errorf("want: not 302; got: 302 Location=%q", rec.Header().Get("Location"))
+		}
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := "trigger-ok", rec.Body.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 	})

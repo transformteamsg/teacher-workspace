@@ -29,7 +29,7 @@ func RequireAuth() Middleware {
 			sess, ok := SessionFromContext(r.Context())
 
 			if path == "/login" {
-				if ok && sess.IsAuthenticated() {
+				if ok && sess != nil && sess.IsAuthenticated() {
 					http.Redirect(w, r, "/", http.StatusFound)
 					return
 				}
@@ -37,8 +37,8 @@ func RequireAuth() Middleware {
 				return
 			}
 
-			if !ok || !sess.IsAuthenticated() {
-				if strings.HasPrefix(path, "/api/") {
+			if !ok || sess == nil || !sess.IsAuthenticated() {
+				if path == "/api" || strings.HasPrefix(path, "/api/") {
 					logger := LoggerFromContext(r.Context())
 					httputil.RenderJSON(w, logger, http.StatusUnauthorized, &httputil.ErrorResponse{
 						Message: http.StatusText(http.StatusUnauthorized),
