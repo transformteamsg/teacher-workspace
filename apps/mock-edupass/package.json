@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "node --env-file=../../.env --watch src/index.ts",
     "start": "node src/index.ts",
     "test": "node --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit"
