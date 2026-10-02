@@ -180,7 +180,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 	if len(resolved.Roles) != 1 {
-		logger.Warn("teacher does not have exactly one recognized base role",
+		logger.Warn("staff does not have exactly one recognized base role",
 			"subject", idToken.Subject,
 			"roles", resolved.Roles,
 		)
