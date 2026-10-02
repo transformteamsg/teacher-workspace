@@ -28,13 +28,13 @@ type Store interface {
 // User identifies the authenticated principal attached to a session.
 type User struct {
 	Email string `json:"email"`
-	// Role is the teacher's sole recognized base role, stripped of location
-	// and environment prefix. Sign-in is refused unless resolution finds
-	// exactly one, so this is always populated whenever User is non-nil.
+	// Role is the staff member's sole recognized base role, stripped of
+	// location and environment prefix. Sign-in is refused unless resolution
+	// finds exactly one, so this is always populated whenever User is non-nil.
 	Role string `json:"role"`
 	// Attributes contains every attribute Edupass recognized for the
-	// teacher, stripped of location and environment prefix, unranked and in
-	// arrival order.
+	// staff member, stripped of location and environment prefix, unranked
+	// and in arrival order.
 	Attributes []string `json:"attributes"`
 }
 

@@ -1,6 +1,6 @@
 // Package edupassrole resolves the flat `groups` claim Edupass puts on a
-// teacher's ID token into the base roles, effective role, and attributes
-// Teacher Workspace stores on the session.
+// staff member's ID token into the base roles, effective role, and
+// attributes Teacher Workspace stores on the session.
 //
 // Edupass mixes two kinds of entries into one array, each prefixed with a
 // location code and an environment marker: `<location>_TW_ROLE_<CODE>` for a
@@ -18,8 +18,8 @@ const (
 	attrInfix = "_ATTR_"
 )
 
-// recognizedRoles lists every base role code Edupass issues. A teacher is
-// meant to hold exactly one for a location, but Edupass enforces nothing:
+// recognizedRoles lists every base role code Edupass issues. A staff member
+// is meant to hold exactly one for a location, but Edupass enforces nothing:
 // Resolve reports every one it sees and leaves the "more than one" case to
 // the caller, rather than guessing which was meant. Add new codes here as
 // they're recognized.
@@ -62,7 +62,7 @@ var recognizedAttributes = map[string]bool{
 	"ATTR_SLD":           true,
 }
 
-// Result is the outcome of resolving one teacher's Edupass `groups` claim.
+// Result is the outcome of resolving one staff member's Edupass `groups` claim.
 type Result struct {
 	// Roles contains every recognized base role, stripped of location and
 	// environment prefix, in arrival order. More than one entry means
