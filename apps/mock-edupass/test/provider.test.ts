@@ -1,10 +1,22 @@
 import assert from 'node:assert/strict';
+import {
+  constants,
+  createHash,
+  createPrivateKey,
+  generateKeyPairSync,
+  type KeyObject,
+  randomUUID,
+  sign,
+  X509Certificate,
+} from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 
 import type { JWK } from 'oidc-provider';
+import { generate } from 'selfsigned';
 
 import { createApp } from '../src/app.ts';
+import { createProvider } from '../src/provider.ts';
 import {
   generateCodeChallenge,
   generateCodeVerifier,
@@ -97,7 +109,17 @@ describe('mock-edupass OIDC provider', () => {
   let server: Server;
 
   before(async () => {
-    const { app } = createApp(TEST_PORT);
+    const app = createApp(
+      createProvider({
+        port: TEST_PORT,
+        url: `http://localhost:${TEST_PORT}`,
+        tw: {
+          id: CLIENT_ID,
+          redirectUri: REDIRECT_URI,
+          auth: { method: 'client_secret_post', clientSecret: CLIENT_SECRET },
+        },
+      }),
+    );
     server = createServer((req, res) => {
       res.setHeader('Connection', 'close');
       app(req, res);
@@ -137,7 +159,17 @@ describe('mock-edupass OIDC provider', () => {
       const [firstKey] = ((await firstJwksRes.json()) as { keys: JWK[] }).keys;
 
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      const { app } = createApp(TEST_PORT);
+      const app = createApp(
+        createProvider({
+          port: TEST_PORT,
+          url: `http://localhost:${TEST_PORT}`,
+          tw: {
+            id: CLIENT_ID,
+            redirectUri: REDIRECT_URI,
+            auth: { method: 'client_secret_post', clientSecret: CLIENT_SECRET },
+          },
+        }),
+      );
       server = createServer((req, res) => {
         res.setHeader('Connection', 'close');
         app(req, res);
@@ -333,5 +365,619 @@ describe('mock-edupass OIDC provider', () => {
       const body = (await secondRes.json()) as Record<string, unknown>;
       assert.equal(body.error, 'invalid_grant');
     });
+
+    it('rejects a client assertion with 401 invalid_client', async () => {
+      const client = new OidcClient(BASE_URL);
+      const { code, codeVerifier } = await obtainAuthorizationCode(client);
+      const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+
+      const header = Buffer.from(JSON.stringify({ alg: 'PS256', typ: 'JWT' })).toString(
+        'base64url',
+      );
+      const now = Math.floor(Date.now() / 1000);
+      const payload = Buffer.from(
+        JSON.stringify({
+          iss: CLIENT_ID,
+          sub: CLIENT_ID,
+          aud: `${BASE_URL}/token`,
+          jti: randomUUID(),
+          iat: now,
+          nbf: now,
+          exp: now + 300,
+        }),
+      ).toString('base64url');
+      const signature = sign('sha256', Buffer.from(`${header}.${payload}`), {
+        key: privateKey,
+        padding: constants.RSA_PKCS1_PSS_PADDING,
+        saltLength: 32,
+      }).toString('base64url');
+
+      const tokenRes = await globalThis.fetch(`${BASE_URL}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: REDIRECT_URI,
+          client_id: CLIENT_ID,
+          code_verifier: codeVerifier,
+          client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+          client_assertion: `${header}.${payload}.${signature}`,
+        }).toString(),
+      });
+
+      assert.equal(tokenRes.status, 401);
+      const body = (await tokenRes.json()) as Record<string, unknown>;
+      assert.equal(body.error, 'invalid_client');
+    });
+  });
+});
+
+describe('mock-edupass private_key_jwt client authentication', () => {
+  const PORT = 9877;
+  const URL_BASE = `http://localhost:${PORT}`;
+
+  let server: Server;
+  let privateKey: KeyObject;
+  let otherKey: KeyObject;
+  let thumbprint: string;
+  let otherThumbprint: string;
+
+  before(async () => {
+    const client = await generate([{ name: 'commonName', value: 'teacher-workspace' }], {
+      keyType: 'rsa',
+      keySize: 2048,
+      algorithm: 'sha256',
+    });
+    const other = await generate([{ name: 'commonName', value: 'teacher-workspace' }], {
+      keyType: 'rsa',
+      keySize: 2048,
+      algorithm: 'sha256',
+    });
+
+    const certificate = new X509Certificate(client.cert);
+    privateKey = createPrivateKey(client.private);
+    otherKey = createPrivateKey(other.private);
+    thumbprint = createHash('sha256').update(certificate.raw).digest('base64url');
+    otherThumbprint = createHash('sha256')
+      .update(new X509Certificate(other.cert).raw)
+      .digest('base64url');
+
+    const app = createApp(
+      createProvider({
+        port: PORT,
+        url: `http://localhost:${PORT}`,
+        tw: {
+          id: CLIENT_ID,
+          redirectUri: REDIRECT_URI,
+          auth: { method: 'private_key_jwt', certificate },
+        },
+      }),
+    );
+    server = createServer((req, res) => {
+      res.setHeader('Connection', 'close');
+      app(req, res);
+    }).listen(PORT);
+    await new Promise<void>((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    });
+  });
+
+  after(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('issues an ID token for a valid client assertion', async () => {
+    const client = new OidcClient(URL_BASE);
+    const codeVerifier = generateCodeVerifier();
+    const authorizeParams = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: 'openid',
+      response_mode: 'form_post',
+      code_challenge: generateCodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      nonce: 'test-nonce',
+    });
+    const authorizeRes = await client.followRedirects(
+      `${URL_BASE}/authorize?${authorizeParams.toString()}`,
+    );
+    const { params: formParams } = parseFormPost(await authorizeRes.text());
+    assert.ok(formParams.code, 'Expected authorization code in form_post');
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'PS256', typ: 'JWT', 'x5t#S256': thumbprint }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: CLIENT_ID,
+        sub: CLIENT_ID,
+        aud: `${URL_BASE}/token`,
+        jti: randomUUID(),
+        iat: now,
+        nbf: now,
+        exp: now + 300,
+      }),
+    ).toString('base64url');
+    const signature = sign('sha256', Buffer.from(`${header}.${payload}`), {
+      key: privateKey,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: 32,
+    }).toString('base64url');
+
+    const tokenRes = await globalThis.fetch(`${URL_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: formParams.code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: codeVerifier,
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: `${header}.${payload}.${signature}`,
+      }).toString(),
+    });
+
+    assert.equal(tokenRes.status, 200);
+    const body = (await tokenRes.json()) as Record<string, unknown>;
+    assert.ok(body.id_token, 'response should contain id_token');
+  });
+
+  it('rejects a client assertion without x5t#S256 with 401 invalid_client', async () => {
+    const client = new OidcClient(URL_BASE);
+    const codeVerifier = generateCodeVerifier();
+    const authorizeParams = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: 'openid',
+      response_mode: 'form_post',
+      code_challenge: generateCodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      nonce: 'test-nonce',
+    });
+    const authorizeRes = await client.followRedirects(
+      `${URL_BASE}/authorize?${authorizeParams.toString()}`,
+    );
+    const { params: formParams } = parseFormPost(await authorizeRes.text());
+    assert.ok(formParams.code, 'Expected authorization code in form_post');
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(JSON.stringify({ alg: 'PS256', typ: 'JWT' })).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: CLIENT_ID,
+        sub: CLIENT_ID,
+        aud: `${URL_BASE}/token`,
+        jti: randomUUID(),
+        iat: now,
+        nbf: now,
+        exp: now + 300,
+      }),
+    ).toString('base64url');
+    const signature = sign('sha256', Buffer.from(`${header}.${payload}`), {
+      key: privateKey,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: 32,
+    }).toString('base64url');
+
+    const tokenRes = await globalThis.fetch(`${URL_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: formParams.code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: codeVerifier,
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: `${header}.${payload}.${signature}`,
+      }).toString(),
+    });
+
+    assert.equal(tokenRes.status, 401);
+    const body = (await tokenRes.json()) as Record<string, unknown>;
+    assert.equal(body.error, 'invalid_client');
+  });
+
+  it('rejects a client assertion with the x5t#S256 of another certificate with 401 invalid_client', async () => {
+    const client = new OidcClient(URL_BASE);
+    const codeVerifier = generateCodeVerifier();
+    const authorizeParams = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: 'openid',
+      response_mode: 'form_post',
+      code_challenge: generateCodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      nonce: 'test-nonce',
+    });
+    const authorizeRes = await client.followRedirects(
+      `${URL_BASE}/authorize?${authorizeParams.toString()}`,
+    );
+    const { params: formParams } = parseFormPost(await authorizeRes.text());
+    assert.ok(formParams.code, 'Expected authorization code in form_post');
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'PS256', typ: 'JWT', 'x5t#S256': otherThumbprint }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: CLIENT_ID,
+        sub: CLIENT_ID,
+        aud: `${URL_BASE}/token`,
+        jti: randomUUID(),
+        iat: now,
+        nbf: now,
+        exp: now + 300,
+      }),
+    ).toString('base64url');
+    const signature = sign('sha256', Buffer.from(`${header}.${payload}`), {
+      key: privateKey,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: 32,
+    }).toString('base64url');
+
+    const tokenRes = await globalThis.fetch(`${URL_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: formParams.code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: codeVerifier,
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: `${header}.${payload}.${signature}`,
+      }).toString(),
+    });
+
+    assert.equal(tokenRes.status, 401);
+    const body = (await tokenRes.json()) as Record<string, unknown>;
+    assert.equal(body.error, 'invalid_client');
+  });
+
+  it('rejects a client assertion signed by another key with 401 invalid_client', async () => {
+    const client = new OidcClient(URL_BASE);
+    const codeVerifier = generateCodeVerifier();
+    const authorizeParams = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: 'openid',
+      response_mode: 'form_post',
+      code_challenge: generateCodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      nonce: 'test-nonce',
+    });
+    const authorizeRes = await client.followRedirects(
+      `${URL_BASE}/authorize?${authorizeParams.toString()}`,
+    );
+    const { params: formParams } = parseFormPost(await authorizeRes.text());
+    assert.ok(formParams.code, 'Expected authorization code in form_post');
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'PS256', typ: 'JWT', 'x5t#S256': thumbprint }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: CLIENT_ID,
+        sub: CLIENT_ID,
+        aud: `${URL_BASE}/token`,
+        jti: randomUUID(),
+        iat: now,
+        nbf: now,
+        exp: now + 300,
+      }),
+    ).toString('base64url');
+    const signature = sign('sha256', Buffer.from(`${header}.${payload}`), {
+      key: otherKey,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: 32,
+    }).toString('base64url');
+
+    const tokenRes = await globalThis.fetch(`${URL_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: formParams.code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: codeVerifier,
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: `${header}.${payload}.${signature}`,
+      }).toString(),
+    });
+
+    assert.equal(tokenRes.status, 401);
+    const body = (await tokenRes.json()) as Record<string, unknown>;
+    assert.equal(body.error, 'invalid_client');
+  });
+
+  it('rejects an expired client assertion with 401 invalid_client', async () => {
+    const client = new OidcClient(URL_BASE);
+    const codeVerifier = generateCodeVerifier();
+    const authorizeParams = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: 'openid',
+      response_mode: 'form_post',
+      code_challenge: generateCodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      nonce: 'test-nonce',
+    });
+    const authorizeRes = await client.followRedirects(
+      `${URL_BASE}/authorize?${authorizeParams.toString()}`,
+    );
+    const { params: formParams } = parseFormPost(await authorizeRes.text());
+    assert.ok(formParams.code, 'Expected authorization code in form_post');
+
+    const past = Math.floor(Date.now() / 1000) - 3600;
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'PS256', typ: 'JWT', 'x5t#S256': thumbprint }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: CLIENT_ID,
+        sub: CLIENT_ID,
+        aud: `${URL_BASE}/token`,
+        jti: randomUUID(),
+        iat: past,
+        nbf: past,
+        exp: past + 60,
+      }),
+    ).toString('base64url');
+    const signature = sign('sha256', Buffer.from(`${header}.${payload}`), {
+      key: privateKey,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: 32,
+    }).toString('base64url');
+
+    const tokenRes = await globalThis.fetch(`${URL_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: formParams.code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: codeVerifier,
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: `${header}.${payload}.${signature}`,
+      }).toString(),
+    });
+
+    assert.equal(tokenRes.status, 401);
+    const body = (await tokenRes.json()) as Record<string, unknown>;
+    assert.equal(body.error, 'invalid_client');
+  });
+
+  it('rejects a client assertion not signed with PS256 with 401 invalid_client', async () => {
+    const client = new OidcClient(URL_BASE);
+    const codeVerifier = generateCodeVerifier();
+    const authorizeParams = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: 'openid',
+      response_mode: 'form_post',
+      code_challenge: generateCodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      nonce: 'test-nonce',
+    });
+    const authorizeRes = await client.followRedirects(
+      `${URL_BASE}/authorize?${authorizeParams.toString()}`,
+    );
+    const { params: formParams } = parseFormPost(await authorizeRes.text());
+    assert.ok(formParams.code, 'Expected authorization code in form_post');
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'RS256', typ: 'JWT', 'x5t#S256': thumbprint }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: CLIENT_ID,
+        sub: CLIENT_ID,
+        aud: `${URL_BASE}/token`,
+        jti: randomUUID(),
+        iat: now,
+        nbf: now,
+        exp: now + 300,
+      }),
+    ).toString('base64url');
+    const signature = sign('sha256', Buffer.from(`${header}.${payload}`), privateKey).toString(
+      'base64url',
+    );
+
+    const tokenRes = await globalThis.fetch(`${URL_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: formParams.code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: codeVerifier,
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: `${header}.${payload}.${signature}`,
+      }).toString(),
+    });
+
+    assert.equal(tokenRes.status, 401);
+    const body = (await tokenRes.json()) as Record<string, unknown>;
+    assert.equal(body.error, 'invalid_client');
+  });
+
+  it('rejects a client secret with 401 invalid_client', async () => {
+    const client = new OidcClient(URL_BASE);
+    const codeVerifier = generateCodeVerifier();
+    const authorizeParams = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: 'openid',
+      response_mode: 'form_post',
+      code_challenge: generateCodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      nonce: 'test-nonce',
+    });
+    const authorizeRes = await client.followRedirects(
+      `${URL_BASE}/authorize?${authorizeParams.toString()}`,
+    );
+    const { params: formParams } = parseFormPost(await authorizeRes.text());
+    assert.ok(formParams.code, 'Expected authorization code in form_post');
+
+    const tokenRes = await globalThis.fetch(`${URL_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: formParams.code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: codeVerifier,
+        client_secret: CLIENT_SECRET,
+      }).toString(),
+    });
+
+    assert.equal(tokenRes.status, 401);
+    const body = (await tokenRes.json()) as Record<string, unknown>;
+    assert.equal(body.error, 'invalid_client');
+  });
+
+  it('rejects a missing client_assertion_type with 400 invalid_request', async () => {
+    const client = new OidcClient(URL_BASE);
+    const codeVerifier = generateCodeVerifier();
+    const authorizeParams = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: 'openid',
+      response_mode: 'form_post',
+      code_challenge: generateCodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      nonce: 'test-nonce',
+    });
+    const authorizeRes = await client.followRedirects(
+      `${URL_BASE}/authorize?${authorizeParams.toString()}`,
+    );
+    const { params: formParams } = parseFormPost(await authorizeRes.text());
+    assert.ok(formParams.code, 'Expected authorization code in form_post');
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'PS256', typ: 'JWT', 'x5t#S256': thumbprint }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: CLIENT_ID,
+        sub: CLIENT_ID,
+        aud: `${URL_BASE}/token`,
+        jti: randomUUID(),
+        iat: now,
+        nbf: now,
+        exp: now + 300,
+      }),
+    ).toString('base64url');
+    const signature = sign('sha256', Buffer.from(`${header}.${payload}`), {
+      key: privateKey,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: 32,
+    }).toString('base64url');
+
+    const tokenRes = await globalThis.fetch(`${URL_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: formParams.code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: codeVerifier,
+        client_assertion: `${header}.${payload}.${signature}`,
+      }).toString(),
+    });
+
+    assert.equal(tokenRes.status, 400);
+    const body = (await tokenRes.json()) as Record<string, unknown>;
+    assert.equal(body.error, 'invalid_request');
+  });
+
+  it('rejects a wrong client_assertion_type with 400 invalid_request', async () => {
+    const client = new OidcClient(URL_BASE);
+    const codeVerifier = generateCodeVerifier();
+    const authorizeParams = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: 'openid',
+      response_mode: 'form_post',
+      code_challenge: generateCodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      nonce: 'test-nonce',
+    });
+    const authorizeRes = await client.followRedirects(
+      `${URL_BASE}/authorize?${authorizeParams.toString()}`,
+    );
+    const { params: formParams } = parseFormPost(await authorizeRes.text());
+    assert.ok(formParams.code, 'Expected authorization code in form_post');
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'PS256', typ: 'JWT', 'x5t#S256': thumbprint }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: CLIENT_ID,
+        sub: CLIENT_ID,
+        aud: `${URL_BASE}/token`,
+        jti: randomUUID(),
+        iat: now,
+        nbf: now,
+        exp: now + 300,
+      }),
+    ).toString('base64url');
+    const signature = sign('sha256', Buffer.from(`${header}.${payload}`), {
+      key: privateKey,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: 32,
+    }).toString('base64url');
+
+    const tokenRes = await globalThis.fetch(`${URL_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: formParams.code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: codeVerifier,
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:saml2-bearer',
+        client_assertion: `${header}.${payload}.${signature}`,
+      }).toString(),
+    });
+
+    assert.equal(tokenRes.status, 400);
+    const body = (await tokenRes.json()) as Record<string, unknown>;
+    assert.equal(body.error, 'invalid_request');
   });
 });

@@ -1,10 +1,15 @@
-import express, { Router } from 'express';
+import express, { type Express, Router } from 'express';
+import type Provider from 'oidc-provider';
 
-import { accounts, createProvider } from './provider.ts';
+import { accounts } from './provider.ts';
 
-export function createApp(port: number) {
-  const provider = createProvider(port);
-
+/**
+ * Builds the mock Edupass app.
+ *
+ * @param provider - Handles the OIDC endpoints.
+ * @returns the App.
+ */
+export function createApp(provider: Provider): Express {
   const router = Router();
 
   router.get('/interaction/:uid', async (req, res) => {
@@ -59,5 +64,5 @@ export function createApp(port: number) {
   app.use(router);
   app.use(provider.callback());
 
-  return { app, provider };
+  return app;
 }

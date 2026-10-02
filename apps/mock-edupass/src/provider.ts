@@ -1,6 +1,8 @@
-import { generateKeyPairSync } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 
-import Provider from 'oidc-provider';
+import Provider, { errors } from 'oidc-provider';
+
+import type { Config } from './config.ts';
 
 export interface Account {
   sub: string;
@@ -62,11 +64,11 @@ export const accounts: Account[] = [
 /**
  * Returns the mock Edupass provider.
  *
- * @param port - The port the provider is reached on.
- * @returns A provider carrying the backend as its registered client.
+ * @param config - Server URL and the TW client's registration.
+ * @returns the {@link Provider}.
  */
-export function createProvider(port: number): Provider {
-  return new Provider(`http://localhost:${port}`, {
+export function createProvider(config: Config): Provider {
+  const provider = new Provider(config.url, {
     jwks: {
       keys: [
         generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ format: 'jwk' }),
@@ -75,14 +77,39 @@ export function createProvider(port: number): Provider {
 
     clients: [
       {
-        client_id: 'teacher-workspace',
-        client_secret: 'teacher-workspace-secret',
-        redirect_uris: ['http://localhost:3000/auth/edupass/callback'],
+        client_id: config.tw.id,
+        redirect_uris: [config.tw.redirectUri],
         response_types: ['code'],
         grant_types: ['authorization_code'],
-        token_endpoint_auth_method: 'client_secret_post',
+        ...(config.tw.auth.method === 'private_key_jwt'
+          ? {
+              token_endpoint_auth_method: 'private_key_jwt',
+              token_endpoint_auth_signing_alg: 'PS256',
+              jwks: { keys: [config.tw.auth.certificate.publicKey.export({ format: 'jwk' })] },
+            }
+          : {
+              token_endpoint_auth_method: 'client_secret_post',
+              client_secret: config.tw.auth.clientSecret,
+            }),
       },
     ],
+
+    // Runs only for JWT client auth: https://github.com/panva/node-oidc-provider/blob/v9.11.1/docs/README.md#assertjwtclientauthclaimsandheader
+    assertJwtClientAuthClaimsAndHeader: async (_ctx, _claims, header) => {
+      if (config.tw.auth.method !== 'private_key_jwt') {
+        return;
+      }
+
+      const thumbprint = createHash('sha256')
+        .update(config.tw.auth.certificate.raw)
+        .digest('base64url');
+
+      if (header['x5t#S256'] !== thumbprint) {
+        throw new errors.InvalidClientAuth(
+          'x5t#S256 is missing or does not match the registered certificate',
+        );
+      }
+    },
 
     claims: {
       openid: ['sub', 'email', 'name', 'groups'],
@@ -128,4 +155,8 @@ export function createProvider(port: number): Provider {
       };
     },
   });
+
+  provider.proxy = true;
+
+  return provider;
 }
