@@ -998,7 +998,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := "WARN", entry.Level; want != got {
 			t.Errorf("log level: want %q; got %q", want, got)
 		}
-		if want, got := "teacher does not have exactly one recognized base role", entry.Msg; want != got {
+		if want, got := "staff does not have exactly one recognized base role", entry.Msg; want != got {
 			t.Errorf("log msg: want %q; got %q", want, got)
 		}
 	})

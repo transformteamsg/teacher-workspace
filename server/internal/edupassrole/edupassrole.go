@@ -1,4 +1,4 @@
-// Package edupassrole resolves the flat `roles` claim Edupass puts on a
+// Package edupassrole resolves the flat `groups` claim Edupass puts on a
 // teacher's ID token into the base roles, effective role, and attributes
 // Teacher Workspace stores on the session.
 //
@@ -62,7 +62,7 @@ var recognizedAttributes = map[string]bool{
 	"ATTR_SLD":           true,
 }
 
-// Result is the outcome of resolving one teacher's Edupass `roles` claim.
+// Result is the outcome of resolving one teacher's Edupass `groups` claim.
 type Result struct {
 	// Roles contains every recognized base role, stripped of location and
 	// environment prefix, in arrival order. More than one entry means
