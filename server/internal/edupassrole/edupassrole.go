@@ -81,7 +81,7 @@ type Result struct {
 	Unrecognized []string
 }
 
-// Resolve splits raw (an Edupass `roles` claim) into recognized base roles
+// Resolve splits raw (an Edupass `groups` claim) into recognized base roles
 // and attributes, stripping the location and environment prefix from each.
 // An exact duplicate entry is only counted once: Edupass sending the same
 // string twice is redundant information, not a second role or attribute. A
