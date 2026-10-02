@@ -5,10 +5,10 @@
 // Edupass mixes two kinds of entries into one array, each prefixed with a
 // location code and an environment marker: `<location>_TW_ROLE_<CODE>` for a
 // base role and `<location>_TW_ATTR_<CODE>` for an attribute (pre-prod
-// Edupass issues `_TWSTG_` instead of `_TW_`). Resolve splits on the
-// `_ROLE_`/`_ATTR_` infix regardless of what precedes it, so both
-// environments' codes resolve identically without extra configuration; token
-// verification already keeps the environments apart.
+// Edupass issues `_TWSTG_` instead of `_TW_`). Resolve requires `_TW_` or
+// `_TWSTG_` to sit immediately ahead of the `_ROLE_`/`_ATTR_` infix,
+// rejecting a lookalike entry meant for a different application; the
+// location code ahead of the marker itself is never checked.
 package edupassrole
 
 import "strings"
@@ -85,8 +85,9 @@ type Result struct {
 // and attributes, stripping the location and environment prefix from each.
 // An exact duplicate entry is only counted once: Edupass sending the same
 // string twice is redundant information, not a second role or attribute. A
-// code absent from both reference lists is reported in Unrecognized rather
-// than blocking resolution: Edupass can add codes between Teacher Workspace
+// code absent from both reference lists, or not immediately preceded by a
+// recognized environment marker, is reported in Unrecognized rather than
+// blocking resolution: Edupass can add codes between Teacher Workspace
 // releases. Resolve doesn't decide whether sign-in proceeds; the caller
 // refuses unless Roles holds exactly one entry.
 func Resolve(raw []string) Result {
@@ -104,14 +105,18 @@ func Resolve(raw []string) Result {
 		switch {
 		case strings.Contains(entry, roleInfix):
 			code := codeAfterInfix(entry, roleInfix)
-			if recognizedRoles[code] {
+			if !fromRecognizedEnv(entry, roleInfix) {
+				unrecognized = append(unrecognized, entry)
+			} else if recognizedRoles[code] {
 				roles = append(roles, code)
 			} else {
 				unrecognized = append(unrecognized, entry)
 			}
 		case strings.Contains(entry, attrInfix):
 			code := codeAfterInfix(entry, attrInfix)
-			if recognizedAttributes[code] {
+			if !fromRecognizedEnv(entry, attrInfix) {
+				unrecognized = append(unrecognized, entry)
+			} else if recognizedAttributes[code] {
 				attributes = append(attributes, code)
 			} else {
 				unrecognized = append(unrecognized, entry)
@@ -140,4 +145,14 @@ func Resolve(raw []string) Result {
 func codeAfterInfix(entry, infix string) string {
 	idx := strings.Index(entry, infix)
 	return entry[idx+1:]
+}
+
+// fromRecognizedEnv reports whether entry's prefix, everything ahead of
+// infix, ends with a known Edupass environment marker: TW in production,
+// TWSTG pre-prod. It rejects a lookalike entry meant for a different
+// application that happens to share the ROLE_/ATTR_ infix shape, without
+// caring what the location code ahead of the marker itself says.
+func fromRecognizedEnv(entry, infix string) bool {
+	prefix := entry[:strings.Index(entry, infix)]
+	return strings.HasSuffix(prefix, "_TW") || strings.HasSuffix(prefix, "_TWSTG")
 }

@@ -145,4 +145,37 @@ func TestResolve(t *testing.T) {
 			t.Errorf("Unrecognized: want: %v; got: %v", want, got)
 		}
 	})
+
+	t.Run("rejects a role-shaped entry from a different application", func(t *testing.T) {
+		resolved := Resolve([]string{"1234_OTHERAPP_ROLE_TEACHER"})
+
+		if want, got := []string{}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("Roles: want: %v; got: %v", want, got)
+		}
+		if want, got := []string{"1234_OTHERAPP_ROLE_TEACHER"}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("Unrecognized: want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("rejects an attribute-shaped entry from a different application", func(t *testing.T) {
+		resolved := Resolve([]string{"1234_OTHERAPP_ATTR_CCE"})
+
+		if want, got := []string{}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("Attributes: want: %v; got: %v", want, got)
+		}
+		if want, got := []string{"1234_OTHERAPP_ATTR_CCE"}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("Unrecognized: want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("rejects a prefix that merely ends in TW without the underscore", func(t *testing.T) {
+		resolved := Resolve([]string{"1234_OTHERTW_ROLE_TEACHER"})
+
+		if want, got := []string{}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("Roles: want: %v; got: %v", want, got)
+		}
+		if want, got := []string{"1234_OTHERTW_ROLE_TEACHER"}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("Unrecognized: want: %v; got: %v", want, got)
+		}
+	})
 }
