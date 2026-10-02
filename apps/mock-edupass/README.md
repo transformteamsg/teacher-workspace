@@ -13,7 +13,7 @@ pnpm --filter @teacher-workspace/mock-edupass start
 
 `dev` fails when the repository's `.env` is missing. Copy `.env.example` to `.env` first.
 
-- Server: `http://localhost:9000` (configurable via `MOCK_EDUPASS_PORT`)
+- Server: `http://localhost:9000` (listens on `MOCK_EDUPASS_PORT`, served as `MOCK_EDUPASS_URL`)
 - Discovery: `http://localhost:9000/.well-known/openid-configuration`
 - Health check: `GET http://localhost:9000/health`
 
@@ -23,7 +23,7 @@ Configure your relying party with these values:
 
 | Parameter | Value |
 | --- | --- |
-| Issuer | `http://localhost:9000` |
+| Issuer | `MOCK_EDUPASS_URL`, `http://localhost:9000` in `.env.example` |
 | Client ID | `MOCK_EDUPASS_TW_ID`, `teacher-workspace` in `.env.example` |
 | Client secret | `MOCK_EDUPASS_TW_SECRET`, `teacher-workspace-secret` in `.env.example`, for `client_secret_post` |
 | Certificate | `MOCK_EDUPASS_TW_CERTIFICATE`, the relying party's X.509 certificate, for `private_key_jwt` |
@@ -60,6 +60,7 @@ There is no login page or consent screen. Authentication and consent complete au
 | Variable | Default | Description |
 | --- | --- | --- |
 | `MOCK_EDUPASS_PORT` | `9000` | Port the server listens on |
+| `MOCK_EDUPASS_URL` | None | Required. Public URL of the server, used as the OIDC issuer. Behind a load balancer, this is the public URL, not the container's port |
 | `MOCK_EDUPASS_TW_ID` | None | Required. Client ID registered for the relying party; must match `TW_OIDC_CLIENT_ID` |
 | `MOCK_EDUPASS_TW_REDIRECT_URI` | None | Required. Redirect URI registered for the relying party; must match `TW_OIDC_REDIRECT_URL` |
 | `MOCK_EDUPASS_TW_AUTH_METHOD` | None | Required. `client_secret_post` or `private_key_jwt` |
