@@ -190,7 +190,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 
 	sess.SetUser(&session.User{
 		Email:      claims.Email,
-		Role:       resolved.EffectiveRole,
+		Role:       resolved.Roles[0],
 		Attributes: resolved.Attributes,
 	})
 
