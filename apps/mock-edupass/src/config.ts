@@ -13,6 +13,7 @@ export interface Client {
 
 export interface Config {
   port: number;
+  url: string;
   tw: Client;
 }
 
@@ -20,12 +21,15 @@ export interface Config {
  * Reads the mock-edupass configuration from the environment.
  *
  * @param env - Environment to read, usually `process.env`.
- * @returns Port and the tw configuration.
+ * @returns Port, URL, and the tw configuration.
  * @throws When a setting is missing, conflicting, unreadable, or invalid.
  */
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const port = Number(env.MOCK_EDUPASS_PORT) || 9000;
 
+  if (!env.MOCK_EDUPASS_URL) {
+    throw new Error('MOCK_EDUPASS_URL is required');
+  }
   if (!env.MOCK_EDUPASS_TW_ID) {
     throw new Error('MOCK_EDUPASS_TW_ID is required');
   }
@@ -61,6 +65,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
 
       return {
         port,
+        url: env.MOCK_EDUPASS_URL,
         tw: {
           id: env.MOCK_EDUPASS_TW_ID,
           redirectUri: env.MOCK_EDUPASS_TW_REDIRECT_URI,
@@ -121,6 +126,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
 
       return {
         port,
+        url: env.MOCK_EDUPASS_URL,
         tw: {
           id: env.MOCK_EDUPASS_TW_ID,
           redirectUri: env.MOCK_EDUPASS_TW_REDIRECT_URI,

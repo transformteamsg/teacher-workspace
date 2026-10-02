@@ -12,6 +12,7 @@ describe('mock-edupass process', () => {
     const result = spawnSync(process.execPath, [INDEX], {
       env: {
         PATH: process.env.PATH,
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
         MOCK_EDUPASS_TW_ID: 'teacher-workspace',
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
       },
@@ -32,6 +33,7 @@ describe('mock-edupass process', () => {
       env: {
         PATH: process.env.PATH,
         MOCK_EDUPASS_PORT: String(port),
+        MOCK_EDUPASS_URL: `http://localhost:${port}`,
         MOCK_EDUPASS_TW_ID: 'teacher-workspace',
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
         MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',

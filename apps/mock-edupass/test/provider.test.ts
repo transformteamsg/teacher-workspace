@@ -112,6 +112,7 @@ describe('mock-edupass OIDC provider', () => {
     const app = createApp(
       createProvider({
         port: TEST_PORT,
+        url: `http://localhost:${TEST_PORT}`,
         tw: {
           id: CLIENT_ID,
           redirectUri: REDIRECT_URI,
@@ -161,6 +162,7 @@ describe('mock-edupass OIDC provider', () => {
       const app = createApp(
         createProvider({
           port: TEST_PORT,
+          url: `http://localhost:${TEST_PORT}`,
           tw: {
             id: CLIENT_ID,
             redirectUri: REDIRECT_URI,
@@ -444,6 +446,7 @@ describe('mock-edupass private_key_jwt client authentication', () => {
     const app = createApp(
       createProvider({
         port: PORT,
+        url: `http://localhost:${PORT}`,
         tw: {
           id: CLIENT_ID,
           redirectUri: REDIRECT_URI,

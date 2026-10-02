@@ -7,5 +7,5 @@ const app = createApp(createProvider(config));
 
 app.listen(config.port, () => {
   // oxlint-disable-next-line no-console
-  console.log(`mock-edupass listening on http://localhost:${config.port}`);
+  console.log(`mock-edupass listening on port ${config.port} as ${config.url}`);
 });

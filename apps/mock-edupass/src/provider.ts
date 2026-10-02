@@ -64,11 +64,11 @@ export const accounts: Account[] = [
 /**
  * Returns the mock Edupass provider.
  *
- * @param config - The configuration of the App and Relying Party.
+ * @param config - Server URL and the TW client's registration.
  * @returns the {@link Provider}.
  */
 export function createProvider(config: Config): Provider {
-  return new Provider(`http://localhost:${config.port}`, {
+  const provider = new Provider(config.url, {
     jwks: {
       keys: [
         generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ format: 'jwk' }),
@@ -155,4 +155,8 @@ export function createProvider(config: Config): Provider {
       };
     },
   });
+
+  provider.proxy = true;
+
+  return provider;
 }

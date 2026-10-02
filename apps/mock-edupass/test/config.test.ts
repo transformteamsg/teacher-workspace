@@ -50,6 +50,7 @@ describe('loadConfig', () => {
   describe('port', () => {
     it('defaults to 9000', () => {
       const config = loadConfig({
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
         MOCK_EDUPASS_TW_ID: 'teacher-workspace',
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
         MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -61,6 +62,7 @@ describe('loadConfig', () => {
 
     it('reads MOCK_EDUPASS_PORT', () => {
       const config = loadConfig({
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
         MOCK_EDUPASS_TW_ID: 'teacher-workspace',
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
         MOCK_EDUPASS_PORT: '9100',
@@ -72,6 +74,36 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('URL', () => {
+    it('throws when MOCK_EDUPASS_URL is unset or empty', () => {
+      for (const url of [undefined, '']) {
+        assert.throws(
+          () =>
+            loadConfig({
+              MOCK_EDUPASS_URL: url,
+              MOCK_EDUPASS_TW_ID: 'teacher-workspace',
+              MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
+              MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
+              MOCK_EDUPASS_TW_SECRET: 'secret',
+            }),
+          /MOCK_EDUPASS_URL is required/,
+        );
+      }
+    });
+
+    it('reads MOCK_EDUPASS_URL', () => {
+      const config = loadConfig({
+        MOCK_EDUPASS_URL: 'https://mock-edupass.example.com/edupass',
+        MOCK_EDUPASS_TW_ID: 'teacher-workspace',
+        MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
+        MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
+        MOCK_EDUPASS_TW_SECRET: 'secret',
+      });
+
+      assert.equal(config.url, 'https://mock-edupass.example.com/edupass');
+    });
+  });
+
   describe('client ID', () => {
     it('throws when MOCK_EDUPASS_TW_ID is unset or empty', () => {
       for (const id of [undefined, '']) {
@@ -79,6 +111,7 @@ describe('loadConfig', () => {
           () =>
             loadConfig({
               MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
+              MOCK_EDUPASS_URL: 'http://localhost:9000',
               MOCK_EDUPASS_TW_ID: id,
               MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
               MOCK_EDUPASS_TW_SECRET: 'secret',
@@ -91,6 +124,7 @@ describe('loadConfig', () => {
     it('reads MOCK_EDUPASS_TW_ID', () => {
       const config = loadConfig({
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
         MOCK_EDUPASS_TW_ID: 'teacher-workspace-staging',
         MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
         MOCK_EDUPASS_TW_SECRET: 'secret',
@@ -106,6 +140,7 @@ describe('loadConfig', () => {
         assert.throws(
           () =>
             loadConfig({
+              MOCK_EDUPASS_URL: 'http://localhost:9000',
               MOCK_EDUPASS_TW_ID: 'teacher-workspace',
               MOCK_EDUPASS_TW_REDIRECT_URI: redirectUri,
               MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -118,6 +153,7 @@ describe('loadConfig', () => {
 
     it('reads MOCK_EDUPASS_TW_REDIRECT_URI', () => {
       const config = loadConfig({
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
         MOCK_EDUPASS_TW_ID: 'teacher-workspace',
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3100/auth/edupass/callback',
         MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -133,6 +169,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
           }),
@@ -144,6 +181,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: '',
@@ -156,6 +194,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_basic',
@@ -168,6 +207,7 @@ describe('loadConfig', () => {
   describe('client_secret_post', () => {
     it('returns the client secret from MOCK_EDUPASS_TW_SECRET', () => {
       const config = loadConfig({
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
         MOCK_EDUPASS_TW_ID: 'teacher-workspace',
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
         MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -182,6 +222,7 @@ describe('loadConfig', () => {
       writeFileSync(file, 'secret\r\n\n');
 
       const config = loadConfig({
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
         MOCK_EDUPASS_TW_ID: 'teacher-workspace',
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
         MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -195,6 +236,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -211,6 +253,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -225,6 +268,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -238,6 +282,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -253,6 +298,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -265,6 +311,7 @@ describe('loadConfig', () => {
     it('does not need a certificate', () => {
       assert.doesNotThrow(() =>
         loadConfig({
+          MOCK_EDUPASS_URL: 'http://localhost:9000',
           MOCK_EDUPASS_TW_ID: 'teacher-workspace',
           MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
           MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
@@ -277,6 +324,7 @@ describe('loadConfig', () => {
   describe('private_key_jwt', () => {
     it('returns the certificate from MOCK_EDUPASS_TW_CERTIFICATE', () => {
       const config = loadConfig({
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
         MOCK_EDUPASS_TW_ID: 'teacher-workspace',
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
         MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
@@ -292,6 +340,7 @@ describe('loadConfig', () => {
 
     it('returns the certificate from MOCK_EDUPASS_TW_CERTIFICATE_FILE', () => {
       const config = loadConfig({
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
         MOCK_EDUPASS_TW_ID: 'teacher-workspace',
         MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
         MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
@@ -305,6 +354,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
@@ -317,6 +367,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
@@ -330,6 +381,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
@@ -344,6 +396,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
@@ -357,6 +410,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
@@ -370,6 +424,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
@@ -383,6 +438,7 @@ describe('loadConfig', () => {
       assert.throws(
         () =>
           loadConfig({
+            MOCK_EDUPASS_URL: 'http://localhost:9000',
             MOCK_EDUPASS_TW_ID: 'teacher-workspace',
             MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
             MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
@@ -395,6 +451,7 @@ describe('loadConfig', () => {
     it('does not need a client secret', () => {
       assert.doesNotThrow(() =>
         loadConfig({
+          MOCK_EDUPASS_URL: 'http://localhost:9000',
           MOCK_EDUPASS_TW_ID: 'teacher-workspace',
           MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
           MOCK_EDUPASS_TW_AUTH_METHOD: 'private_key_jwt',
