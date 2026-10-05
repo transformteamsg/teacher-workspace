@@ -72,6 +72,26 @@ describe('GET /.well-known/openid-configuration', () => {
     assert.ok(doc.jwks_uri, 'jwks_uri should be present');
   });
 
+  it('When forwarded by an https load balancer, then the endpoints use its public URL', async () => {
+    const discoveryRes = await globalThis.fetch(
+      `http://localhost:9876/.well-known/openid-configuration`,
+      { headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'mock-edupass.example.com' } },
+    );
+    assert.equal(discoveryRes.status, 200);
+
+    const openIdConfiguration = (await discoveryRes.json()) as {
+      authorization_endpoint: string;
+      token_endpoint: string;
+      jwks_uri: string;
+    };
+    assert.equal(
+      openIdConfiguration.authorization_endpoint,
+      'https://mock-edupass.example.com/authorize',
+    );
+    assert.equal(openIdConfiguration.token_endpoint, 'https://mock-edupass.example.com/token');
+    assert.equal(openIdConfiguration.jwks_uri, 'https://mock-edupass.example.com/jwks');
+  });
+
   it('When requested, then it supports the query response mode', async () => {
     const discoveryRes = await globalThis.fetch(
       `http://localhost:9876/.well-known/openid-configuration`,
