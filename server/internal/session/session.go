@@ -146,6 +146,21 @@ func (s *Session) SetUser(u *User) {
 	s.user = u
 }
 
+// Clear removes the authenticated user and rotates the ID and CSRF token,
+// mirroring SetUser's rotation on the opposite transition. It's a no-op on
+// a session that isn't currently authenticated, so calling it on every
+// sign-in failure never disturbs an ordinary anonymous attempt; it only
+// takes effect when a request arrives already authenticated and the
+// sign-in it's attempting fails.
+func (s *Session) Clear() {
+	if s.user == nil {
+		return
+	}
+	s.user = nil
+	s.Rotate()
+	clear(s.data)
+}
+
 // Rotate regenerates the session ID and CSRF token while preserving the
 // authenticated user and data. The middleware is responsible for cleaning up
 // the old store entry after rotation.

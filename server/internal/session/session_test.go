@@ -280,6 +280,63 @@ func TestSession_SetUser(t *testing.T) {
 	})
 }
 
+func TestSession_Clear(t *testing.T) {
+	t.Run("removes the user and rotates ID and CSRF token on auth->unauth", func(t *testing.T) {
+		sess := &Session{
+			id:        "id-1",
+			csrfToken: "csrf-1",
+			user:      &User{Email: "alice@example.com"},
+		}
+
+		sess.Clear()
+
+		if got := sess.user; got != nil {
+			t.Errorf("want: nil; got: %+v", got)
+		}
+		if want, got := "id-1", sess.id; want == got {
+			t.Errorf("want: != %q; got: %q", want, got)
+		}
+		if want, got := "csrf-1", sess.csrfToken; want == got {
+			t.Errorf("want: != %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("discards the data on auth->unauth", func(t *testing.T) {
+		sess := &Session{
+			id:        "id-1",
+			csrfToken: "csrf-1",
+			user:      &User{Email: "alice@example.com"},
+			data:      map[string]any{"k": "v"},
+		}
+
+		sess.Clear()
+
+		if got := len(sess.data); got != 0 {
+			t.Errorf("want: 0 entries; got: %d (%+v)", got, sess.data)
+		}
+	})
+
+	t.Run("is a no-op on a session that isn't authenticated", func(t *testing.T) {
+		sess := &Session{
+			id:        "id-1",
+			csrfToken: "csrf-1",
+			data:      map[string]any{"oidc_state": "abc"},
+		}
+
+		sess.Clear()
+
+		if want, got := "id-1", sess.id; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "csrf-1", sess.csrfToken; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "abc", sess.data["oidc_state"]; want != got {
+			t.Errorf("want: %q; got: %v", want, got)
+		}
+	})
+}
+
 func TestSession_Rotate(t *testing.T) {
 	t.Run("changes ID and CSRF token", func(t *testing.T) {
 		sess := &Session{id: "id-1", csrfToken: "csrf-1"}
