@@ -30,7 +30,7 @@ Configure your relying party with these values:
 | Redirect URI | `MOCK_EDUPASS_TW_REDIRECT_URI`, `http://localhost:3000/auth/edupass/callback` in `.env.example` |
 | Scopes | `openid` |
 | Response type | `code` |
-| Response mode | `form_post` |
+| Response mode | `query` |
 | Grant type | `authorization_code` |
 | Token endpoint auth | `MOCK_EDUPASS_TW_AUTH_METHOD`, `client_secret_post` or `private_key_jwt` |
 | PKCE | Required (S256) |

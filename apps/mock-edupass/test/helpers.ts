@@ -64,22 +64,3 @@ export class OidcClient {
     return response;
   }
 }
-
-// --- Form post HTML parser ---
-
-export function parseFormPost(html: string): {
-  action: string;
-  params: Record<string, string>;
-} {
-  const actionMatch = html.match(/action="([^"]+)"/);
-  const action = actionMatch?.[1] ?? '';
-
-  const params: Record<string, string> = {};
-  const inputRegex = /name="([^"]+)"\s+value="([^"]*)"/g;
-  let match;
-  while ((match = inputRegex.exec(html)) !== null) {
-    params[match[1]] = match[2];
-  }
-
-  return { action, params };
-}

@@ -97,6 +97,9 @@ importers:
       '@types/oidc-provider':
         specifier: ^9.5.0
         version: 9.5.0
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
       selfsigned:
         specifier: ^5.5.0
         version: 5.5.0
