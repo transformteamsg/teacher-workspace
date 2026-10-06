@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -10,7 +12,6 @@ import (
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/String-sg/teacher-workspace/server/internal/session"
 	"github.com/String-sg/teacher-workspace/server/pkg/random"
-	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 )
 
@@ -56,6 +57,14 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 	)
 
 	httputil.Redirect(w, logger, http.StatusFound, authURL)
+}
+
+type tokenSuccessResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
+	Scope       string `json:"scope"`
+	IDToken     string `json:"id_token"`
 }
 
 // authEdupassCallback completes the pending login started by
@@ -134,25 +143,59 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.edupassOAuth2Config.Exchange(
-		oidc.ClientContext(r.Context(), h.edupassHTTPClient),
-		query.Get("code"),
-		oauth2.VerifierOption(codeVerifier),
-	)
+	tokenPostForm := url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {query.Get("code")},
+		"redirect_uri":  {h.edupassOAuth2Config.RedirectURL},
+		"code_verifier": {codeVerifier},
+		"client_id":     {h.edupassOAuth2Config.ClientID},
+	}
+	tokenPostForm.Set("client_secret", h.cfg.Edupass.ClientCredentials.Secret)
+
+	tokenRequest, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.edupassOAuth2Config.Endpoint.TokenURL, strings.NewReader(tokenPostForm.Encode()))
 	if err != nil {
-		logger.Error("failed to exchange code for token", "provider", "edupass", "err", err)
+		logger.Error("failed to create token request", "provider", "edupass", "err", err)
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+	tokenRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	tokenRequest.Header.Set("Accept", "application/json")
+
+	tokenResponse, err := h.edupassHTTPClient.Do(tokenRequest)
+	if err != nil {
+		logger.Error("failed to send token request", "provider", "edupass", "err", err)
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+	tokenResponseBody, err := io.ReadAll(tokenResponse.Body)
+	if closeErr := tokenResponse.Body.Close(); closeErr != nil {
+		logger.Warn("failed to close token response body", "provider", "edupass", "err", closeErr)
+	}
+	if err != nil {
+		logger.Error("failed to read token response", "provider", "edupass", "err", err)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok {
+	if tokenResponse.StatusCode != http.StatusOK {
+		logger.Error("failed to exchange code for token", "provider", "edupass", "status", tokenResponse.StatusCode)
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+
+	var issuedTokens tokenSuccessResponse
+	if err := json.Unmarshal(tokenResponseBody, &issuedTokens); err != nil {
+		logger.Error("failed to decode token response", "provider", "edupass", "err", err)
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+	if issuedTokens.IDToken == "" {
 		logger.Error("no ID token found in token", "provider", "edupass")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 
-	idToken, err := h.edupassIDTokenVerifier.Verify(r.Context(), rawIDToken)
+	idToken, err := h.edupassIDTokenVerifier.Verify(r.Context(), issuedTokens.IDToken)
 	if err != nil {
 		logger.Error("failed to verify ID token", "provider", "edupass", "err", err)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))

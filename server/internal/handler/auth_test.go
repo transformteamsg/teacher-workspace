@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
@@ -419,6 +420,222 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			t.Errorf("want records[0].Provider: %q; got: %q", want, got)
 		}
 	})
+
+	t.Run("sends the code and code verifier", func(t *testing.T) {
+		var tokenPostForm url.Values
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if err := r.ParseForm(); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			tokenPostForm = r.PostForm
+			w.WriteHeader(http.StatusBadRequest)
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg := newEdupassConfig()
+		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		req := newPendingLoginCallbackRequest(t, session.New(), slog.New(slog.DiscardHandler))
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		if tokenPostForm == nil {
+			t.Fatal("want: a token request; got: none")
+		}
+		if want, got := "authorization_code", tokenPostForm.Get("grant_type"); want != got {
+			t.Errorf("want grant_type: %q; got: %q", want, got)
+		}
+		if want, got := "test-code", tokenPostForm.Get("code"); want != got {
+			t.Errorf("want code: %q; got: %q", want, got)
+		}
+		if want, got := cfg.Edupass.RedirectURL.String(), tokenPostForm.Get("redirect_uri"); want != got {
+			t.Errorf("want redirect_uri: %q; got: %q", want, got)
+		}
+		if want, got := "test-verifier", tokenPostForm.Get("code_verifier"); want != got {
+			t.Errorf("want code_verifier: %q; got: %q", want, got)
+		}
+		if want, got := cfg.Edupass.ClientID, tokenPostForm.Get("client_id"); want != got {
+			t.Errorf("want client_id: %q; got: %q", want, got)
+		}
+	})
+
+	for _, test := range []struct {
+		name    string
+		handler http.HandlerFunc
+	}{
+		{
+			name: "Edupass rejects the client",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				if _, err := w.Write([]byte(`{"error":"invalid_client"}`)); err != nil {
+					t.Errorf("w.Write: %v", err)
+				}
+			},
+		},
+		{
+			name: "Edupass rejects the code",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				if _, err := w.Write([]byte(`{"error":"invalid_grant"}`)); err != nil {
+					t.Errorf("w.Write: %v", err)
+				}
+			},
+		},
+		{
+			name: "the token response has no ID token",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if _, err := w.Write([]byte(`{"access_token":"test-access-token","token_type":"Bearer"}`)); err != nil {
+					t.Errorf("w.Write: %v", err)
+				}
+			},
+		},
+	} {
+		t.Run("redirects to the login page without logging in when "+test.name, func(t *testing.T) {
+			edupass := httptest.NewServer(test.handler)
+			t.Cleanup(edupass.Close)
+
+			cfg := newEdupassConfig()
+			cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+			h, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			sess := session.New()
+			req := newPendingLoginCallbackRequest(t, sess, slog.New(slog.DiscardHandler))
+			rec := httptest.NewRecorder()
+
+			h.authEdupassCallback(rec, req)
+
+			if want, got := http.StatusFound, rec.Code; want != got {
+				t.Fatalf("want status: %d; got: %d", want, got)
+			}
+			if want, got := loginFailedURL("/"), rec.Header().Get("Location"); want != got {
+				t.Errorf("want Location: %q; got: %q", want, got)
+			}
+			if sess.IsAuthenticated() {
+				t.Error("want sess.IsAuthenticated(): false; got: true")
+			}
+		})
+	}
+
+	t.Run("redirects to the login page without logging in when the token request times out", func(t *testing.T) {
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if err := r.ParseForm(); err != nil {
+				t.Errorf("r.ParseForm: %v", err)
+			}
+			<-r.Context().Done()
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg := newEdupassConfig()
+		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		h.edupassHTTPClient = &http.Client{Timeout: 200 * time.Millisecond}
+
+		sess := session.New()
+		req := newPendingLoginCallbackRequest(t, sess, slog.New(slog.DiscardHandler))
+		rec := httptest.NewRecorder()
+
+		h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want status: %d; got: %d", want, got)
+		}
+		if want, got := loginFailedURL("/"), rec.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+		if sess.IsAuthenticated() {
+			t.Error("want sess.IsAuthenticated(): false; got: true")
+		}
+	})
+
+	t.Run("logs an error when expires_in is not a number", func(t *testing.T) {
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if _, err := w.Write([]byte(`{"access_token":"test-access-token","token_type":"Bearer","expires_in":"3599","id_token":"test-id-token"}`)); err != nil {
+				t.Errorf("w.Write: %v", err)
+			}
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg := newEdupassConfig()
+		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var logs bytes.Buffer
+		sess := session.New()
+		req := newPendingLoginCallbackRequest(t, sess, slog.New(slog.NewJSONHandler(&logs, nil)))
+		rec := httptest.NewRecorder()
+
+		h.authEdupassCallback(rec, req)
+
+		if want, got := loginFailedURL("/"), rec.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+		if sess.IsAuthenticated() {
+			t.Error("want sess.IsAuthenticated(): false; got: true")
+		}
+		records := decodeLogRecords(t, &logs)
+		if want, got := 1, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := "failed to decode token response", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("client_secret_post", func(t *testing.T) {
+		t.Run("sends client_secret", func(t *testing.T) {
+			var tokenPostForm url.Values
+			edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := r.ParseForm(); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				tokenPostForm = r.PostForm
+				w.WriteHeader(http.StatusBadRequest)
+			}))
+			t.Cleanup(edupass.Close)
+
+			cfg := newEdupassConfig()
+			cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodClientSecretPost
+			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{Secret: "test-secret"}
+			h, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			req := newPendingLoginCallbackRequest(t, session.New(), slog.New(slog.DiscardHandler))
+
+			h.authEdupassCallback(httptest.NewRecorder(), req)
+
+			if tokenPostForm == nil {
+				t.Fatal("want: a token request; got: none")
+			}
+			if want, got := "test-secret", tokenPostForm.Get("client_secret"); want != got {
+				t.Errorf("want client_secret: %q; got: %q", want, got)
+			}
+			if tokenPostForm.Has("client_assertion") {
+				t.Error("want client_assertion: absent; got: present")
+			}
+		})
+	})
 }
 
 func TestSafeReturnTo(t *testing.T) {
@@ -638,6 +855,32 @@ func newEdupassConfig() *config.Config {
 			ClientCredentials: config.EdupassClientCredentials{Secret: "teacher-workspace-secret"},
 		},
 	}
+}
+
+// newPendingLoginCallbackRequest returns a callback request for the pending
+// login it records in sess, with code "test-code" and logging to logger.
+func newPendingLoginCallbackRequest(t *testing.T, sess *session.Session, logger *slog.Logger) *http.Request {
+	t.Helper()
+
+	sess.Set(sessionKeyEdupassState, "test-state")
+	sess.Set(sessionKeyEdupassNonce, "test-nonce")
+	sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+
+	ctx := middleware.WithLogger(t.Context(), logger)
+	ctx = middleware.WithSession(ctx, sess)
+
+	return httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+}
+
+// mustParseURL returns rawURL parsed, failing t if it does not parse.
+func mustParseURL(t *testing.T, rawURL string) *url.URL {
+	t.Helper()
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	return u
 }
 
 // logRecord is one record written by a [slog.JSONHandler].
