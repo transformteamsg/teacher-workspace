@@ -67,6 +67,15 @@ type tokenSuccessResponse struct {
 	IDToken     string `json:"id_token"`
 }
 
+type tokenErrorResponse struct {
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description"`
+	ErrorCodes       []int  `json:"error_codes"`
+	Timestamp        string `json:"timestamp"`
+	TraceID          string `json:"trace_id"`
+	CorrelationID    string `json:"correlation_id"`
+}
+
 // authEdupassCallback completes the pending login started by
 // [Handler.authEdupass]. Edupass redirects the user here after they log in.
 //
@@ -178,7 +187,24 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if tokenResponse.StatusCode != http.StatusOK {
-		logger.Error("failed to exchange code for token", "provider", "edupass", "status", tokenResponse.StatusCode)
+		switch tokenResponse.StatusCode {
+		case http.StatusBadRequest, http.StatusUnauthorized:
+			var tokenError tokenErrorResponse
+			if err := json.Unmarshal(tokenResponseBody, &tokenError); err != nil {
+				logger.Error("failed to exchange code for token", "provider", "edupass", "status", tokenResponse.StatusCode, "err", err)
+			} else {
+				logger.Error("failed to exchange code for token",
+					"provider", "edupass",
+					"status", tokenResponse.StatusCode,
+					"error", tokenError.Error,
+					"error_description", tokenError.ErrorDescription,
+					"trace_id", tokenError.TraceID,
+					"correlation_id", tokenError.CorrelationID,
+				)
+			}
+		default:
+			logger.Error("failed to exchange code for token", "provider", "edupass", "status", tokenResponse.StatusCode)
+		}
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}

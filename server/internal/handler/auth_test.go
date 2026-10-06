@@ -599,6 +599,136 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("logs the fields of a failed token response but not the client secret", func(t *testing.T) {
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			if _, err := w.Write([]byte(`{
+				"error": "invalid_client",
+				"error_description": "client authentication failed",
+				"trace_id": "test-trace-id",
+				"correlation_id": "test-correlation-id"
+			}`)); err != nil {
+				t.Errorf("w.Write: %v", err)
+			}
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg := newEdupassConfig()
+		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{Secret: "test-secret"}
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var logs bytes.Buffer
+		req := newPendingLoginCallbackRequest(t, session.New(), slog.New(slog.NewJSONHandler(&logs, nil)))
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		var record map[string]any
+		if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+			t.Fatalf("json.Unmarshal: %v; logs: %s", err, logs.String())
+		}
+		for field, want := range map[string]any{
+			"msg":               "failed to exchange code for token",
+			"provider":          "edupass",
+			"status":            float64(http.StatusUnauthorized),
+			"error":             "invalid_client",
+			"error_description": "client authentication failed",
+			"trace_id":          "test-trace-id",
+			"correlation_id":    "test-correlation-id",
+		} {
+			if got := record[field]; want != got {
+				t.Errorf("want record[%q]: %v; got: %v", field, want, got)
+			}
+		}
+		if got := logs.String(); strings.Contains(got, "test-secret") {
+			t.Errorf("want logs: without the client secret; got: %s", got)
+		}
+	})
+
+	t.Run("logs the decode error of a 400 or 401 token response that is not JSON", func(t *testing.T) {
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusUnauthorized)
+			if _, err := w.Write([]byte("<html><body>401 Unauthorized</body></html>")); err != nil {
+				t.Errorf("w.Write: %v", err)
+			}
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg := newEdupassConfig()
+		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var logs bytes.Buffer
+		req := newPendingLoginCallbackRequest(t, session.New(), slog.New(slog.NewJSONHandler(&logs, nil)))
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		var record map[string]any
+		if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+			t.Fatalf("json.Unmarshal: %v; logs: %s", err, logs.String())
+		}
+		if want, got := "failed to exchange code for token", record["msg"]; want != got {
+			t.Errorf("want record[\"msg\"]: %q; got: %v", want, got)
+		}
+		if want, got := float64(http.StatusUnauthorized), record["status"]; want != got {
+			t.Errorf("want record[\"status\"]: %v; got: %v", want, got)
+		}
+		if got, ok := record["err"].(string); !ok || got == "" {
+			t.Errorf("want record[\"err\"]: non-empty; got: %v", record["err"])
+		}
+	})
+
+	t.Run("logs only the status of a failed token response other than 400 or 401", func(t *testing.T) {
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			if _, err := w.Write([]byte(`{"error": "server_error", "trace_id": "test-trace-id"}`)); err != nil {
+				t.Errorf("w.Write: %v", err)
+			}
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg := newEdupassConfig()
+		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var logs bytes.Buffer
+		req := newPendingLoginCallbackRequest(t, session.New(), slog.New(slog.NewJSONHandler(&logs, nil)))
+		rec := httptest.NewRecorder()
+
+		h.authEdupassCallback(rec, req)
+
+		if want, got := loginFailedURL("/"), rec.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+		var record map[string]any
+		if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+			t.Fatalf("json.Unmarshal: %v; logs: %s", err, logs.String())
+		}
+		if want, got := "failed to exchange code for token", record["msg"]; want != got {
+			t.Errorf("want record[\"msg\"]: %q; got: %v", want, got)
+		}
+		if want, got := float64(http.StatusBadGateway), record["status"]; want != got {
+			t.Errorf("want record[\"status\"]: %v; got: %v", want, got)
+		}
+		for _, field := range []string{"error", "error_description", "trace_id", "correlation_id"} {
+			if _, ok := record[field]; ok {
+				t.Errorf("want record[%q]: absent; got: present", field)
+			}
+		}
+	})
+
 	t.Run("client_secret_post", func(t *testing.T) {
 		t.Run("sends client_secret", func(t *testing.T) {
 			var tokenPostForm url.Values
