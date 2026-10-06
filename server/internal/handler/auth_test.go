@@ -628,13 +628,14 @@ func newEdupassConfig() *config.Config {
 				Host:   "edupass.example.com",
 				Path:   "/oauth2/jwks",
 			},
-			ClientID:     "teacher-workspace",
-			ClientSecret: "teacher-workspace-secret",
+			ClientID: "teacher-workspace",
 			RedirectURL: &url.URL{
 				Scheme: "https",
 				Host:   "tw.example.com",
 				Path:   "/auth/edupass/callback",
 			},
+			ClientAuthMethod:  config.EdupassClientAuthMethodClientSecretPost,
+			ClientCredentials: config.EdupassClientCredentials{Secret: "teacher-workspace-secret"},
 		},
 	}
 }

@@ -3,6 +3,8 @@ package config
 import (
 	"log/slog"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -87,7 +89,13 @@ func TestDefault(t *testing.T) {
 		if got := cfg.Edupass.ClientID; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
+		if want, got := EdupassClientAuthMethodClientSecretPost, cfg.Edupass.ClientAuthMethod; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 		if got := cfg.Edupass.ClientSecret; got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+		if got := cfg.Edupass.ClientSecretFile; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
 		if got := cfg.Edupass.RedirectURL; got != nil {
@@ -120,13 +128,15 @@ func TestDefault(t *testing.T) {
 func validConfig() Config {
 	cfg := Default()
 	cfg.Edupass = EdupassConfig{
-		IssuerURL:    &url.URL{Scheme: "http", Host: "localhost:9000"},
-		AuthURL:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
-		TokenURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
-		JWKSURL:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
-		ClientID:     "teacher-workspace",
-		ClientSecret: "teacher-workspace-secret",
-		RedirectURL:  &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
+		IssuerURL:   &url.URL{Scheme: "http", Host: "localhost:9000"},
+		AuthURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
+		TokenURL:    &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
+		JWKSURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
+		ClientID:    "teacher-workspace",
+		RedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
+
+		ClientAuthMethod: EdupassClientAuthMethodClientSecretPost,
+		ClientSecret:     "teacher-workspace-secret",
 	}
 	cfg.RemoteApps.PostsManifestURL = &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"}
 	cfg.RemoteApps.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com"}
@@ -704,11 +714,6 @@ func TestEdupassConfig_validate(t *testing.T) {
 				want:   "TW_EDUPASS_CLIENT_ID is required",
 			},
 			{
-				name:   "empty client secret",
-				mutate: func(c *EdupassConfig) { c.ClientSecret = "" },
-				want:   "TW_EDUPASS_CLIENT_SECRET is required",
-			},
-			{
 				name:   "missing redirect URL",
 				mutate: func(c *EdupassConfig) { c.RedirectURL = nil },
 				want:   "TW_EDUPASS_REDIRECT_URL is required",
@@ -738,6 +743,120 @@ func TestEdupassConfig_validate(t *testing.T) {
 				}
 			})
 		}
+	})
+
+	t.Run("rejects an unknown client auth method", func(t *testing.T) {
+		cfg := validConfig().Edupass
+		cfg.ClientAuthMethod = "client_secret_basic"
+
+		err := cfg.validate()
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := `TW_EDUPASS_CLIENT_AUTH_METHOD must be "client_secret_post"; got "client_secret_basic"`; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+	})
+
+	t.Run("client_secret_post", func(t *testing.T) {
+		t.Run("rejects a client secret set both ways", func(t *testing.T) {
+			cfg := validConfig().Edupass
+			cfg.ClientSecretFile = "/run/secrets/client-secret"
+
+			err := cfg.validate()
+
+			if err == nil {
+				t.Fatal("want err: non-nil; got: nil")
+			}
+			if want := "TW_EDUPASS_CLIENT_SECRET and TW_EDUPASS_CLIENT_SECRET_FILE are both set; set only one"; !strings.HasPrefix(err.Error(), want) {
+				t.Errorf("want err: starting with %q; got: %q", want, err)
+			}
+		})
+
+		t.Run("rejects a missing client secret", func(t *testing.T) {
+			cfg := validConfig().Edupass
+			cfg.ClientSecret = ""
+
+			err := cfg.validate()
+
+			if err == nil {
+				t.Fatal("want err: non-nil; got: nil")
+			}
+			if want := "TW_EDUPASS_CLIENT_SECRET or TW_EDUPASS_CLIENT_SECRET_FILE is required for client_secret_post"; !strings.HasPrefix(err.Error(), want) {
+				t.Errorf("want err: starting with %q; got: %q", want, err)
+			}
+		})
+
+		t.Run("returns the client secret", func(t *testing.T) {
+			clientSecretFilePath := filepath.Join(t.TempDir(), "client-secret")
+			if err := os.WriteFile(clientSecretFilePath, []byte("test-secret"), 0o600); err != nil {
+				t.Fatalf("os.WriteFile: %v", err)
+			}
+			clientSecretFileWithLFPath := filepath.Join(t.TempDir(), "client-secret-lf")
+			if err := os.WriteFile(clientSecretFileWithLFPath, []byte("test-secret\n"), 0o600); err != nil {
+				t.Fatalf("os.WriteFile: %v", err)
+			}
+			clientSecretFileWithCRLFPath := filepath.Join(t.TempDir(), "client-secret-crlf")
+			if err := os.WriteFile(clientSecretFileWithCRLFPath, []byte("test-secret\r\n"), 0o600); err != nil {
+				t.Fatalf("os.WriteFile: %v", err)
+			}
+
+			for _, tt := range []struct {
+				name             string
+				clientSecret     string
+				clientSecretFile string
+				want             string
+			}{
+				{name: "from the value", clientSecret: "test-secret", want: "test-secret"},
+				{name: "from a file", clientSecretFile: clientSecretFilePath, want: "test-secret"},
+				{name: "from a file ending in LF", clientSecretFile: clientSecretFileWithLFPath, want: "test-secret"},
+				{name: "from a file ending in CRLF", clientSecretFile: clientSecretFileWithCRLFPath, want: "test-secret"},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					cfg := validConfig().Edupass
+					cfg.ClientSecret, cfg.ClientSecretFile = tt.clientSecret, tt.clientSecretFile
+
+					if err := cfg.validate(); err != nil {
+						t.Fatalf("want err: nil; got: %v", err)
+					}
+					if want, got := tt.want, cfg.ClientCredentials.Secret; want != got {
+						t.Errorf("want: %q; got: %q", want, got)
+					}
+				})
+			}
+		})
+
+		t.Run("rejects an unusable client secret file", func(t *testing.T) {
+			missingFilePath := filepath.Join(t.TempDir(), "missing")
+			emptyClientSecretFilePath := filepath.Join(t.TempDir(), "empty-client-secret")
+			if err := os.WriteFile(emptyClientSecretFilePath, []byte("\n"), 0o600); err != nil {
+				t.Fatalf("os.WriteFile: %v", err)
+			}
+
+			for _, tt := range []struct {
+				name             string
+				clientSecretFile string
+				want             string
+			}{
+				{name: "unreadable file", clientSecretFile: missingFilePath, want: "TW_EDUPASS_CLIENT_SECRET_FILE: open " + missingFilePath + ": no such file or directory"},
+				{name: "empty file", clientSecretFile: emptyClientSecretFilePath, want: "TW_EDUPASS_CLIENT_SECRET_FILE: "},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					cfg := validConfig().Edupass
+					cfg.ClientSecret, cfg.ClientSecretFile = "", tt.clientSecretFile
+
+					err := cfg.validate()
+
+					if err == nil {
+						t.Fatal("want err: non-nil; got: nil")
+					}
+					if !strings.HasPrefix(err.Error(), tt.want) {
+						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
+					}
+				})
+			}
+		})
 	})
 }
 

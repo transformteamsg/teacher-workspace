@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -59,6 +60,9 @@ func Default() Config {
 				Prefix: "session:",
 			},
 		},
+		Edupass: EdupassConfig{
+			ClientAuthMethod: EdupassClientAuthMethodClientSecretPost,
+		},
 		RemoteApps: RemoteAppsConfig{
 			SignedTokenTTL: 1 * time.Minute,
 		},
@@ -67,7 +71,7 @@ func Default() Config {
 
 // Validate returns an error describing every invalid field, or nil if the
 // configuration is valid.
-func (cfg Config) Validate() error {
+func (cfg *Config) Validate() error {
 	var errs []error
 
 	if cfg.Env != EnvDevelopment && cfg.Env != EnvProduction {
@@ -218,6 +222,16 @@ func (cfg SessionValkeyConfig) validate() error {
 	return errors.Join(errs...)
 }
 
+type EdupassClientAuthMethod string
+
+const (
+	EdupassClientAuthMethodClientSecretPost EdupassClientAuthMethod = "client_secret_post"
+)
+
+type EdupassClientCredentials struct {
+	Secret string
+}
+
 // EdupassConfig represents the configuration for the Edupass identity provider.
 type EdupassConfig struct {
 	IssuerURL *url.URL `dotenv:"TW_EDUPASS_ISSUER_URL"`
@@ -225,12 +239,17 @@ type EdupassConfig struct {
 	TokenURL  *url.URL `dotenv:"TW_EDUPASS_TOKEN_URL"`
 	JWKSURL   *url.URL `dotenv:"TW_EDUPASS_JWKS_URL"`
 
-	ClientID     string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
-	ClientSecret string   `dotenv:"TW_EDUPASS_CLIENT_SECRET"`
-	RedirectURL  *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
+	ClientID    string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
+	RedirectURL *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
+
+	ClientAuthMethod EdupassClientAuthMethod `dotenv:"TW_EDUPASS_CLIENT_AUTH_METHOD"`
+	ClientSecret     string                  `dotenv:"TW_EDUPASS_CLIENT_SECRET"`
+	ClientSecretFile string                  `dotenv:"TW_EDUPASS_CLIENT_SECRET_FILE"`
+
+	ClientCredentials EdupassClientCredentials `dotenv:"-"`
 }
 
-func (cfg EdupassConfig) validate() error {
+func (cfg *EdupassConfig) validate() error {
 	var errs []error
 
 	if cfg.IssuerURL == nil {
@@ -277,9 +296,6 @@ func (cfg EdupassConfig) validate() error {
 	if cfg.ClientID == "" {
 		errs = append(errs, errors.New("TW_EDUPASS_CLIENT_ID is required"))
 	}
-	if cfg.ClientSecret == "" {
-		errs = append(errs, errors.New("TW_EDUPASS_CLIENT_SECRET is required"))
-	}
 	if cfg.RedirectURL == nil {
 		errs = append(errs, errors.New("TW_EDUPASS_REDIRECT_URL is required"))
 	} else {
@@ -289,6 +305,36 @@ func (cfg EdupassConfig) validate() error {
 		if cfg.RedirectURL.Host == "" {
 			errs = append(errs, fmt.Errorf("TW_EDUPASS_REDIRECT_URL must include host[:port]; got %q", cfg.RedirectURL))
 		}
+	}
+
+	switch cfg.ClientAuthMethod {
+	case EdupassClientAuthMethodClientSecretPost:
+		if cfg.ClientSecret != "" && cfg.ClientSecretFile != "" {
+			errs = append(errs, errors.New("TW_EDUPASS_CLIENT_SECRET and TW_EDUPASS_CLIENT_SECRET_FILE are both set; set only one"))
+		}
+		if cfg.ClientSecret == "" && cfg.ClientSecretFile == "" {
+			errs = append(errs, errors.New("TW_EDUPASS_CLIENT_SECRET or TW_EDUPASS_CLIENT_SECRET_FILE is required for client_secret_post"))
+		}
+		if len(errs) > 0 {
+			return errors.Join(errs...)
+		}
+
+		clientSecret := cfg.ClientSecret
+		if cfg.ClientSecretFile != "" {
+			clientSecretFileContents, err := os.ReadFile(cfg.ClientSecretFile)
+			if err != nil {
+				return fmt.Errorf("TW_EDUPASS_CLIENT_SECRET_FILE: %w", err)
+			}
+			clientSecret = strings.TrimRight(string(clientSecretFileContents), "\r\n")
+			if clientSecret == "" {
+				return fmt.Errorf("TW_EDUPASS_CLIENT_SECRET_FILE: %s is empty", cfg.ClientSecretFile)
+			}
+		}
+		cfg.ClientCredentials = EdupassClientCredentials{Secret: clientSecret}
+
+	default:
+		errs = append(errs, fmt.Errorf("TW_EDUPASS_CLIENT_AUTH_METHOD must be %q; got %q",
+			EdupassClientAuthMethodClientSecretPost, cfg.ClientAuthMethod))
 	}
 
 	return errors.Join(errs...)
