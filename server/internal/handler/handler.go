@@ -131,3 +131,15 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware, au
 		mux.Handle("/", appHandler)
 	}
 }
+
+// RegisterLogout registers the logout route on the given HTTP server mux. It is
+// wrapped in endSession rather than the session and auth middleware, so it
+// signs the teacher out even when the session cannot be loaded, and a teacher
+// who is already signed out can still sign out.
+func (h *Handler) RegisterLogout(mux *http.ServeMux, endSession middleware.Middleware) {
+	// Cross-origin protection stands in for a CSRF token: it rejects a POST
+	// that a browser sends from another site.
+	mux.Handle("POST /auth/logout", http.NewCrossOriginProtection().Handler(
+		endSession(http.HandlerFunc(h.authLogout)),
+	))
+}
