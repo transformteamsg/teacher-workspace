@@ -77,12 +77,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	sessionMiddleware := middleware.Session(store, middleware.SessionOptions{
+	sessionOptions := middleware.SessionOptions{
 		Name:             cfg.Session.Name,
 		DefaultTTL:       cfg.Session.DefaultTTL,
 		AuthenticatedTTL: cfg.Session.AuthenticatedTTL,
 		Secure:           cfg.Env == config.EnvProduction,
-	})
+	}
+	sessionMiddleware := middleware.Session(store, sessionOptions)
+	endSessionMiddleware := middleware.EndSession(store, sessionOptions)
 
 	rp := oidc.New(
 		cfg.OIDC.IssuerURL.String(),
@@ -102,6 +104,7 @@ func main() {
 		os.Exit(1)
 	}
 	h.Register(mux, sessionMiddleware, middleware.RequireAuth())
+	h.RegisterLogout(mux, endSessionMiddleware)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           middleware.RequestID(middleware.RequestLog(mux)),
