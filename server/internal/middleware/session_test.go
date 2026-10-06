@@ -586,6 +586,146 @@ func TestSession(t *testing.T) {
 	})
 }
 
+func TestEndSession(t *testing.T) {
+	// assertExpiredCookie fails the test unless the response expires the
+	// session cookie with the attributes it was issued under.
+	assertExpiredCookie := func(t *testing.T, rec *httptest.ResponseRecorder) {
+		t.Helper()
+
+		cookie := findCookie(rec.Result().Cookies(), testCookieName)
+		if cookie == nil {
+			t.Fatal("want session cookie to be expired")
+		}
+		if cookie.Value != "" {
+			t.Errorf("want cookie value: %q, got: %q", "", cookie.Value)
+		}
+		if cookie.MaxAge != -1 {
+			t.Errorf("want cookie Max-Age: %d, got: %d", -1, cookie.MaxAge)
+		}
+		if cookie.Path != "/" {
+			t.Errorf("want cookie path: %q, got: %q", "/", cookie.Path)
+		}
+		if !cookie.HttpOnly {
+			t.Error("want cookie to be HttpOnly")
+		}
+		if cookie.SameSite != http.SameSiteLaxMode {
+			t.Errorf("want cookie SameSite: %v, got: %v", http.SameSiteLaxMode, cookie.SameSite)
+		}
+	}
+
+	t.Run("drops the session and expires the cookie", func(t *testing.T) {
+		authed := session.New()
+		authed.SetUser(&session.User{Email: "teacher@example.com"})
+		store := &fakeStore{}
+
+		nextCalled := false
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			nextCalled = true
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+		})
+
+		req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		req.AddCookie(&http.Cookie{Name: testCookieName, Value: authed.ID()})
+		rec := httptest.NewRecorder()
+
+		EndSession(store, testOptions())(next).ServeHTTP(rec, req)
+
+		if !nextCalled {
+			t.Error("want next handler to be called")
+		}
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("want status code: %d, got: %d", http.StatusSeeOther, rec.Code)
+		}
+		if store.dropCalls != 1 {
+			t.Fatalf("want drop calls: %d, got: %d", 1, store.dropCalls)
+		}
+		if store.droppedID != authed.ID() {
+			t.Errorf("want dropped ID: %q, got: %q", authed.ID(), store.droppedID)
+		}
+		assertExpiredCookie(t, rec)
+		if want, got := "no-store", rec.Header().Get("Cache-Control"); want != got {
+			t.Errorf("want Cache-Control: %q, got: %q", want, got)
+		}
+	})
+
+	t.Run("never loads or commits a session", func(t *testing.T) {
+		store := &fakeStore{}
+
+		req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		req.AddCookie(&http.Cookie{Name: testCookieName, Value: "some-id"})
+		rec := httptest.NewRecorder()
+
+		EndSession(store, testOptions())(okHandler()).ServeHTTP(rec, req)
+
+		if store.preparedID != "" {
+			t.Errorf("want no prepare, got prepared ID: %q", store.preparedID)
+		}
+		if store.commitCalls != 0 {
+			t.Errorf("want commit calls: %d, got: %d", 0, store.commitCalls)
+		}
+	})
+
+	t.Run("expires the cookie and runs the handler when Drop fails", func(t *testing.T) {
+		store := &fakeStore{dropErr: errors.New("drop failed")}
+
+		nextCalled := false
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			nextCalled = true
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+		})
+
+		var buf bytes.Buffer
+		req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil).WithContext(newCtxWithLogger(&buf))
+		req.AddCookie(&http.Cookie{Name: testCookieName, Value: "some-id"})
+		rec := httptest.NewRecorder()
+
+		EndSession(store, testOptions())(next).ServeHTTP(rec, req)
+
+		if !nextCalled {
+			t.Error("want next handler to be called")
+		}
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("want status code: %d, got: %d", http.StatusSeeOther, rec.Code)
+		}
+		if !strings.Contains(buf.String(), "failed to drop ended session") {
+			t.Errorf("want drop failure to be logged, got: %q", buf.String())
+		}
+		assertExpiredCookie(t, rec)
+	})
+
+	t.Run("expires the cookie without dropping when no cookie is present", func(t *testing.T) {
+		store := &fakeStore{}
+
+		req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		rec := httptest.NewRecorder()
+
+		EndSession(store, testOptions())(okHandler()).ServeHTTP(rec, req)
+
+		if store.dropCalls != 0 {
+			t.Errorf("want drop calls: %d, got: %d", 0, store.dropCalls)
+		}
+		assertExpiredCookie(t, rec)
+	})
+
+	t.Run("marks the expired cookie Secure when configured", func(t *testing.T) {
+		opts := testOptions()
+		opts.Secure = true
+
+		req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		rec := httptest.NewRecorder()
+
+		EndSession(&fakeStore{}, opts)(okHandler()).ServeHTTP(rec, req)
+
+		cookie := findCookie(rec.Result().Cookies(), testCookieName)
+		if cookie == nil {
+			t.Fatal("want session cookie to be expired")
+		}
+		if !cookie.Secure {
+			t.Error("want cookie to be Secure")
+		}
+	})
+}
+
 // okHandler is a no-op next handler for tests that only exercise the middleware.
 func okHandler() http.Handler {
 	return http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})

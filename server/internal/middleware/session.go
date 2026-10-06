@@ -164,6 +164,43 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 	}
 }
 
+// EndSession is a middleware that ends the session identified by the request
+// cookie: it drops the store entry and expires the cookie, then runs the
+// handler. It never loads the session, so a store that cannot be reached still
+// leaves the client signed out, and a missing or unknown cookie is not an
+// error. Routes wrapped in it must not also be wrapped in [Session], which
+// would issue a fresh cookie over the expired one.
+func EndSession(store session.Store, opts SessionOptions) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logger := LoggerFromContext(r.Context())
+
+			if cookie, err := r.Cookie(opts.Name); err == nil && cookie.Value != "" {
+				// Best effort, like the drop after a rotation. A failure leaves
+				// the entry to expire by TTL, and the client, whose cookie is
+				// expired below, no longer holds its ID.
+				ctx := context.WithoutCancel(r.Context())
+				if err := store.Drop(ctx, cookie.Value); err != nil {
+					logger.Error("failed to drop ended session", "err", err)
+				}
+			}
+
+			w.Header().Set("Cache-Control", "no-store")
+			http.SetCookie(w, &http.Cookie{
+				Name:     opts.Name,
+				Value:    "",
+				Path:     "/",
+				MaxAge:   -1,
+				Secure:   opts.Secure,
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			})
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // SessionFromContext retrieves the session from the provided context.
 // The returned boolean indicates whether a session was present.
 func SessionFromContext(ctx context.Context) (*session.Session, bool) {
