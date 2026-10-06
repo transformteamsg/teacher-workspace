@@ -44,9 +44,8 @@ func New(cfg *config.Config) (*Handler, error) {
 		cfg:               cfg,
 		edupassHTTPClient: edupassHTTPClient,
 		edupassOAuth2Config: &oauth2.Config{
-			ClientID:     cfg.Edupass.ClientID,
-			ClientSecret: cfg.Edupass.ClientCredentials.Secret,
-			RedirectURL:  cfg.Edupass.RedirectURL.String(),
+			ClientID:    cfg.Edupass.ClientID,
+			RedirectURL: cfg.Edupass.RedirectURL.String(),
 			Endpoint: oauth2.Endpoint{
 				AuthURL:   cfg.Edupass.AuthURL.String(),
 				TokenURL:  cfg.Edupass.TokenURL.String(),
