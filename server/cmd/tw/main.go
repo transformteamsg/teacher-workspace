@@ -101,7 +101,7 @@ func main() {
 		slog.Error("failed to create handler", "err", err)
 		os.Exit(1)
 	}
-	h.Register(mux, sessionMiddleware)
+	h.Register(mux, sessionMiddleware, middleware.RequireAuth())
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           middleware.RequestID(middleware.RequestLog(mux)),

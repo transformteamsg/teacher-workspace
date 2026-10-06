@@ -6,6 +6,7 @@ import (
 	"net/http"
 	stdhttputil "net/http/httputil"
 	"path/filepath"
+	"strings"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/htmlutil"
@@ -92,7 +93,7 @@ func (fsys fileOnlyFS) Open(name string) (http.File, error) {
 // Register registers all application routes on the given HTTP server mux.
 // Application routes are wrapped in the session middleware; static asset routes
 // are not.
-func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
+func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware, auth middleware.Middleware) {
 	mux.HandleFunc("/static/", h.static)
 
 	// Session-scoped routes: everything registered on this sub-mux runs
@@ -110,5 +111,23 @@ func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
 		})
 	})
 
-	mux.Handle("/", session(app))
+	appHandler := session(auth(app))
+
+	if h.cfg.Env == config.EnvDevelopment {
+		// In development, only requests that match a registered app route go
+		// through session and auth middleware. Everything else, including
+		// manifests, source maps, hot updates, and rspack lazy compilation POST
+		// requests, must reach rsbuild without auth.
+		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			isHTMLPageNav := (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+				strings.Contains(r.Header.Get("Accept"), httputil.MIMETextHTML)
+			if _, pattern := app.Handler(r); pattern == "/" && !isHTMLPageNav {
+				h.devProxy.ServeHTTP(w, r)
+				return
+			}
+			appHandler.ServeHTTP(w, r)
+		}))
+	} else {
+		mux.Handle("/", appHandler)
+	}
 }
