@@ -1,7 +1,18 @@
 package config
 
 import (
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/pem"
 	"log/slog"
+	"math/big"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -96,6 +107,18 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: empty; got: %q", got)
 		}
 		if got := cfg.Edupass.ClientSecretFile; got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+		if got := cfg.Edupass.ClientPrivateKey; got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+		if got := cfg.Edupass.ClientPrivateKeyFile; got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+		if got := cfg.Edupass.ClientCertificate; got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+		if got := cfg.Edupass.ClientCertificateFile; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
 		if got := cfg.Edupass.RedirectURL; got != nil {
@@ -696,17 +719,17 @@ func TestEdupassConfig_validate(t *testing.T) {
 			{
 				name:   "missing JWKS URI",
 				mutate: func(c *EdupassConfig) { c.JWKSURL = nil },
-				want:   "TW_EDUPASS_JWKS_URI is required",
+				want:   "TW_EDUPASS_JWKS_URL is required",
 			},
 			{
 				name:   "JWKS URI with a non-HTTP scheme",
 				mutate: func(c *EdupassConfig) { c.JWKSURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
-				want:   "TW_EDUPASS_JWKS_URI must use scheme http or https",
+				want:   "TW_EDUPASS_JWKS_URL must use scheme http or https",
 			},
 			{
 				name:   "JWKS URI without a host",
 				mutate: func(c *EdupassConfig) { c.JWKSURL = &url.URL{Scheme: "http"} },
-				want:   "TW_EDUPASS_JWKS_URI must include host",
+				want:   "TW_EDUPASS_JWKS_URL must include host",
 			},
 			{
 				name:   "empty client ID",
@@ -754,7 +777,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		if want := `TW_EDUPASS_CLIENT_AUTH_METHOD must be "client_secret_post"; got "client_secret_basic"`; !strings.Contains(err.Error(), want) {
+		if want := `TW_EDUPASS_CLIENT_AUTH_METHOD must be "client_secret_post" or "private_key_jwt"; got "client_secret_basic"`; !strings.Contains(err.Error(), want) {
 			t.Errorf("want err: containing %q; got: %q", want, err)
 		}
 	})
@@ -855,6 +878,317 @@ func TestEdupassConfig_validate(t *testing.T) {
 						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
 					}
 				})
+			}
+		})
+	})
+
+	t.Run("private_key_jwt", func(t *testing.T) {
+		clientPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatalf("rsa.GenerateKey: %v", err)
+		}
+		clientPrivateKeyDER, err := x509.MarshalPKCS8PrivateKey(clientPrivateKey)
+		if err != nil {
+			t.Fatalf("x509.MarshalPKCS8PrivateKey: %v", err)
+		}
+		var clientPrivateKeyPEMBuffer bytes.Buffer
+		if err := pem.Encode(&clientPrivateKeyPEMBuffer, &pem.Block{Type: "PRIVATE KEY", Bytes: clientPrivateKeyDER}); err != nil {
+			t.Fatalf("pem.Encode: %v", err)
+		}
+		clientPrivateKeyPEM := clientPrivateKeyPEMBuffer.String()
+		clientCertificateTemplate := &x509.Certificate{
+			SerialNumber: big.NewInt(1),
+			Subject:      pkix.Name{CommonName: "teacher-workspace"},
+			NotBefore:    time.Now().Add(-time.Hour),
+			NotAfter:     time.Now().Add(time.Hour),
+		}
+		clientCertificateDER, err := x509.CreateCertificate(rand.Reader, clientCertificateTemplate, clientCertificateTemplate, &clientPrivateKey.PublicKey, clientPrivateKey)
+		if err != nil {
+			t.Fatalf("x509.CreateCertificate: %v", err)
+		}
+		var clientCertificatePEMBuffer bytes.Buffer
+		if err := pem.Encode(&clientCertificatePEMBuffer, &pem.Block{Type: "CERTIFICATE", Bytes: clientCertificateDER}); err != nil {
+			t.Fatalf("pem.Encode: %v", err)
+		}
+		clientCertificatePEM := clientCertificatePEMBuffer.String()
+
+		t.Run("rejects a private key set both ways", func(t *testing.T) {
+			cfg := validConfig().Edupass
+			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientSecret = ""
+			cfg.ClientPrivateKey = clientPrivateKeyPEM
+			cfg.ClientPrivateKeyFile = "/run/secrets/client.key"
+			cfg.ClientCertificate = clientCertificatePEM
+
+			err := cfg.validate()
+
+			if err == nil {
+				t.Fatal("want err: non-nil; got: nil")
+			}
+			if want := "TW_EDUPASS_CLIENT_PRIVATE_KEY and TW_EDUPASS_CLIENT_PRIVATE_KEY_FILE are both set; set only one"; !strings.HasPrefix(err.Error(), want) {
+				t.Errorf("want err: starting with %q; got: %q", want, err)
+			}
+		})
+
+		t.Run("rejects a missing private key", func(t *testing.T) {
+			cfg := validConfig().Edupass
+			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientSecret = ""
+			cfg.ClientCertificate = clientCertificatePEM
+
+			err := cfg.validate()
+
+			if err == nil {
+				t.Fatal("want err: non-nil; got: nil")
+			}
+			if want := "TW_EDUPASS_CLIENT_PRIVATE_KEY or TW_EDUPASS_CLIENT_PRIVATE_KEY_FILE is required for private_key_jwt"; !strings.HasPrefix(err.Error(), want) {
+				t.Errorf("want err: starting with %q; got: %q", want, err)
+			}
+		})
+
+		t.Run("rejects a certificate set both ways", func(t *testing.T) {
+			cfg := validConfig().Edupass
+			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientSecret = ""
+			cfg.ClientPrivateKey = clientPrivateKeyPEM
+			cfg.ClientCertificate = clientCertificatePEM
+			cfg.ClientCertificateFile = "/run/secrets/client.crt"
+
+			err := cfg.validate()
+
+			if err == nil {
+				t.Fatal("want err: non-nil; got: nil")
+			}
+			if want := "TW_EDUPASS_CLIENT_CERTIFICATE and TW_EDUPASS_CLIENT_CERTIFICATE_FILE are both set; set only one"; !strings.HasPrefix(err.Error(), want) {
+				t.Errorf("want err: starting with %q; got: %q", want, err)
+			}
+		})
+
+		t.Run("rejects a missing certificate", func(t *testing.T) {
+			cfg := validConfig().Edupass
+			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientSecret = ""
+			cfg.ClientPrivateKey = clientPrivateKeyPEM
+
+			err := cfg.validate()
+
+			if err == nil {
+				t.Fatal("want err: non-nil; got: nil")
+			}
+			if want := "TW_EDUPASS_CLIENT_CERTIFICATE or TW_EDUPASS_CLIENT_CERTIFICATE_FILE is required for private_key_jwt"; !strings.HasPrefix(err.Error(), want) {
+				t.Errorf("want err: starting with %q; got: %q", want, err)
+			}
+		})
+
+		t.Run("returns the private key and certificate thumbprint", func(t *testing.T) {
+			clientPrivateKeyFileWithLFPath := filepath.Join(t.TempDir(), "client.key")
+			if err := os.WriteFile(clientPrivateKeyFileWithLFPath, []byte(clientPrivateKeyPEM+"\n"), 0o600); err != nil {
+				t.Fatalf("os.WriteFile: %v", err)
+			}
+			clientCertificateFileWithLFPath := filepath.Join(t.TempDir(), "client.crt")
+			if err := os.WriteFile(clientCertificateFileWithLFPath, []byte(clientCertificatePEM+"\n"), 0o600); err != nil {
+				t.Fatalf("os.WriteFile: %v", err)
+			}
+			clientCertificateThumbprint := sha256.Sum256(clientCertificateDER)
+
+			for _, tt := range []struct {
+				name                      string
+				clientPrivateKey          string
+				clientPrivateKeyFile      string
+				clientCertificate         string
+				clientCertificateFile     string
+				wantCertificateThumbprint string
+			}{
+				{
+					name:                      "from values",
+					clientPrivateKey:          clientPrivateKeyPEM,
+					clientCertificate:         clientCertificatePEM,
+					wantCertificateThumbprint: base64.RawURLEncoding.EncodeToString(clientCertificateThumbprint[:]),
+				},
+				{
+					name:                      "from files ending in LF",
+					clientPrivateKeyFile:      clientPrivateKeyFileWithLFPath,
+					clientCertificateFile:     clientCertificateFileWithLFPath,
+					wantCertificateThumbprint: base64.RawURLEncoding.EncodeToString(clientCertificateThumbprint[:]),
+				},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					cfg := validConfig().Edupass
+					cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+					cfg.ClientSecret = ""
+					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = tt.clientPrivateKey, tt.clientPrivateKeyFile
+					cfg.ClientCertificate, cfg.ClientCertificateFile = tt.clientCertificate, tt.clientCertificateFile
+
+					if err := cfg.validate(); err != nil {
+						t.Fatalf("want err: nil; got: %v", err)
+					}
+					if got := clientPrivateKey.Equal(cfg.ClientCredentials.Key); !got {
+						t.Error("want: true; got: false")
+					}
+					if want, got := tt.wantCertificateThumbprint, cfg.ClientCredentials.CertificateThumbprint; want != got {
+						t.Errorf("want: %q; got: %q", want, got)
+					}
+				})
+			}
+		})
+
+		t.Run("rejects an unusable private key", func(t *testing.T) {
+			missingFilePath := filepath.Join(t.TempDir(), "missing")
+			var pkcs1PrivateKeyPEMBuffer bytes.Buffer
+			if err := pem.Encode(&pkcs1PrivateKeyPEMBuffer, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(clientPrivateKey)}); err != nil {
+				t.Fatalf("pem.Encode: %v", err)
+			}
+			pkcs1PrivateKeyPEM := pkcs1PrivateKeyPEMBuffer.String()
+			ecdsaPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			if err != nil {
+				t.Fatalf("ecdsa.GenerateKey: %v", err)
+			}
+			ecdsaPrivateKeyDER, err := x509.MarshalPKCS8PrivateKey(ecdsaPrivateKey)
+			if err != nil {
+				t.Fatalf("x509.MarshalPKCS8PrivateKey: %v", err)
+			}
+			var ecdsaPrivateKeyPEMBuffer bytes.Buffer
+			if err := pem.Encode(&ecdsaPrivateKeyPEMBuffer, &pem.Block{Type: "PRIVATE KEY", Bytes: ecdsaPrivateKeyDER}); err != nil {
+				t.Fatalf("pem.Encode: %v", err)
+			}
+			ecdsaPrivateKeyPEM := ecdsaPrivateKeyPEMBuffer.String()
+			rsa1024PrivateKey, err := rsa.GenerateKey(rand.Reader, 1024)
+			if err != nil {
+				t.Fatalf("rsa.GenerateKey: %v", err)
+			}
+			rsa1024PrivateKeyDER, err := x509.MarshalPKCS8PrivateKey(rsa1024PrivateKey)
+			if err != nil {
+				t.Fatalf("x509.MarshalPKCS8PrivateKey: %v", err)
+			}
+			var rsa1024PrivateKeyPEMBuffer bytes.Buffer
+			if err := pem.Encode(&rsa1024PrivateKeyPEMBuffer, &pem.Block{Type: "PRIVATE KEY", Bytes: rsa1024PrivateKeyDER}); err != nil {
+				t.Fatalf("pem.Encode: %v", err)
+			}
+			rsa1024PrivateKeyPEM := rsa1024PrivateKeyPEMBuffer.String()
+			notPEMFilePath := filepath.Join(t.TempDir(), "client.key")
+			if err := os.WriteFile(notPEMFilePath, []byte("not a key"), 0o600); err != nil {
+				t.Fatalf("os.WriteFile: %v", err)
+			}
+
+			for _, tt := range []struct {
+				name                 string
+				clientPrivateKey     string
+				clientPrivateKeyFile string
+				want                 string
+			}{
+				{name: "unreadable file", clientPrivateKeyFile: missingFilePath, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY_FILE: open " + missingFilePath + ": no such file or directory"},
+				{name: "not PEM", clientPrivateKey: "not a key", want: "TW_EDUPASS_CLIENT_PRIVATE_KEY: not PEM"},
+				{name: "file not PEM", clientPrivateKeyFile: notPEMFilePath, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY_FILE: not PEM"},
+				{name: "PKCS#1", clientPrivateKey: pkcs1PrivateKeyPEM, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY: not PKCS#8"},
+				{name: "certificate instead of a key", clientPrivateKey: clientCertificatePEM, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY: not PKCS#8"},
+				{name: "not RSA", clientPrivateKey: ecdsaPrivateKeyPEM, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY: not RSA, got *ecdsa.PrivateKey"},
+				{name: "under 2048 bits", clientPrivateKey: rsa1024PrivateKeyPEM, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY: 1024 bits, want at least 2048"},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					cfg := validConfig().Edupass
+					cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+					cfg.ClientSecret = ""
+					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = tt.clientPrivateKey, tt.clientPrivateKeyFile
+					cfg.ClientCertificate = clientCertificatePEM
+
+					err := cfg.validate()
+
+					if err == nil {
+						t.Fatal("want err: non-nil; got: nil")
+					}
+					if !strings.HasPrefix(err.Error(), tt.want) {
+						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
+					}
+				})
+			}
+		})
+
+		t.Run("rejects an unusable certificate", func(t *testing.T) {
+			missingFilePath := filepath.Join(t.TempDir(), "missing")
+			otherPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatalf("rsa.GenerateKey: %v", err)
+			}
+			otherCertificateDER, err := x509.CreateCertificate(rand.Reader, clientCertificateTemplate, clientCertificateTemplate, &otherPrivateKey.PublicKey, otherPrivateKey)
+			if err != nil {
+				t.Fatalf("x509.CreateCertificate: %v", err)
+			}
+			var otherCertificatePEMBuffer bytes.Buffer
+			if err := pem.Encode(&otherCertificatePEMBuffer, &pem.Block{Type: "CERTIFICATE", Bytes: otherCertificateDER}); err != nil {
+				t.Fatalf("pem.Encode: %v", err)
+			}
+			otherCertificatePEM := otherCertificatePEMBuffer.String()
+			expiredCertificateTemplate := &x509.Certificate{
+				SerialNumber: big.NewInt(2),
+				Subject:      pkix.Name{CommonName: "teacher-workspace"},
+				NotBefore:    time.Now().Add(-2 * time.Hour),
+				NotAfter:     time.Now().Add(-time.Hour),
+			}
+			expiredCertificateDER, err := x509.CreateCertificate(rand.Reader, expiredCertificateTemplate, expiredCertificateTemplate, &clientPrivateKey.PublicKey, clientPrivateKey)
+			if err != nil {
+				t.Fatalf("x509.CreateCertificate: %v", err)
+			}
+			var expiredCertificatePEMBuffer bytes.Buffer
+			if err := pem.Encode(&expiredCertificatePEMBuffer, &pem.Block{Type: "CERTIFICATE", Bytes: expiredCertificateDER}); err != nil {
+				t.Fatalf("pem.Encode: %v", err)
+			}
+			expiredCertificatePEM := expiredCertificatePEMBuffer.String()
+			notPEMFilePath := filepath.Join(t.TempDir(), "client.crt")
+			if err := os.WriteFile(notPEMFilePath, []byte("not a certificate"), 0o600); err != nil {
+				t.Fatalf("os.WriteFile: %v", err)
+			}
+
+			for _, tt := range []struct {
+				name                  string
+				clientCertificate     string
+				clientCertificateFile string
+				want                  string
+			}{
+				{name: "unreadable file", clientCertificateFile: missingFilePath, want: "TW_EDUPASS_CLIENT_CERTIFICATE_FILE: open " + missingFilePath + ": no such file or directory"},
+				{name: "not PEM", clientCertificate: "not a certificate", want: "TW_EDUPASS_CLIENT_CERTIFICATE: not PEM"},
+				{name: "file not PEM", clientCertificateFile: notPEMFilePath, want: "TW_EDUPASS_CLIENT_CERTIFICATE_FILE: not PEM"},
+				{name: "holding a private key", clientCertificate: clientPrivateKeyPEM, want: "TW_EDUPASS_CLIENT_CERTIFICATE: not X.509"},
+				{name: "expired", clientCertificate: expiredCertificatePEM, want: "TW_EDUPASS_CLIENT_CERTIFICATE: expired at"},
+				{name: "for another key", clientCertificate: otherCertificatePEM, want: "TW_EDUPASS_CLIENT_CERTIFICATE does not match TW_EDUPASS_CLIENT_PRIVATE_KEY"},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					cfg := validConfig().Edupass
+					cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+					cfg.ClientSecret = ""
+					cfg.ClientPrivateKey = clientPrivateKeyPEM
+					cfg.ClientCertificate, cfg.ClientCertificateFile = tt.clientCertificate, tt.clientCertificateFile
+
+					err := cfg.validate()
+
+					if err == nil {
+						t.Fatal("want err: non-nil; got: nil")
+					}
+					if !strings.HasPrefix(err.Error(), tt.want) {
+						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
+					}
+				})
+			}
+		})
+
+		t.Run("omits the private key from the error", func(t *testing.T) {
+			var pkcs1PrivateKeyPEMBuffer bytes.Buffer
+			if err := pem.Encode(&pkcs1PrivateKeyPEMBuffer, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(clientPrivateKey)}); err != nil {
+				t.Fatalf("pem.Encode: %v", err)
+			}
+			pkcs1PrivateKeyPEM := pkcs1PrivateKeyPEMBuffer.String()
+			cfg := validConfig().Edupass
+			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientSecret = ""
+			cfg.ClientPrivateKey = pkcs1PrivateKeyPEM
+			cfg.ClientCertificate = clientCertificatePEM
+
+			err := cfg.validate()
+
+			if err == nil {
+				t.Fatal("want err: non-nil; got: nil")
+			}
+			if got := err.Error(); strings.Contains(got, "PRIVATE KEY") {
+				t.Errorf("want err: without the private key; got: %q", got)
 			}
 		})
 	})
