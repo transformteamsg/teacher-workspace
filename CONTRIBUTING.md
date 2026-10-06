@@ -40,6 +40,23 @@ pnpm install
 
 Edit `.env` to set the `TW_*` variables for your environment.
 
+#### Signing in with `private_key_jwt`
+
+```bash
+mkdir -p .certs
+openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 365 \
+  -subj "/CN=teacher-workspace" \
+  -keyout .certs/client.key -out .certs/client.crt
+```
+
+Set the server's client credentials in `.env`:
+
+```bash
+TW_EDUPASS_CLIENT_AUTH_METHOD=private_key_jwt
+TW_EDUPASS_CLIENT_PRIVATE_KEY_FILE=.certs/client.key
+TW_EDUPASS_CLIENT_CERTIFICATE_FILE=.certs/client.crt
+```
+
 ### Running locally
 
 Run both processes from the repo root, in separate terminals:
