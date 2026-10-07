@@ -281,9 +281,7 @@ type edupassGroups struct {
 // infix, rejecting a lookalike entry meant for a different application; the
 // location code ahead of the marker itself is never checked.
 //
-// An exact duplicate entry is only counted once: Edupass sending the same
-// string twice is redundant information, not a second role or attribute. A
-// code absent from both reference lists, or not immediately preceded by a
+// A code absent from both reference lists, or not immediately preceded by a
 // recognized environment marker, is reported in unrecognized rather than
 // blocking resolution: Edupass can add codes between Teacher Workspace
 // releases. resolveEdupassGroups doesn't decide whether sign-in proceeds; the
@@ -292,14 +290,8 @@ func resolveEdupassGroups(raw []string) edupassGroups {
 	roles := []string{}
 	attributes := []string{}
 	unrecognized := []string{}
-	seen := map[string]bool{}
 
 	for _, entry := range raw {
-		if seen[entry] {
-			continue
-		}
-		seen[entry] = true
-
 		switch {
 		case strings.Contains(entry, edupassRoleInfix):
 			code := codeAfterInfix(entry, edupassRoleInfix)

@@ -68,17 +68,6 @@ func TestResolveEdupassGroups(t *testing.T) {
 		}
 	})
 
-	t.Run("counts an exact duplicate entry only once", func(t *testing.T) {
-		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_TEACHER"})
-
-		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("roles: want: %v; got: %v", want, got)
-		}
-		if want, got := "ROLE_TEACHER", resolved.effectiveRole; want != got {
-			t.Errorf("effectiveRole: want: %q; got: %q", want, got)
-		}
-	})
-
 	t.Run("leaves effectiveRole empty when base roles span more than one location", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "5678_TW_ROLE_TEACHER"})
 
