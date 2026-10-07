@@ -91,11 +91,10 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	storedVerifier := popSessionString(sess, sessionKeyOIDCCodeVerifier)
 	returnTo := popSessionString(sess, sessionKeyReturnTo)
 
-	// clearAndRedirect clears any session the caller already held, then
-	// redirects to the generic sign-in failure. Clearing first means a
-	// failed re-authentication never leaves an older sign-in's session
+	// fail clears any session the caller already held before this attempt,
+	// so a failed re-authentication never leaves an older sign-in's session
 	// behind as if it were still current.
-	clearAndRedirect := func() {
+	fail := func() {
 		sess.Clear()
 		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 	}
@@ -105,7 +104,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			"error", errParam,
 			"error_description", r.URL.Query().Get("error_description"),
 		)
-		clearAndRedirect()
+		fail()
 		return
 	}
 
@@ -113,56 +112,56 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	if code == "" || state == "" {
 		logger.Warn("callback missing state or code")
-		clearAndRedirect()
+		fail()
 		return
 	}
 
 	if storedState == "" {
 		logger.Warn("stored state missing from session")
-		clearAndRedirect()
+		fail()
 		return
 	}
 	if state != storedState {
 		logger.Error("state mismatch")
-		clearAndRedirect()
+		fail()
 		return
 	}
 
 	if storedVerifier == "" {
 		logger.Warn("code verifier missing from session")
-		clearAndRedirect()
+		fail()
 		return
 	}
 
 	token, err := h.rp.OAuth2.Exchange(r.Context(), code, oauth2.VerifierOption(storedVerifier))
 	if err != nil {
 		logger.Error("failed to exchange authorization code", "err", err)
-		clearAndRedirect()
+		fail()
 		return
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
 		logger.Error("token response missing id_token")
-		clearAndRedirect()
+		fail()
 		return
 	}
 
 	idToken, err := h.rp.Verifier.Verify(r.Context(), rawIDToken)
 	if err != nil {
 		logger.Error("failed to verify ID token", "err", err)
-		clearAndRedirect()
+		fail()
 		return
 	}
 
 	if storedNonce == "" {
 		logger.Warn("stored nonce missing from session")
-		clearAndRedirect()
+		fail()
 		return
 	}
 	if idToken.Nonce != storedNonce {
 		logger.Error("nonce mismatch")
-		clearAndRedirect()
+		fail()
 		return
 	}
 
@@ -172,12 +171,12 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		logger.Error("failed to extract claims", "err", err)
-		clearAndRedirect()
+		fail()
 		return
 	}
 	if claims.Email == "" {
 		logger.Error("ID token missing email claim")
-		clearAndRedirect()
+		fail()
 		return
 	}
 
@@ -193,7 +192,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			"subject", idToken.Subject,
 			"roles", resolved.Roles,
 		)
-		clearAndRedirect()
+		fail()
 		return
 	}
 
