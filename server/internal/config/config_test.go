@@ -50,6 +50,9 @@ func TestDefault(t *testing.T) {
 		if want, got := 30*time.Minute, cfg.Session.AuthenticatedTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
+		if want, got := true, cfg.Session.Secure; want != got {
+			t.Errorf("want: %t; got: %t", want, got)
+		}
 		if want, got := SessionStoreProviderMemory, cfg.Session.StoreProvider; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
@@ -57,7 +60,7 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 
-		if want, got := time.Minute, cfg.APIProxy.TokenTTL; want != got {
+		if want, got := time.Minute, cfg.RemoteApps.SignedTokenTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
 	})
@@ -65,71 +68,72 @@ func TestDefault(t *testing.T) {
 	t.Run("leaves deployment-specific values unset", func(t *testing.T) {
 		cfg := Default()
 
-		if got := cfg.Remote.PostsManifestURL; got != "" {
-			t.Errorf("want: empty; got: %q", got)
-		}
-		if got := cfg.Remote.StudentInsightsManifestURL; got != "" {
-			t.Errorf("want: empty; got: %q", got)
-		}
-
 		if got := cfg.Session.Valkey.URL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
 
-		if got := cfg.APIProxy.StudentInsightsBaseURL; got != nil {
+		if got := cfg.Edupass.IssuerURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
-		if got := cfg.APIProxy.PostsBaseURL; got != nil {
+		if got := cfg.Edupass.AuthURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
-		if got := cfg.APIProxy.StudentInsightsSigningKey; got != "" {
+		if got := cfg.Edupass.TokenURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.Edupass.JWKSURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.Edupass.ClientID; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
-		if got := cfg.APIProxy.PostsSigningKey; got != "" {
+		if got := cfg.Edupass.ClientSecret; got != "" {
 			t.Errorf("want: empty; got: %q", got)
+		}
+		if got := cfg.Edupass.RedirectURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
 		}
 
-		if got := cfg.OIDC.IssuerURL; got != nil {
+		if got := cfg.RemoteApps.PostsManifestURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
-		if got := cfg.OIDC.AuthURL; got != nil {
+		if got := cfg.RemoteApps.PostsBackendBaseURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
-		if got := cfg.OIDC.TokenURL; got != nil {
-			t.Errorf("want: nil; got: %q", got)
-		}
-		if got := cfg.OIDC.JWKSURI; got != nil {
-			t.Errorf("want: nil; got: %q", got)
-		}
-		if got := cfg.OIDC.ClientID; got != "" {
+		if got := cfg.RemoteApps.PostsBackendSigningKey; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
-		if got := cfg.OIDC.ClientSecret; got != "" {
-			t.Errorf("want: empty; got: %q", got)
-		}
-		if got := cfg.OIDC.RedirectURL; got != nil {
+		if got := cfg.RemoteApps.StudentInsightsManifestURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.RemoteApps.StudentInsightsBackendBaseURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.RemoteApps.StudentInsightsBackendSigningKey; got != "" {
+			t.Errorf("want: empty; got: %q", got)
 		}
 	})
 }
 
 // validConfig returns Default with the fields that have no default filled in,
-// so it passes Validate.
+// and both remote apps registered, so it passes Validate.
 func validConfig() Config {
 	cfg := Default()
-	cfg.APIProxy.StudentInsightsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3002"}
-	cfg.APIProxy.PostsBaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:3003"}
-	cfg.APIProxy.StudentInsightsSigningKey = "a-string-secret-at-least-256-bits-long"
-	cfg.APIProxy.PostsSigningKey = "a-string-secret-at-least-256-bits-long"
-	cfg.OIDC = OIDCConfig{
+	cfg.Edupass = EdupassConfig{
 		IssuerURL:    &url.URL{Scheme: "http", Host: "localhost:9000"},
 		AuthURL:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
 		TokenURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
-		JWKSURI:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
+		JWKSURL:      &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
 		ClientID:     "teacher-workspace",
 		ClientSecret: "teacher-workspace-secret",
 		RedirectURL:  &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
 	}
+	cfg.RemoteApps.PostsManifestURL = &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"}
+	cfg.RemoteApps.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com"}
+	cfg.RemoteApps.PostsBackendSigningKey = "a-string-secret-at-least-256-bits-long"
+	cfg.RemoteApps.StudentInsightsManifestURL = &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"}
+	cfg.RemoteApps.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com"}
+	cfg.RemoteApps.StudentInsightsBackendSigningKey = "a-string-secret-at-least-256-bits-long"
 
 	return cfg
 }
@@ -201,9 +205,11 @@ func TestConfig_Validate(t *testing.T) {
 				want: `TW_BUILD_DIR does not exist: "testdata/does-not-exist"`,
 			},
 			{
-				name:   "remote manifest URL with a non-HTTP scheme",
-				mutate: func(c *Config) { c.Remote.PostsManifestURL = "ftp://pg.test/mf-manifest.json" },
-				want:   `TW_REMOTE_POSTS_MURL must use scheme http or https; got "ftp://pg.test/mf-manifest.json"`,
+				name: "remote manifest URL with a non-HTTP scheme",
+				mutate: func(c *Config) {
+					c.RemoteApps.PostsManifestURL = &url.URL{Scheme: "ftp", Host: "posts.example.com", Path: "/mf-manifest.json"}
+				},
+				want: `TW_REMOTE_POSTS_MANIFEST_URL must use scheme http or https; got "ftp://posts.example.com/mf-manifest.json"`,
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
@@ -253,18 +259,17 @@ func TestConfig_Validate(t *testing.T) {
 	t.Run("reports multiple invalid fields in one error", func(t *testing.T) {
 		cfg := validConfig()
 		cfg.Env = "staging"
-		cfg.Remote.PostsManifestURL = "ftp://pg.test/mf-manifest.json"
 		cfg.Server.Port = 0
 		cfg.Session.Name = ""
-		cfg.APIProxy.PostsBaseURL = nil
-		cfg.OIDC.ClientID = ""
+		cfg.Edupass.ClientID = ""
+		cfg.RemoteApps.PostsManifestURL = &url.URL{Scheme: "ftp", Host: "posts.example.com", Path: "/mf-manifest.json"}
 
 		err := cfg.Validate()
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		for _, want := range []string{"TW_ENV", "TW_REMOTE_POSTS_MURL", "TW_SERVER_PORT", "TW_SESSION_NAME", "TW_API_PROXY_POSTS_BASE_URL", "TW_OIDC_CLIENT_ID"} {
+		for _, want := range []string{"TW_ENV", "TW_SERVER_PORT", "TW_SESSION_NAME", "TW_EDUPASS_CLIENT_ID", "TW_REMOTE_POSTS_MANIFEST_URL"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("want err: containing %q; got: %q", want, err)
 			}
@@ -609,148 +614,15 @@ func TestSessionValkeyConfig_validate(t *testing.T) {
 	})
 }
 
-func TestAPIProxyConfig_validate(t *testing.T) {
-	t.Run("accepts HTTP and HTTPS base URLs", func(t *testing.T) {
-		for _, scheme := range []string{"http", "https"} {
-			t.Run(scheme, func(t *testing.T) {
-				cfgAPIProxy := validConfig().APIProxy
-				cfgAPIProxy.StudentInsightsBaseURL = &url.URL{Scheme: scheme, Host: "student-insights.example.com"}
-				cfgAPIProxy.PostsBaseURL = &url.URL{Scheme: scheme, Host: "posts.example.com"}
-
-				if err := cfgAPIProxy.validate(); err != nil {
-					t.Errorf("want err: nil; got: %v", err)
-				}
-			})
-		}
-	})
-
-	t.Run("accepts valid values", func(t *testing.T) {
-		for _, tt := range []struct {
-			name   string
-			mutate func(*APIProxyConfig)
-		}{
-			{
-				name:   "student insights signing key of exactly 32 bytes",
-				mutate: func(c *APIProxyConfig) { c.StudentInsightsSigningKey = strings.Repeat("k", 32) },
-			},
-			{
-				name:   "posts signing key of exactly 32 bytes",
-				mutate: func(c *APIProxyConfig) { c.PostsSigningKey = strings.Repeat("k", 32) },
-			},
-			{
-				name:   "token TTL of exactly 1s",
-				mutate: func(c *APIProxyConfig) { c.TokenTTL = time.Second },
-			},
-		} {
-			t.Run(tt.name, func(t *testing.T) {
-				cfg := validConfig().APIProxy
-				tt.mutate(&cfg)
-
-				if err := cfg.validate(); err != nil {
-					t.Errorf("want err: nil; got: %v", err)
-				}
-			})
-		}
-	})
-
-	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
-			name   string
-			mutate func(*APIProxyConfig)
-			want   string
-		}{
-			{
-				name:   "missing student insights base URL",
-				mutate: func(c *APIProxyConfig) { c.StudentInsightsBaseURL = nil },
-				want:   "TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL is required",
-			},
-			{
-				name:   "student insights base URL with a non-HTTP scheme",
-				mutate: func(c *APIProxyConfig) { c.StudentInsightsBaseURL = &url.URL{Scheme: "ftp", Host: "127.0.0.1:3002"} },
-				want:   `TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL must use scheme http or https; got "ftp://127.0.0.1:3002"`,
-			},
-			{
-				name:   "student insights base URL without a host",
-				mutate: func(c *APIProxyConfig) { c.StudentInsightsBaseURL = &url.URL{Scheme: "http"} },
-				want:   `TW_API_PROXY_STUDENT_INSIGHTS_BASE_URL must include host[:port]; got "http:"`,
-			},
-			{
-				name:   "missing posts base URL",
-				mutate: func(c *APIProxyConfig) { c.PostsBaseURL = nil },
-				want:   "TW_API_PROXY_POSTS_BASE_URL is required",
-			},
-			{
-				name:   "posts base URL with a non-HTTP scheme",
-				mutate: func(c *APIProxyConfig) { c.PostsBaseURL = &url.URL{Scheme: "ftp", Host: "127.0.0.1:3003"} },
-				want:   `TW_API_PROXY_POSTS_BASE_URL must use scheme http or https; got "ftp://127.0.0.1:3003"`,
-			},
-			{
-				name:   "posts base URL without a host",
-				mutate: func(c *APIProxyConfig) { c.PostsBaseURL = &url.URL{Scheme: "http"} },
-				want:   `TW_API_PROXY_POSTS_BASE_URL must include host[:port]; got "http:"`,
-			},
-			{
-				name:   "empty student insights signing key",
-				mutate: func(c *APIProxyConfig) { c.StudentInsightsSigningKey = "" },
-				want:   "TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY is required",
-			},
-			{
-				name:   "short student insights signing key",
-				mutate: func(c *APIProxyConfig) { c.StudentInsightsSigningKey = strings.Repeat("k", 31) },
-				want:   "TW_API_PROXY_STUDENT_INSIGHTS_SIGNING_KEY must be at least 32 bytes; got 31",
-			},
-			{
-				name:   "empty posts signing key",
-				mutate: func(c *APIProxyConfig) { c.PostsSigningKey = "" },
-				want:   "TW_API_PROXY_POSTS_SIGNING_KEY is required",
-			},
-			{
-				name:   "short posts signing key",
-				mutate: func(c *APIProxyConfig) { c.PostsSigningKey = strings.Repeat("k", 31) },
-				want:   "TW_API_PROXY_POSTS_SIGNING_KEY must be at least 32 bytes; got 31",
-			},
-			{
-				name:   "zero token TTL",
-				mutate: func(c *APIProxyConfig) { c.TokenTTL = 0 },
-				want:   "TW_API_PROXY_TOKEN_TTL must be at least 1s; got 0s",
-			},
-			{
-				name:   "negative token TTL",
-				mutate: func(c *APIProxyConfig) { c.TokenTTL = -time.Second },
-				want:   "TW_API_PROXY_TOKEN_TTL must be at least 1s; got -1s",
-			},
-			{
-				name:   "sub-second token TTL",
-				mutate: func(c *APIProxyConfig) { c.TokenTTL = 500 * time.Millisecond },
-				want:   "TW_API_PROXY_TOKEN_TTL must be at least 1s; got 500ms",
-			},
-		} {
-			t.Run(tt.name, func(t *testing.T) {
-				cfg := validConfig().APIProxy
-				tt.mutate(&cfg)
-
-				err := cfg.validate()
-
-				if err == nil {
-					t.Fatal("want err: non-nil; got: nil")
-				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
-				}
-			})
-		}
-	})
-}
-
-func TestOIDCConfig_validate(t *testing.T) {
+func TestEdupassConfig_validate(t *testing.T) {
 	t.Run("accepts HTTP and HTTPS URLs", func(t *testing.T) {
 		for _, scheme := range []string{"http", "https"} {
 			t.Run(scheme, func(t *testing.T) {
-				cfg := validConfig().OIDC
+				cfg := validConfig().Edupass
 				cfg.IssuerURL = &url.URL{Scheme: scheme, Host: "localhost:9000"}
 				cfg.AuthURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/authorize"}
 				cfg.TokenURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/token"}
-				cfg.JWKSURI = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/jwks"}
+				cfg.JWKSURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/jwks"}
 				cfg.RedirectURL = &url.URL{Scheme: scheme, Host: "localhost:3000", Path: "/auth/edupass/callback"}
 
 				if err := cfg.validate(); err != nil {
@@ -763,97 +635,97 @@ func TestOIDCConfig_validate(t *testing.T) {
 	t.Run("rejects invalid values", func(t *testing.T) {
 		for _, tt := range []struct {
 			name   string
-			mutate func(*OIDCConfig)
+			mutate func(*EdupassConfig)
 			want   string
 		}{
 			{
 				name:   "missing issuer URL",
-				mutate: func(c *OIDCConfig) { c.IssuerURL = nil },
-				want:   "TW_OIDC_ISSUER_URL is required",
+				mutate: func(c *EdupassConfig) { c.IssuerURL = nil },
+				want:   "TW_EDUPASS_ISSUER_URL is required",
 			},
 			{
 				name:   "issuer URL with a non-HTTP scheme",
-				mutate: func(c *OIDCConfig) { c.IssuerURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
-				want:   "TW_OIDC_ISSUER_URL must use scheme http or https",
+				mutate: func(c *EdupassConfig) { c.IssuerURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
+				want:   "TW_EDUPASS_ISSUER_URL must use scheme http or https",
 			},
 			{
 				name:   "issuer URL without a host",
-				mutate: func(c *OIDCConfig) { c.IssuerURL = &url.URL{Scheme: "http"} },
-				want:   "TW_OIDC_ISSUER_URL must include host",
+				mutate: func(c *EdupassConfig) { c.IssuerURL = &url.URL{Scheme: "http"} },
+				want:   "TW_EDUPASS_ISSUER_URL must include host",
 			},
 			{
 				name:   "missing auth URL",
-				mutate: func(c *OIDCConfig) { c.AuthURL = nil },
-				want:   "TW_OIDC_AUTH_URL is required",
+				mutate: func(c *EdupassConfig) { c.AuthURL = nil },
+				want:   "TW_EDUPASS_AUTH_URL is required",
 			},
 			{
 				name:   "auth URL with a non-HTTP scheme",
-				mutate: func(c *OIDCConfig) { c.AuthURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
-				want:   "TW_OIDC_AUTH_URL must use scheme http or https",
+				mutate: func(c *EdupassConfig) { c.AuthURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
+				want:   "TW_EDUPASS_AUTH_URL must use scheme http or https",
 			},
 			{
 				name:   "auth URL without a host",
-				mutate: func(c *OIDCConfig) { c.AuthURL = &url.URL{Scheme: "http"} },
-				want:   "TW_OIDC_AUTH_URL must include host",
+				mutate: func(c *EdupassConfig) { c.AuthURL = &url.URL{Scheme: "http"} },
+				want:   "TW_EDUPASS_AUTH_URL must include host",
 			},
 			{
 				name:   "missing token URL",
-				mutate: func(c *OIDCConfig) { c.TokenURL = nil },
-				want:   "TW_OIDC_TOKEN_URL is required",
+				mutate: func(c *EdupassConfig) { c.TokenURL = nil },
+				want:   "TW_EDUPASS_TOKEN_URL is required",
 			},
 			{
 				name:   "token URL with a non-HTTP scheme",
-				mutate: func(c *OIDCConfig) { c.TokenURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
-				want:   "TW_OIDC_TOKEN_URL must use scheme http or https",
+				mutate: func(c *EdupassConfig) { c.TokenURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
+				want:   "TW_EDUPASS_TOKEN_URL must use scheme http or https",
 			},
 			{
 				name:   "token URL without a host",
-				mutate: func(c *OIDCConfig) { c.TokenURL = &url.URL{Scheme: "http"} },
-				want:   "TW_OIDC_TOKEN_URL must include host",
+				mutate: func(c *EdupassConfig) { c.TokenURL = &url.URL{Scheme: "http"} },
+				want:   "TW_EDUPASS_TOKEN_URL must include host",
 			},
 			{
 				name:   "missing JWKS URI",
-				mutate: func(c *OIDCConfig) { c.JWKSURI = nil },
-				want:   "TW_OIDC_JWKS_URI is required",
+				mutate: func(c *EdupassConfig) { c.JWKSURL = nil },
+				want:   "TW_EDUPASS_JWKS_URI is required",
 			},
 			{
 				name:   "JWKS URI with a non-HTTP scheme",
-				mutate: func(c *OIDCConfig) { c.JWKSURI = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
-				want:   "TW_OIDC_JWKS_URI must use scheme http or https",
+				mutate: func(c *EdupassConfig) { c.JWKSURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
+				want:   "TW_EDUPASS_JWKS_URI must use scheme http or https",
 			},
 			{
 				name:   "JWKS URI without a host",
-				mutate: func(c *OIDCConfig) { c.JWKSURI = &url.URL{Scheme: "http"} },
-				want:   "TW_OIDC_JWKS_URI must include host",
+				mutate: func(c *EdupassConfig) { c.JWKSURL = &url.URL{Scheme: "http"} },
+				want:   "TW_EDUPASS_JWKS_URI must include host",
 			},
 			{
 				name:   "empty client ID",
-				mutate: func(c *OIDCConfig) { c.ClientID = "" },
-				want:   "TW_OIDC_CLIENT_ID is required",
+				mutate: func(c *EdupassConfig) { c.ClientID = "" },
+				want:   "TW_EDUPASS_CLIENT_ID is required",
 			},
 			{
 				name:   "empty client secret",
-				mutate: func(c *OIDCConfig) { c.ClientSecret = "" },
-				want:   "TW_OIDC_CLIENT_SECRET is required",
+				mutate: func(c *EdupassConfig) { c.ClientSecret = "" },
+				want:   "TW_EDUPASS_CLIENT_SECRET is required",
 			},
 			{
 				name:   "missing redirect URL",
-				mutate: func(c *OIDCConfig) { c.RedirectURL = nil },
-				want:   "TW_OIDC_REDIRECT_URL is required",
+				mutate: func(c *EdupassConfig) { c.RedirectURL = nil },
+				want:   "TW_EDUPASS_REDIRECT_URL is required",
 			},
 			{
 				name:   "redirect URL with a non-HTTP scheme",
-				mutate: func(c *OIDCConfig) { c.RedirectURL = &url.URL{Scheme: "ftp", Host: "localhost:3000"} },
-				want:   "TW_OIDC_REDIRECT_URL must use scheme http or https",
+				mutate: func(c *EdupassConfig) { c.RedirectURL = &url.URL{Scheme: "ftp", Host: "localhost:3000"} },
+				want:   "TW_EDUPASS_REDIRECT_URL must use scheme http or https",
 			},
 			{
 				name:   "redirect URL without a host",
-				mutate: func(c *OIDCConfig) { c.RedirectURL = &url.URL{Scheme: "http"} },
-				want:   "TW_OIDC_REDIRECT_URL must include host",
+				mutate: func(c *EdupassConfig) { c.RedirectURL = &url.URL{Scheme: "http"} },
+				want:   "TW_EDUPASS_REDIRECT_URL must include host",
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
-				cfg := validConfig().OIDC
+				cfg := validConfig().Edupass
 				tt.mutate(&cfg)
 
 				err := cfg.validate()
@@ -869,22 +741,64 @@ func TestOIDCConfig_validate(t *testing.T) {
 	})
 }
 
-func TestRemoteConfig_validate(t *testing.T) {
-	t.Run("accepts empty manifest URLs", func(t *testing.T) {
-		cfg := RemoteConfig{}
+func TestRemoteAppsConfig_validate(t *testing.T) {
+	t.Run("accepts no remote apps", func(t *testing.T) {
+		cfg := Default().RemoteApps
 
 		if err := cfg.validate(); err != nil {
 			t.Errorf("want err: nil; got: %v", err)
 		}
 	})
 
-	t.Run("accepts HTTP and HTTPS manifest URLs", func(t *testing.T) {
+	t.Run("accepts HTTP and HTTPS URLs", func(t *testing.T) {
 		for _, scheme := range []string{"http", "https"} {
 			t.Run(scheme, func(t *testing.T) {
-				cfg := RemoteConfig{
-					PostsManifestURL:           scheme + "://pg.test/mf-manifest.json",
-					StudentInsightsManifestURL: scheme + "://si.test/mf-manifest.json",
+				cfg := validConfig().RemoteApps
+				cfg.PostsManifestURL = &url.URL{Scheme: scheme, Host: "posts.example.com", Path: "/mf-manifest.json"}
+				cfg.PostsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.posts.example.com"}
+				cfg.StudentInsightsManifestURL = &url.URL{Scheme: scheme, Host: "student-insights.example.com", Path: "/mf-manifest.json"}
+				cfg.StudentInsightsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.student-insights.example.com"}
+
+				if err := cfg.validate(); err != nil {
+					t.Errorf("want err: nil; got: %v", err)
 				}
+			})
+		}
+	})
+
+	t.Run("accepts valid values", func(t *testing.T) {
+		for _, tt := range []struct {
+			name   string
+			mutate func(*RemoteAppsConfig)
+		}{
+			{
+				name: "posts backend base URL with a path",
+				mutate: func(c *RemoteAppsConfig) {
+					c.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com", Path: "/v1"}
+				},
+			},
+			{
+				name: "student insights backend base URL with a path",
+				mutate: func(c *RemoteAppsConfig) {
+					c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com", Path: "/v1"}
+				},
+			},
+			{
+				name:   "posts backend signing key of exactly 32 bytes",
+				mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = strings.Repeat("k", 32) },
+			},
+			{
+				name:   "student insights backend signing key of exactly 32 bytes",
+				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendSigningKey = strings.Repeat("k", 32) },
+			},
+			{
+				name:   "signed token TTL of exactly 1s",
+				mutate: func(c *RemoteAppsConfig) { c.SignedTokenTTL = time.Second },
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				cfg := validConfig().RemoteApps
+				tt.mutate(&cfg)
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -896,45 +810,145 @@ func TestRemoteConfig_validate(t *testing.T) {
 	t.Run("rejects invalid values", func(t *testing.T) {
 		for _, tt := range []struct {
 			name   string
-			mutate func(*RemoteConfig)
+			mutate func(*RemoteAppsConfig)
 			want   string
 		}{
 			{
-				name:   "unparseable posts manifest URL",
-				mutate: func(c *RemoteConfig) { c.PostsManifestURL = "http://bad host/mf-manifest.json" },
-				want:   `TW_REMOTE_POSTS_MURL must be a valid url; got "http://bad host/mf-manifest.json"`,
+				name:   "zero signed token TTL",
+				mutate: func(c *RemoteAppsConfig) { c.SignedTokenTTL = 0 },
+				want:   "TW_REMOTE_SIGNED_TOKEN_TTL must be at least 1s; got 0s",
 			},
 			{
-				name:   "posts manifest URL with a non-HTTP scheme",
-				mutate: func(c *RemoteConfig) { c.PostsManifestURL = "ftp://pg.test/mf-manifest.json" },
-				want:   `TW_REMOTE_POSTS_MURL must use scheme http or https; got "ftp://pg.test/mf-manifest.json"`,
+				name:   "negative signed token TTL",
+				mutate: func(c *RemoteAppsConfig) { c.SignedTokenTTL = -time.Second },
+				want:   "TW_REMOTE_SIGNED_TOKEN_TTL must be at least 1s; got -1s",
+			},
+			{
+				name:   "sub-second signed token TTL",
+				mutate: func(c *RemoteAppsConfig) { c.SignedTokenTTL = 500 * time.Millisecond },
+				want:   "TW_REMOTE_SIGNED_TOKEN_TTL must be at least 1s; got 500ms",
+			},
+			{
+				name:   "missing posts manifest URL",
+				mutate: func(c *RemoteAppsConfig) { c.PostsManifestURL = nil },
+				want:   "TW_REMOTE_POSTS_MANIFEST_URL is required to register the posts remote",
+			},
+			{
+				name: "posts manifest URL with a non-HTTP scheme",
+				mutate: func(c *RemoteAppsConfig) {
+					c.PostsManifestURL = &url.URL{Scheme: "ftp", Host: "posts.example.com", Path: "/mf-manifest.json"}
+				},
+				want: `TW_REMOTE_POSTS_MANIFEST_URL must use scheme http or https; got "ftp://posts.example.com/mf-manifest.json"`,
 			},
 			{
 				name:   "posts manifest URL without a host",
-				mutate: func(c *RemoteConfig) { c.PostsManifestURL = "https:///mf-manifest.json" },
-				want:   `TW_REMOTE_POSTS_MURL must include host[:port]; got "https:///mf-manifest.json"`,
+				mutate: func(c *RemoteAppsConfig) { c.PostsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"} },
+				want:   `TW_REMOTE_POSTS_MANIFEST_URL must include host[:port]; got "https:///mf-manifest.json"`,
 			},
 			{
-				name:   "unparseable student insights manifest URL",
-				mutate: func(c *RemoteConfig) { c.StudentInsightsManifestURL = "http://bad host/mf-manifest.json" },
-				want:   `TW_REMOTE_STUDENT_INSIGHTS_MURL must be a valid url; got "http://bad host/mf-manifest.json"`,
+				name:   "missing posts backend base URL",
+				mutate: func(c *RemoteAppsConfig) { c.PostsBackendBaseURL = nil },
+				want:   "TW_REMOTE_POSTS_BACKEND_BASE_URL is required to register the posts remote",
 			},
 			{
-				name:   "student insights manifest URL with a non-HTTP scheme",
-				mutate: func(c *RemoteConfig) { c.StudentInsightsManifestURL = "ftp://si.test/mf-manifest.json" },
-				want:   `TW_REMOTE_STUDENT_INSIGHTS_MURL must use scheme http or https; got "ftp://si.test/mf-manifest.json"`,
+				name: "posts backend base URL with a non-HTTP scheme",
+				mutate: func(c *RemoteAppsConfig) {
+					c.PostsBackendBaseURL = &url.URL{Scheme: "ftp", Host: "api.posts.example.com"}
+				},
+				want: `TW_REMOTE_POSTS_BACKEND_BASE_URL must use scheme http or https; got "ftp://api.posts.example.com"`,
 			},
 			{
-				name:   "student insights manifest URL without a host",
-				mutate: func(c *RemoteConfig) { c.StudentInsightsManifestURL = "https:///mf-manifest.json" },
-				want:   `TW_REMOTE_STUDENT_INSIGHTS_MURL must include host[:port]; got "https:///mf-manifest.json"`,
+				name:   "posts backend base URL without a host",
+				mutate: func(c *RemoteAppsConfig) { c.PostsBackendBaseURL = &url.URL{Scheme: "http"} },
+				want:   `TW_REMOTE_POSTS_BACKEND_BASE_URL must include host[:port]; got "http:"`,
+			},
+			{
+				name: "posts backend base URL with a query",
+				mutate: func(c *RemoteAppsConfig) {
+					c.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com", RawQuery: "key=abc"}
+				},
+				want: `TW_REMOTE_POSTS_BACKEND_BASE_URL must not include a query; got "https://api.posts.example.com?key=abc"`,
+			},
+			{
+				name: "posts backend base URL with a fragment",
+				mutate: func(c *RemoteAppsConfig) {
+					c.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com", Fragment: "frag"}
+				},
+				want: `TW_REMOTE_POSTS_BACKEND_BASE_URL must not include a fragment; got "https://api.posts.example.com#frag"`,
+			},
+			{
+				name:   "empty posts backend signing key",
+				mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = "" },
+				want:   "TW_REMOTE_POSTS_BACKEND_SIGNING_KEY is required to register the posts remote",
+			},
+			{
+				name:   "short posts backend signing key",
+				mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = strings.Repeat("k", 31) },
+				want:   "TW_REMOTE_POSTS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
+			},
+			{
+				name:   "missing student insights manifest URL",
+				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsManifestURL = nil },
+				want:   "TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL is required to register the student insights remote",
+			},
+			{
+				name: "student insights manifest URL with a non-HTTP scheme",
+				mutate: func(c *RemoteAppsConfig) {
+					c.StudentInsightsManifestURL = &url.URL{Scheme: "ftp", Host: "student-insights.example.com", Path: "/mf-manifest.json"}
+				},
+				want: `TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL must use scheme http or https; got "ftp://student-insights.example.com/mf-manifest.json"`,
+			},
+			{
+				name: "student insights manifest URL without a host",
+				mutate: func(c *RemoteAppsConfig) {
+					c.StudentInsightsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"}
+				},
+				want: `TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL must include host[:port]; got "https:///mf-manifest.json"`,
+			},
+			{
+				name:   "missing student insights backend base URL",
+				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendBaseURL = nil },
+				want:   "TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL is required to register the student insights remote",
+			},
+			{
+				name: "student insights backend base URL with a non-HTTP scheme",
+				mutate: func(c *RemoteAppsConfig) {
+					c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "ftp", Host: "api.student-insights.example.com"}
+				},
+				want: `TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must use scheme http or https; got "ftp://api.student-insights.example.com"`,
+			},
+			{
+				name:   "student insights backend base URL without a host",
+				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "http"} },
+				want:   `TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must include host[:port]; got "http:"`,
+			},
+			{
+				name: "student insights backend base URL with a query",
+				mutate: func(c *RemoteAppsConfig) {
+					c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com", RawQuery: "key=abc"}
+				},
+				want: `TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must not include a query; got "https://api.student-insights.example.com?key=abc"`,
+			},
+			{
+				name: "student insights backend base URL with a fragment",
+				mutate: func(c *RemoteAppsConfig) {
+					c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com", Fragment: "frag"}
+				},
+				want: `TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must not include a fragment; got "https://api.student-insights.example.com#frag"`,
+			},
+			{
+				name:   "empty student insights backend signing key",
+				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendSigningKey = "" },
+				want:   "TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY is required to register the student insights remote",
+			},
+			{
+				name:   "short student insights backend signing key",
+				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendSigningKey = strings.Repeat("k", 31) },
+				want:   "TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
-				cfg := RemoteConfig{
-					PostsManifestURL:           "https://pg.test/mf-manifest.json",
-					StudentInsightsManifestURL: "https://si.test/mf-manifest.json",
-				}
+				cfg := validConfig().RemoteApps
 				tt.mutate(&cfg)
 
 				err := cfg.validate()
@@ -949,21 +963,130 @@ func TestRemoteConfig_validate(t *testing.T) {
 		}
 	})
 
-	t.Run("reports both invalid manifest URLs in one error", func(t *testing.T) {
-		cfg := RemoteConfig{
-			PostsManifestURL:           "ftp://pg.test/mf-manifest.json",
-			StudentInsightsManifestURL: "https:///mf-manifest.json",
-		}
+	t.Run("requires every value of a remote app once any is set", func(t *testing.T) {
+		cfg := Default().RemoteApps
+		cfg.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com"}
 
 		err := cfg.validate()
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		for _, want := range []string{"TW_REMOTE_POSTS_MURL", "TW_REMOTE_STUDENT_INSIGHTS_MURL"} {
+		for _, want := range []string{"TW_REMOTE_POSTS_MANIFEST_URL is required", "TW_REMOTE_POSTS_BACKEND_SIGNING_KEY is required"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("want err: containing %q; got: %q", want, err)
 			}
 		}
 	})
+
+	t.Run("reports both remote apps in one error", func(t *testing.T) {
+		cfg := validConfig().RemoteApps
+		cfg.PostsManifestURL = &url.URL{Scheme: "ftp", Host: "posts.example.com", Path: "/mf-manifest.json"}
+		cfg.StudentInsightsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"}
+
+		err := cfg.validate()
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		for _, want := range []string{"TW_REMOTE_POSTS_MANIFEST_URL", "TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("want err: containing %q; got: %q", want, err)
+			}
+		}
+	})
+}
+
+func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		mutate func(*RemoteAppsConfig)
+		want   bool
+	}{
+		{
+			name:   "all values set",
+			mutate: func(c *RemoteAppsConfig) {},
+			want:   true,
+		},
+		{
+			name: "no values set",
+			mutate: func(c *RemoteAppsConfig) {
+				c.PostsManifestURL = nil
+				c.PostsBackendBaseURL = nil
+				c.PostsBackendSigningKey = ""
+			},
+			want: false,
+		},
+		{
+			name:   "missing manifest URL",
+			mutate: func(c *RemoteAppsConfig) { c.PostsManifestURL = nil },
+			want:   false,
+		},
+		{
+			name:   "missing backend base URL",
+			mutate: func(c *RemoteAppsConfig) { c.PostsBackendBaseURL = nil },
+			want:   false,
+		},
+		{
+			name:   "empty backend signing key",
+			mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = "" },
+			want:   false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig().RemoteApps
+			tt.mutate(&cfg)
+
+			if want, got := tt.want, cfg.IsPostsRegistered(); want != got {
+				t.Errorf("want: %t; got: %t", want, got)
+			}
+		})
+	}
+}
+
+func TestRemoteAppsConfig_IsStudentInsightsRegistered(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		mutate func(*RemoteAppsConfig)
+		want   bool
+	}{
+		{
+			name:   "all values set",
+			mutate: func(c *RemoteAppsConfig) {},
+			want:   true,
+		},
+		{
+			name: "no values set",
+			mutate: func(c *RemoteAppsConfig) {
+				c.StudentInsightsManifestURL = nil
+				c.StudentInsightsBackendBaseURL = nil
+				c.StudentInsightsBackendSigningKey = ""
+			},
+			want: false,
+		},
+		{
+			name:   "missing manifest URL",
+			mutate: func(c *RemoteAppsConfig) { c.StudentInsightsManifestURL = nil },
+			want:   false,
+		},
+		{
+			name:   "missing backend base URL",
+			mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendBaseURL = nil },
+			want:   false,
+		},
+		{
+			name:   "empty backend signing key",
+			mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendSigningKey = "" },
+			want:   false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig().RemoteApps
+			tt.mutate(&cfg)
+
+			if want, got := tt.want, cfg.IsStudentInsightsRegistered(); want != got {
+				t.Errorf("want: %t; got: %t", want, got)
+			}
+		})
+	}
 }

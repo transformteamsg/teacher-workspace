@@ -9,7 +9,7 @@ export default function LoginView() {
   const [searchParams] = useSearchParams();
   const errorParam = searchParams.get('error');
   const returnTo = searchParams.get('return_to');
-  const showError = errorParam === 'oauth2_failed' || errorParam === 'oauth2_callback_failed';
+  const showError = errorParam === 'oauth2_callback_failed';
 
   const loginHref = returnTo
     ? `/auth/edupass?return_to=${encodeURIComponent(returnTo)}`

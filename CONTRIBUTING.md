@@ -93,14 +93,14 @@ Posts and Groups are served by the `pg` remote, and Student Insights by `si`. Ne
 Point the host at a remote running locally, where the Parents Gateway dev server defaults to port 3004:
 
 ```bash
-TW_REMOTE_POSTS_MURL=http://127.0.0.1:3004/mf-manifest.json go run ./server/cmd/tw
+TW_REMOTE_POSTS_MANIFEST_URL=http://127.0.0.1:3004/mf-manifest.json go run ./server/cmd/tw
 ```
 
 Set both variables to run two remotes at once:
 
 ```bash
-TW_REMOTE_POSTS_MURL=http://127.0.0.1:3004/mf-manifest.json \
-  TW_REMOTE_STUDENT_INSIGHTS_MURL=http://127.0.0.1:3005/mf-manifest.json \
+TW_REMOTE_POSTS_MANIFEST_URL=http://127.0.0.1:3004/mf-manifest.json \
+  TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL=http://127.0.0.1:3005/mf-manifest.json \
   go run ./server/cmd/tw
 ```
 
@@ -143,7 +143,8 @@ A Go module at the root, plus a pnpm workspace covering `apps/*`.
             ├── components/    Reusable UI primitives
             ├── containers/    Route-level components
             ├── helpers/       Pure utility functions
-            └── hooks/         Custom React hooks
+            ├── hooks/         Custom React hooks
+            └── stores/        App-wide state
 ```
 
 A few conventions worth knowing:

@@ -1,312 +1,395 @@
 package handler
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"html/template"
 	"io"
+	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
-	"github.com/String-sg/teacher-workspace/server/internal/httputil"
+	"github.com/String-sg/teacher-workspace/server/internal/middleware"
+	"github.com/String-sg/teacher-workspace/server/internal/session"
 )
 
+// stubTemplate renders a fixed page, for tests that only need to know whether
+// index rendered the page rather than what it rendered.
+type stubTemplate struct{}
+
+func (stubTemplate) Execute(_ context.Context, w io.Writer, _ any) error {
+	_, err := io.WriteString(w, "<html>Hello world!</html>")
+	return err
+}
+
+// failingTemplate writes part of a page and then fails, as a template does
+// when it errors midway through rendering.
+type failingTemplate struct{}
+
+func (failingTemplate) Execute(_ context.Context, w io.Writer, _ any) error {
+	if _, err := io.WriteString(w, "<html>"); err != nil {
+		return err
+	}
+	return errors.New("template failed")
+}
+
+const (
+	preloadedStateOpenTag  = `<script type="application/json" id="preloaded-state">`
+	preloadedStateCloseTag = `</script>`
+)
+
+// preloadedStateTemplate renders the preloaded state inside a JSON script tag,
+// matching where the frontend's page embeds it.
+type preloadedStateTemplate struct {
+	tmpl *template.Template
+}
+
+func newPreloadedStateTemplate() preloadedStateTemplate {
+	return preloadedStateTemplate{
+		tmpl: template.Must(template.New("preloaded-state").Parse(preloadedStateOpenTag + "{{.}}" + preloadedStateCloseTag)),
+	}
+}
+
+func (p preloadedStateTemplate) Execute(_ context.Context, w io.Writer, data any) error {
+	return p.tmpl.Execute(w, data)
+}
+
+// newBuildDirFS creates a build directory holding one asset and a symlink to a
+// file outside it, and returns it opened with os.OpenRoot.
+func newBuildDirFS(t *testing.T) fs.FS {
+	t.Helper()
+
+	buildDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(buildDir, "static", "js"), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(buildDir, "static", "js", "index.abc123.js"), []byte("console.log('Hello world!');"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(buildDir, "static", "secret.txt")); err != nil {
+		t.Fatalf("os.Symlink: %v", err)
+	}
+
+	root, err := os.OpenRoot(buildDir)
+	if err != nil {
+		t.Fatalf("os.OpenRoot: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+
+	return root.FS()
+}
+
 func TestHandler_index(t *testing.T) {
-	t.Run("templates the dev server page for a page load in development environment", func(t *testing.T) {
-		var devServerPath string
-		devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			devServerPath = r.URL.Path
-			w.Header().Set(httputil.HeaderContentType, httputil.MIMETextHTMLCharsetUTF8)
-			_, _ = w.Write([]byte(`<html><head><script type="application/json" id="runtime-config">{{.}}</script></head><body><div id="root"></div></body></html>`))
-		}))
-		t.Cleanup(devServer.Close)
-
-		devServerURL, err := url.Parse(devServer.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
+	t.Run("proxies HMR websocket upgrade to dev server in development", func(t *testing.T) {
+		var proxiedPath string
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvDevelopment},
+			indexTemplate: stubTemplate{},
+			devServerProxy: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				proxiedPath = r.URL.Path
+			}),
 		}
 
-		h, err := New(&config.Config{
-			Env:          config.EnvDevelopment,
-			DevServerURL: devServerURL,
-			Remote:       config.RemoteConfig{PostsManifestURL: "https://pg.test/mf-manifest.json"},
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		req := httptest.NewRequest(http.MethodGet, "/dashboard?tab=posts", nil)
-		req.Header.Set("Accept", "text/html,application/xhtml+xml")
+		req := httptest.NewRequest(http.MethodGet, "/rsbuild-hmr", nil)
+		req.Header.Set("Connection", "UPGRADE")
+		req.Header.Set("Upgrade", "WEBSOCKET")
 		rec := httptest.NewRecorder()
 
-		h.index(rec, req)
+		h.index().ServeHTTP(rec, req)
 
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		want := `<html><head><script type="application/json" id="runtime-config">{"remotes":[{"name":"pg","entry":"https://pg.test/mf-manifest.json"}]}</script></head><body><div id="root"></div></body></html>`
-		if got := rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if want, got := "no-store", rec.Header().Get("Cache-Control"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		// The dev server serves one page for every route, so the shell is
-		// always fetched from its root.
-		if want, got := "/", devServerPath; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
+		if want := "/rsbuild-hmr"; want != proxiedPath {
+			t.Errorf("want: %q; got: %q", want, proxiedPath)
 		}
 	})
 
-	t.Run("answers 502 when the dev server page is not a valid template in development environment", func(t *testing.T) {
-		devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set(httputil.HeaderContentType, httputil.MIMETextHTMLCharsetUTF8)
-			_, _ = w.Write([]byte(`<html>{{</html>`))
-		}))
-		t.Cleanup(devServer.Close)
-
-		devServerURL, err := url.Parse(devServer.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		h, err := New(&config.Config{
-			Env:          config.EnvDevelopment,
-			DevServerURL: devServerURL,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Accept", "text/html")
-		rec := httptest.NewRecorder()
-
-		h.index(rec, req)
-
-		if want, got := http.StatusBadGateway, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-	})
-
-	t.Run("proxies everything but a page load in development environment", func(t *testing.T) {
-		devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("proxied:" + r.URL.Path))
-		}))
-		t.Cleanup(devServer.Close)
-
-		devServerURL, err := url.Parse(devServer.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		h, err := New(&config.Config{
-			Env:          config.EnvDevelopment,
-			DevServerURL: devServerURL,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		req := httptest.NewRequest(http.MethodGet, "/mf-manifest.json", nil)
-		req.Header.Set("Accept", "*/*")
-		rec := httptest.NewRecorder()
-
-		h.index(rec, req)
-
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if want, got := "proxied:/mf-manifest.json", rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-	})
-
-	t.Run("proxies a form submission in development environment", func(t *testing.T) {
-		devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				t.Errorf("io.ReadAll: %v", err)
-			}
-			_, _ = w.Write([]byte(r.Method + ":" + r.URL.Path + ":" + string(body)))
-		}))
-		t.Cleanup(devServer.Close)
-
-		devServerURL, err := url.Parse(devServer.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		h, err := New(&config.Config{
-			Env:          config.EnvDevelopment,
-			DevServerURL: devServerURL,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		// A form_post OIDC callback is a browser navigation, so it accepts HTML
-		// like a page load does.
-		req := httptest.NewRequest(http.MethodPost, "/auth/callback", strings.NewReader("code=abc&state=xyz"))
-		req.Header.Set("Accept", "text/html,application/xhtml+xml")
-		rec := httptest.NewRecorder()
-
-		h.index(rec, req)
-
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if want, got := "POST:/auth/callback:code=abc&state=xyz", rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-	})
-
-	t.Run("answers 502 when the dev server is unreachable in development environment", func(t *testing.T) {
-		h, err := New(&config.Config{
-			Env:          config.EnvDevelopment,
-			DevServerURL: &url.URL{Scheme: "http", Host: "127.0.0.1:1"},
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Accept", "text/html")
-		rec := httptest.NewRecorder()
-
-		h.index(rec, req)
-
-		if want, got := http.StatusBadGateway, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-	})
-
-	t.Run("serves the rendered page for all routes in production environment", func(t *testing.T) {
-		buildDir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte(`<html><head><script type="application/json" id="runtime-config">{{.}}</script></head><body><div id="root"></div></body></html>`), 0o644); err != nil {
-			t.Fatalf("os.WriteFile: %v", err)
-		}
-
-		h, err := New(&config.Config{
-			Env:      config.EnvProduction,
-			BuildDir: buildDir,
-			Remote: config.RemoteConfig{
-				PostsManifestURL:           "https://pg.test/mf-manifest.json",
-				StudentInsightsManifestURL: "https://si.test/mf-manifest.json",
+	t.Run("renders index page for non-HMR request in development", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			path   string
+			header map[string]string
+		}{
+			{
+				name: "missing Connection header",
+				path: "/rsbuild-hmr",
+				header: map[string]string{
+					"Upgrade": "websocket",
+				},
 			},
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
+			{
+				name: "non-websocket Upgrade header",
+				path: "/rsbuild-hmr",
+				header: map[string]string{
+					"Connection": "Upgrade",
+					"Upgrade":    "h2c",
+				},
+			},
+			{
+				name: "upgrade request to another path",
+				path: "/foo",
+				header: map[string]string{
+					"Connection": "Upgrade",
+					"Upgrade":    "websocket",
+				},
+			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				var proxied bool
+				h := &Handler{
+					cfg:           &config.Config{Env: config.EnvDevelopment},
+					indexTemplate: stubTemplate{},
+					devServerProxy: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						proxied = true
+					}),
+				}
+
+				ctx := middleware.WithSession(t.Context(), session.New())
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.path, nil)
+				for key, value := range test.header {
+					req.Header.Set(key, value)
+				}
+				rec := httptest.NewRecorder()
+
+				h.index().ServeHTTP(rec, req)
+
+				if proxied {
+					t.Error("want: not proxied; got: proxied")
+				}
+				if want, got := "<html>Hello world!</html>", rec.Body.String(); want != got {
+					t.Errorf("want: %q; got: %q", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("renders index page for HMR websocket upgrade in production", func(t *testing.T) {
+		var proxied bool
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction},
+			indexTemplate: stubTemplate{},
+			devServerProxy: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				proxied = true
+			}),
+		}
+
+		ctx := middleware.WithSession(t.Context(), session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/rsbuild-hmr", nil)
+		req.Header.Set("Connection", "Upgrade")
+		req.Header.Set("Upgrade", "websocket")
 		rec := httptest.NewRecorder()
 
-		h.index(rec, req)
+		h.index().ServeHTTP(rec, req)
+
+		if proxied {
+			t.Error("want: not proxied; got: proxied")
+		}
+		if want, got := "<html>Hello world!</html>", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("embeds session CSRF token in preloaded state", func(t *testing.T) {
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction},
+			indexTemplate: newPreloadedStateTemplate(),
+		}
+
+		sess := session.New()
+		ctx := middleware.WithSession(t.Context(), sess)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		h.index().ServeHTTP(rec, req)
 
 		if want, got := http.StatusOK, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
-		want := `<html><head><script type="application/json" id="runtime-config">{"remotes":[{"name":"pg","entry":"https://pg.test/mf-manifest.json"},{"name":"si","entry":"https://si.test/mf-manifest.json"}]}</script></head><body><div id="root"></div></body></html>`
-		if got := rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if want, got := httputil.MIMETextHTMLCharsetUTF8, rec.Header().Get(httputil.HeaderContentType); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if want, got := "no-store", rec.Header().Get("Cache-Control"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-	})
 
-	t.Run("embeds an empty array rather than null when no remote is configured", func(t *testing.T) {
-		buildDir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte(`<script type="application/json" id="runtime-config">{{.}}</script>`), 0o644); err != nil {
-			t.Fatalf("os.WriteFile: %v", err)
+		payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
+		var state struct {
+			CSRFToken string `json:"csrfToken"`
 		}
-
-		h, err := New(&config.Config{
-			Env:      config.EnvProduction,
-			BuildDir: buildDir,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
+		if err := json.Unmarshal([]byte(payload), &state); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
 		}
-
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
-
-		h.index(rec, req)
-
-		if want, got := `<script type="application/json" id="runtime-config">{"remotes":[]}</script>`, rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
+		if !sess.VerifyCSRFToken(state.CSRFToken) {
+			t.Errorf("want: a token the session accepts; got: %q", state.CSRFToken)
 		}
 	})
 
-	t.Run("answers 500 when the page cannot be rendered in production environment", func(t *testing.T) {
-		buildDir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte(`<html>{{.Missing}}</html>`), 0o644); err != nil {
-			t.Fatalf("os.WriteFile: %v", err)
+	t.Run("embeds configured remotes in preloaded state", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			remoteApps config.RemoteAppsConfig
+			want       string
+		}{
+			{
+				name: "all remotes configured",
+				remoteApps: config.RemoteAppsConfig{
+					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
+					PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+
+					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
+					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
+					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+				},
+				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"si","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+			},
+			{
+				name: "posts remote only",
+				remoteApps: config.RemoteAppsConfig{
+					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
+					PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+				},
+				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}]`,
+			},
+			{
+				name: "student insights remote only",
+				remoteApps: config.RemoteAppsConfig{
+					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
+					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
+					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+				},
+				want: `[{"name":"si","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+			},
+			{
+				name:       "no remotes configured",
+				remoteApps: config.RemoteAppsConfig{},
+				want:       `[]`,
+			},
 		}
 
-		h, err := New(&config.Config{
-			Env:      config.EnvProduction,
-			BuildDir: buildDir,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				h := &Handler{
+					cfg:           &config.Config{Env: config.EnvProduction, RemoteApps: test.remoteApps},
+					indexTemplate: newPreloadedStateTemplate(),
+				}
+
+				ctx := middleware.WithSession(t.Context(), session.New())
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+				rec := httptest.NewRecorder()
+
+				h.index().ServeHTTP(rec, req)
+
+				payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
+				var state struct {
+					Remotes json.RawMessage `json:"remotes"`
+				}
+				if err := json.Unmarshal([]byte(payload), &state); err != nil {
+					t.Fatalf("json.Unmarshal: %v", err)
+				}
+				if want, got := test.want, string(state.Remotes); want != got {
+					t.Errorf("want: %s; got: %s", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("responds with 500 and logs error when session is missing", func(t *testing.T) {
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction},
+			indexTemplate: stubTemplate{},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		var buf bytes.Buffer
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&buf, nil)))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
-		h.index(rec, req)
+		h.index().ServeHTTP(rec, req)
 
 		if want, got := http.StatusInternalServerError, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
+
+		var record struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+		}
+		if err := json.Unmarshal(buf.Bytes(), &record); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := "ERROR", record.Level; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "no session found in context", record.Msg; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 	})
 
-	t.Run("return 404 for an unknown environment", func(t *testing.T) {
-		h, err := New(&config.Config{}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
+	t.Run("responds with 500 and logs error when template fails", func(t *testing.T) {
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction},
+			indexTemplate: failingTemplate{},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		var buf bytes.Buffer
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&buf, nil)))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
-		h.index(rec, req)
+		h.index().ServeHTTP(rec, req)
 
-		if want, got := http.StatusNotFound, rec.Code; want != got {
+		if want, got := http.StatusInternalServerError, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if got := rec.Body.String(); strings.Contains(got, "<html>") {
+			t.Errorf("want: not containing %q; got: %q", "<html>", got)
+		}
+
+		var record struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+			Err   string `json:"err"`
+		}
+		if err := json.Unmarshal(buf.Bytes(), &record); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := "ERROR", record.Level; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "failed to execute index template", record.Msg; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if record.Err == "" {
+			t.Error("want err: non-empty; got: empty")
 		}
 	})
 }
 
 func TestHandler_static(t *testing.T) {
-	t.Run("proxy to the dev server in development environment", func(t *testing.T) {
-		devServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set(httputil.HeaderContentType, httputil.MIMETextHTMLCharsetUTF8)
-			_, _ = w.Write([]byte("proxied:" + r.URL.Path))
-		}))
-		t.Cleanup(devServer.Close)
-
-		devServerURL, err := url.Parse(devServer.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		h, err := New(&config.Config{
-			Env:          config.EnvDevelopment,
-			DevServerURL: devServerURL,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
+	t.Run("proxies to dev server in development", func(t *testing.T) {
+		var proxiedPath string
+		h := &Handler{
+			cfg: &config.Config{Env: config.EnvDevelopment},
+			devServerProxy: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				proxiedPath = r.URL.Path
+			}),
 		}
 
 		req := httptest.NewRequest(http.MethodGet, "/static/js/index.js", nil)
@@ -314,32 +397,15 @@ func TestHandler_static(t *testing.T) {
 
 		h.static(rec, req)
 
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if want, got := "proxied:/static/js/index.js", rec.Body.String(); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
+		if want := "/static/js/index.js"; want != proxiedPath {
+			t.Errorf("want: %q; got: %q", want, proxiedPath)
 		}
 	})
 
-	t.Run("serve hashed asset in production environment", func(t *testing.T) {
-		buildDir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>Hello world!</html>"), 0o644); err != nil {
-			t.Fatalf("os.WriteFile: %v", err)
-		}
-		if err := os.MkdirAll(filepath.Join(buildDir, "static", "js"), 0o755); err != nil {
-			t.Fatalf("os.MkdirAll: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(buildDir, "static", "js", "index.abc123.js"), []byte("console.log('Hello world!');"), 0o644); err != nil {
-			t.Fatalf("os.WriteFile: %v", err)
-		}
-
-		h, err := New(&config.Config{
-			Env:      config.EnvProduction,
-			BuildDir: buildDir,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
+	t.Run("serves file from build directory in production", func(t *testing.T) {
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction},
+			prdFileSystem: newBuildDirFS(t),
 		}
 
 		req := httptest.NewRequest(http.MethodGet, "/static/js/index.abc123.js", nil)
@@ -355,38 +421,41 @@ func TestHandler_static(t *testing.T) {
 		}
 	})
 
-	t.Run("return 404 for a directory in production environment", func(t *testing.T) {
-		buildDir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte("<html>Hello world!</html>"), 0o644); err != nil {
-			t.Fatalf("os.WriteFile: %v", err)
-		}
-		if err := os.MkdirAll(filepath.Join(buildDir, "static", "js"), 0o755); err != nil {
-			t.Fatalf("os.MkdirAll: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(buildDir, "static", "js", "index.abc123.js"), []byte("console.log('Hello world!');"), 0o644); err != nil {
-			t.Fatalf("os.WriteFile: %v", err)
-		}
-
-		h, err := New(&config.Config{
-			Env:      config.EnvProduction,
-			BuildDir: buildDir,
-		}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
+	t.Run("responds with 404 in production", func(t *testing.T) {
 		tests := []struct {
 			name   string
 			target string
 		}{
-			{name: "static root", target: "/static/"},
-			{name: "subdirectory", target: "/static/js/"},
-			{name: "subdirectory without trailing slash", target: "/static/js"},
+			{
+				name:   "static root",
+				target: "/static/",
+			},
+			{
+				name:   "subdirectory",
+				target: "/static/js/",
+			},
+			{
+				name:   "subdirectory without trailing slash",
+				target: "/static/js",
+			},
+			{
+				name:   "missing file",
+				target: "/static/js/missing.js",
+			},
+			{
+				name:   "symlink outside build directory",
+				target: "/static/secret.txt",
+			},
 		}
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				h := &Handler{
+					cfg:           &config.Config{Env: config.EnvProduction},
+					prdFileSystem: newBuildDirFS(t),
+				}
+
+				req := httptest.NewRequest(http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
 
 				h.static(rec, req)
@@ -398,58 +467,25 @@ func TestHandler_static(t *testing.T) {
 		}
 	})
 
-	t.Run("return 404 for an unknown environment", func(t *testing.T) {
-		h, err := New(&config.Config{}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
+	t.Run("responds with 404 in unrecognised environment", func(t *testing.T) {
+		var proxied bool
+		h := &Handler{
+			cfg: &config.Config{Env: "staging"},
+			devServerProxy: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				proxied = true
+			}),
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/static/js/missing.js", nil)
+		req := httptest.NewRequest(http.MethodGet, "/static/js/index.js", nil)
 		rec := httptest.NewRecorder()
 
 		h.static(rec, req)
 
+		if proxied {
+			t.Error("want: not proxied; got: proxied")
+		}
 		if want, got := http.StatusNotFound, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
-		}
-	})
-}
-
-func TestNewRuntimeConfig(t *testing.T) {
-	t.Run("maps posts to pg and student insights to si in order", func(t *testing.T) {
-		got := newRuntimeConfig(config.RemoteConfig{
-			PostsManifestURL:           "https://pg.test/mf-manifest.json",
-			StudentInsightsManifestURL: "https://si.test/mf-manifest.json",
-		})
-
-		want := []runtimeRemote{
-			{Name: "pg", Entry: "https://pg.test/mf-manifest.json"},
-			{Name: "si", Entry: "https://si.test/mf-manifest.json"},
-		}
-		if !slices.Equal(want, got.Remotes) {
-			t.Errorf("want: %v; got: %v", want, got.Remotes)
-		}
-	})
-
-	t.Run("skips a remote whose url is empty", func(t *testing.T) {
-		got := newRuntimeConfig(config.RemoteConfig{
-			StudentInsightsManifestURL: "https://si.test/mf-manifest.json",
-		})
-
-		want := []runtimeRemote{{Name: "si", Entry: "https://si.test/mf-manifest.json"}}
-		if !slices.Equal(want, got.Remotes) {
-			t.Errorf("want: %v; got: %v", want, got.Remotes)
-		}
-	})
-
-	t.Run("returns an empty slice rather than nil when nothing is configured", func(t *testing.T) {
-		got := newRuntimeConfig(config.RemoteConfig{})
-
-		if got.Remotes == nil {
-			t.Fatal("want: non-nil; got: nil")
-		}
-		if want := 0; want != len(got.Remotes) {
-			t.Errorf("want: %d; got: %d", want, len(got.Remotes))
 		}
 	})
 }

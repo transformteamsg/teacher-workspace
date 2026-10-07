@@ -2,8 +2,9 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,384 +16,469 @@ import (
 	"time"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
+	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// newRemoteBackend starts a fake remote backend served by handler and returns
+// its URL.
+func newRemoteBackend(t *testing.T, handler http.Handler) *url.URL {
+	t.Helper()
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+
+	return serverURL
+}
+
 func TestHandler_proxy(t *testing.T) {
-	t.Run("forwards to the app's backend without the /api/<app> prefix", func(t *testing.T) {
-		postsBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("posts:" + r.URL.RequestURI()))
+	t.Run("forwards request to the remote backend without the /api/<app> prefix", func(t *testing.T) {
+		postsBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, "posts:"+r.URL.RequestURI())
 		}))
-		t.Cleanup(postsBackend.Close)
-
-		studentInsightsBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("student-insights:" + r.URL.RequestURI()))
+		studentInsightsBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, "student-insights:"+r.URL.RequestURI())
 		}))
-		t.Cleanup(studentInsightsBackend.Close)
 
-		postsBackendURL, err := url.Parse(postsBackend.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-		studentInsightsBackendURL, err := url.Parse(studentInsightsBackend.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
 
-		cfg := config.Default()
-		cfg.APIProxy.PostsBaseURL = postsBackendURL
-		cfg.APIProxy.StudentInsightsBaseURL = studentInsightsBackendURL
+					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:    postsBackendURL,
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
 
-		h, err := New(&cfg, testRP())
-		if err != nil {
-			t.Fatalf("New: %v", err)
+					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
+					StudentInsightsBackendBaseURL:    studentInsightsBackendURL,
+					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+				},
+			},
 		}
 
 		tests := []struct {
-			name string
-			app  string
-			rest string
-			want string
+			name   string
+			target string
+			want   string
 		}{
-			{name: "posts", app: "posts", rest: "/hello", want: "posts:/hello"},
-			{name: "student insights", app: "student-insights", rest: "/hello", want: "student-insights:/hello"},
-			{name: "nested path", app: "posts", rest: "/2026/08/hello", want: "posts:/2026/08/hello"},
-			{name: "app root", app: "posts", rest: "/", want: "posts:/"},
-			{name: "query string", app: "posts", rest: "/search?q=hello&page=2", want: "posts:/search?q=hello&page=2"},
-			{name: "escaped path segment", app: "posts", rest: "/a%2Fb", want: "posts:/a%2Fb"},
+			{
+				name:   "posts",
+				target: "/api/posts/hello",
+				want:   "posts:/hello",
+			},
+			{
+				name:   "student insights",
+				target: "/api/student-insights/hello",
+				want:   "student-insights:/hello",
+			},
+			{
+				name:   "nested path",
+				target: "/api/posts/2026/08/hello",
+				want:   "posts:/2026/08/hello",
+			},
+			{
+				name:   "app root",
+				target: "/api/posts/",
+				want:   "posts:/",
+			},
+			{
+				name:   "escaped path segment",
+				target: "/api/posts/a%2Fb",
+				want:   "posts:/a%2Fb",
+			},
 		}
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, "/api/"+tt.app+tt.rest, nil)
-				req.SetPathValue("app", tt.app)
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
 
-				h.proxy(rec, req)
+				h.proxy().ServeHTTP(rec, req)
 
 				if want, got := http.StatusOK, rec.Code; want != got {
 					t.Errorf("want: %d; got: %d", want, got)
 				}
-				if want, got := tt.want, rec.Body.String(); want != got {
+				if want, got := test.want, rec.Body.String(); want != got {
 					t.Errorf("want: %q; got: %q", want, got)
 				}
 			})
 		}
 	})
 
-	t.Run("answers 404 for an unknown app", func(t *testing.T) {
+	t.Run("responds with 404 when the remote app is unknown or not registered", func(t *testing.T) {
 		var calls int
-		count := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ })
+		postsBackendURL := newRemoteBackend(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			calls++
+		}))
 
-		postsBackend := httptest.NewServer(count)
-		t.Cleanup(postsBackend.Close)
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
 
-		studentInsightsBackend := httptest.NewServer(count)
-		t.Cleanup(studentInsightsBackend.Close)
-
-		postsBackendURL, err := url.Parse(postsBackend.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-		studentInsightsBackendURL, err := url.Parse(studentInsightsBackend.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		cfg := config.Default()
-		cfg.APIProxy.PostsBaseURL = postsBackendURL
-		cfg.APIProxy.StudentInsightsBaseURL = studentInsightsBackendURL
-
-		h, err := New(&cfg, testRP())
-		if err != nil {
-			t.Fatalf("New: %v", err)
+					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:    postsBackendURL,
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+				},
+			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/api/unknown-app/hello", nil)
-		req.SetPathValue("app", "unknown-app")
-		rec := httptest.NewRecorder()
-
-		h.proxy(rec, req)
-
-		if want, got := http.StatusNotFound, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
+		tests := []struct {
+			name   string
+			target string
+		}{
+			{
+				name:   "unknown app",
+				target: "/api/unknown/hello",
+			},
+			{
+				name:   "unregistered app",
+				target: "/api/student-insights/hello",
+			},
+			{
+				name:   "missing path after app",
+				target: "/api/posts",
+			},
+			{
+				name:   "missing app",
+				target: "/api/",
+			},
 		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, test.target, nil)
+				rec := httptest.NewRecorder()
+
+				h.proxy().ServeHTTP(rec, req)
+
+				if want, got := http.StatusNotFound, rec.Code; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
+
+				var body struct {
+					Message string `json:"message"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+					t.Fatalf("json.Unmarshal: %v", err)
+				}
+				if want, got := http.StatusText(http.StatusNotFound), body.Message; want != got {
+					t.Errorf("want: %q; got: %q", want, got)
+				}
+			})
+		}
+
 		if want := 0; want != calls {
 			t.Errorf("want: %d; got: %d", want, calls)
 		}
 	})
 
-	t.Run("answers 502 when the backend is unreachable", func(t *testing.T) {
-		backend := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-		backendURL, err := url.Parse(backend.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-		// Close the backend up front so the proxy's dial is refused.
-		backend.Close()
-
-		cfg := config.Default()
-		cfg.APIProxy.PostsBaseURL = backendURL
-
-		h, err := New(&cfg, testRP())
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
-		req.SetPathValue("app", "posts")
-		rec := httptest.NewRecorder()
-
-		h.proxy(rec, req)
-
-		if want, got := http.StatusBadGateway, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-	})
-
-	t.Run("strips the session cookie", func(t *testing.T) {
-		var forwarded http.Header
-		record := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			forwarded = r.Header.Clone()
+	t.Run("attaches a signed JWT for the remote app", func(t *testing.T) {
+		echoAuthorization := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, r.Header.Get("Authorization"))
 		})
 
-		postsBackend := httptest.NewServer(record)
-		t.Cleanup(postsBackend.Close)
-
-		postsBackendURL, err := url.Parse(postsBackend.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		cfg := config.Default()
-		cfg.APIProxy.PostsBaseURL = postsBackendURL
-
-		h, err := New(&cfg, testRP())
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
-		req.SetPathValue("app", "posts")
-		req.AddCookie(&http.Cookie{Name: "session-name", Value: "session-value"})
-		rec := httptest.NewRecorder()
-
-		h.proxy(rec, req)
-
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if got := forwarded.Get("Cookie"); got != "" {
-			t.Errorf("want: empty; got: %q", got)
-		}
-	})
-
-	t.Run("attaches a signed JWT to outbound request", func(t *testing.T) {
-		var receivedReqHeaders http.Header
-		studentInsightsBackend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			receivedReqHeaders = r.Header
-		}))
-		t.Cleanup(studentInsightsBackend.Close)
-		postsBackend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			receivedReqHeaders = r.Header
-		}))
-		t.Cleanup(postsBackend.Close)
-		studentInsightsBackendURL, err := url.Parse(studentInsightsBackend.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-		postsBackendURL, err := url.Parse(postsBackend.URL)
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-
-		cfg := config.Default()
-		cfg.APIProxy.StudentInsightsBaseURL = studentInsightsBackendURL
-		cfg.APIProxy.PostsBaseURL = postsBackendURL
-		cfg.APIProxy.StudentInsightsSigningKey = "student-insights-string-secret-at-least-256-bits-long"
-		cfg.APIProxy.PostsSigningKey = "posts-string-secret-at-least-256-bits-long"
-
+		// The JWT parser returns claim times in time.Local, so now is built in it
+		// too for the claims to compare deeply equal.
+		now := time.Date(2026, time.September, 29, 10, 0, 0, 0, time.Local)
 		ttl := 2 * time.Minute
-		cfg.APIProxy.TokenTTL = ttl
+		h := &Handler{
+			now: func() time.Time { return now },
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: ttl,
 
-		h, err := New(&cfg, testRP())
-		if err != nil {
-			t.Fatalf("New: %v", err)
+					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+
+					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
+					StudentInsightsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
+					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+				},
+			},
 		}
 
-		currentTime := time.Now()
 		tests := []struct {
-			app        string
-			signingKey string
-			wantClaims jwt.RegisteredClaims
+			name         string
+			target       string
+			signingKey   string
+			wantAudience jwt.ClaimStrings
 		}{
 			{
-				app:        "student-insights",
-				signingKey: "student-insights-string-secret-at-least-256-bits-long",
-				wantClaims: jwt.RegisteredClaims{
-					Issuer:    "TW",
-					Audience:  jwt.ClaimStrings{"si"},
-					IssuedAt:  jwt.NewNumericDate(currentTime),
-					ExpiresAt: jwt.NewNumericDate(currentTime.Add(ttl)),
-				},
+				name:         "posts",
+				target:       "/api/posts/hello",
+				signingKey:   "posts-string-secret-at-least-256-bits-long",
+				wantAudience: jwt.ClaimStrings{"pg"},
 			},
 			{
-				app:        "posts",
-				signingKey: "posts-string-secret-at-least-256-bits-long",
-				wantClaims: jwt.RegisteredClaims{
-					Issuer:    "TW",
-					Audience:  jwt.ClaimStrings{"pg"},
-					IssuedAt:  jwt.NewNumericDate(currentTime),
-					ExpiresAt: jwt.NewNumericDate(currentTime.Add(ttl)),
-				},
+				name:         "student insights",
+				target:       "/api/student-insights/hello",
+				signingKey:   "student-insights-string-secret-at-least-256-bits-long",
+				wantAudience: jwt.ClaimStrings{"si"},
 			},
 		}
 
-		for _, tt := range tests {
-			req := httptest.NewRequest(http.MethodGet, "/api/"+tt.app+"/hello", nil)
-			req.SetPathValue("app", tt.app)
-			rec := httptest.NewRecorder()
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, test.target, nil)
+				rec := httptest.NewRecorder()
 
-			h.proxy(rec, req)
+				h.proxy().ServeHTTP(rec, req)
 
-			if want, got := http.StatusOK, rec.Code; want != got {
-				t.Errorf("want: %d; got: %d", want, got)
-			}
-			token, ok := strings.CutPrefix(receivedReqHeaders.Get("Authorization"), "Bearer ")
-			if !ok {
-				t.Fatalf("want: not empty; got: %q", receivedReqHeaders.Get("Authorization"))
-			}
+				if want, got := http.StatusOK, rec.Code; want != got {
+					t.Errorf("want: %d; got: %d", want, got)
+				}
 
-			var claims jwt.RegisteredClaims
-			if _, err := jwt.ParseWithClaims(token, &claims,
-				func(*jwt.Token) (any, error) {
-					return []byte(tt.signingKey), nil
-				},
-				jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
-			); err != nil {
-				t.Fatalf("want err: nil; got: %v", err)
-			}
+				token, ok := strings.CutPrefix(rec.Body.String(), "Bearer ")
+				if !ok {
+					t.Fatalf("want: containing %q; got: %q", "Bearer ", rec.Body.String())
+				}
 
-			if want, got := tt.wantClaims, claims; !reflect.DeepEqual(want, got) {
-				t.Errorf("want: %+v; got: %+v", want, got)
-			}
+				var claims jwt.RegisteredClaims
+				if _, err := jwt.ParseWithClaims(token, &claims,
+					func(*jwt.Token) (any, error) {
+						return []byte(test.signingKey), nil
+					},
+					jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+					jwt.WithTimeFunc(func() time.Time { return now }),
+				); err != nil {
+					t.Fatalf("want err: nil; got: %v", err)
+				}
+
+				want := jwt.RegisteredClaims{
+					Issuer:    "tw",
+					Audience:  test.wantAudience,
+					IssuedAt:  jwt.NewNumericDate(now),
+					ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+				}
+				if !reflect.DeepEqual(want, claims) {
+					t.Errorf("want: %+v; got: %+v", want, claims)
+				}
+			})
 		}
 	})
 }
 
-func TestProxyErrorHandler(t *testing.T) {
-	t.Run("answers 502", func(t *testing.T) {
-		previous := slog.Default()
-		slog.SetDefault(slog.New(slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError})))
-		t.Cleanup(func() { slog.SetDefault(previous) })
+func TestNewRemoteBackendProxy(t *testing.T) {
+	t.Run("proxies request to the remote backend", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			_, _ = fmt.Fprintf(w, "%s %s %s", r.Method, r.URL.RequestURI(), body)
+		}))
 
-		// ReverseProxy calls the error handler with the outbound request: its
-		// RequestURI is still what the client asked for, while its URL has been
-		// rewritten to the backend.
-		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello", nil)
-		backendURL, err := url.Parse("http://backend.internal:8080/hello")
+		req := httptest.NewRequest(http.MethodPost, "/search?q=hello&page=2", strings.NewReader(`{"title":"Hello"}`))
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if want, got := `POST /search?q=hello&page=2 {"title":"Hello"}`, rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("prepends the base URL path", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, r.URL.RequestURI())
+		}))
+		remoteBackendURL.Path = "/v1"
+
+		req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+
+		if want, got := "/v1/hello", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("sets Authorization from the signed token in context", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, strings.Join(r.Header.Values("Authorization"), ","))
+		}))
+
+		ctx := context.WithValue(t.Context(), ctxKeySignedToken{}, "test-token")
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello", nil)
+		req.Header.Set("Authorization", "Bearer forged")
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+
+		if want, got := "Bearer test-token", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("strips cookies from the forwarded request", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, strings.Join(r.Header.Values("Cookie"), ","))
+		}))
+
+		req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+		req.AddCookie(&http.Cookie{Name: "session-name", Value: "session-value"})
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want: %d; got: %d", want, got)
+		}
+		if got := rec.Body.String(); got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+	})
+
+	t.Run("strips Set-Cookie from the remote backend response", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.SetCookie(w, &http.Cookie{Name: "backend-name", Value: "backend-value"})
+			w.Header().Set("X-Custom", "kept")
+			_, _ = io.WriteString(w, "Hello world!")
+		}))
+
+		req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+
+		if got := rec.Header().Values("Set-Cookie"); len(got) != 0 {
+			t.Errorf("want: empty; got: %q", got)
+		}
+		if want, got := "kept", rec.Header().Get("X-Custom"); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+		if want, got := "Hello world!", rec.Body.String(); want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("responds with 502 and logs error when the remote backend is unreachable", func(t *testing.T) {
+		server := httptest.NewServer(http.NotFoundHandler())
+		remoteBackendURL, err := url.Parse(server.URL)
 		if err != nil {
 			t.Fatalf("url.Parse: %v", err)
 		}
-		req.URL = backendURL
+		server.Close()
+		remoteBackendURL.Path = "/v1"
+
+		var buf bytes.Buffer
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&buf, nil)))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/hello", nil)
 		rec := httptest.NewRecorder()
 
-		proxyErrorHandler(rec, req, errors.New("connection refused"))
+		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
 
 		if want, got := http.StatusBadGateway, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
-	})
 
-	t.Run("logs the failure", func(t *testing.T) {
-		type logEntry struct {
-			Level   string `json:"level"`
-			Msg     string `json:"msg"`
-			Method  string `json:"method"`
-			Path    string `json:"path"`
-			Backend string `json:"backend"`
-			Err     string `json:"err"`
+		var body struct {
+			Message string `json:"message"`
 		}
-
-		var logs bytes.Buffer
-
-		previous := slog.Default()
-		slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelError})))
-		t.Cleanup(func() { slog.SetDefault(previous) })
-
-		req := httptest.NewRequest(http.MethodPost, "/api/posts/hello", nil)
-		backendURL, err := url.Parse("http://backend.internal:8080/hello")
-		if err != nil {
-			t.Fatalf("url.Parse: %v", err)
-		}
-		req.URL = backendURL
-		rec := httptest.NewRecorder()
-
-		proxyErrorHandler(rec, req, errors.New("connection refused"))
-
-		var entry logEntry
-		if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("json.Unmarshal: %v", err)
 		}
+		if want, got := http.StatusText(http.StatusBadGateway), body.Message; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
 
-		if want, got := "ERROR", entry.Level; want != got {
+		var record struct {
+			Level            string `json:"level"`
+			Msg              string `json:"msg"`
+			Method           string `json:"method"`
+			Path             string `json:"path"`
+			RemoteBackendURL string `json:"remote_backend_url"`
+			Err              string `json:"err"`
+		}
+		if err := json.Unmarshal(buf.Bytes(), &record); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := "ERROR", record.Level; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if want, got := "failed to proxy request", entry.Msg; want != got {
+		if want, got := "failed to proxy request", record.Msg; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if want, got := http.MethodPost, entry.Method; want != got {
+		if want, got := http.MethodPost, record.Method; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		// The path the client asked for, not the prefix-stripped one.
-		if want, got := "/api/posts/hello", entry.Path; want != got {
+		if want, got := "/hello", record.Path; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		// The rewritten backend URL, not the one the client asked for.
-		if want, got := "http://backend.internal:8080/hello", entry.Backend; want != got {
+		if want, got := remoteBackendURL.String()+"/hello", record.RemoteBackendURL; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if want, got := "connection refused", entry.Err; want != got {
-			t.Errorf("want: %q; got: %q", want, got)
+		if record.Err == "" {
+			t.Error("want err: non-empty; got: empty")
 		}
 	})
 
 	t.Run("keeps the query string out of the logs", func(t *testing.T) {
-		type logEntry struct {
-			Path    string `json:"path"`
-			Backend string `json:"backend"`
-		}
-
-		var logs bytes.Buffer
-
-		previous := slog.Default()
-		slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelError})))
-		t.Cleanup(func() { slog.SetDefault(previous) })
-
-		req := httptest.NewRequest(http.MethodGet, "/api/posts/hello?token=secret", nil)
-		backendURL, err := url.Parse("http://backend.internal:8080/hello?token=secret")
+		server := httptest.NewServer(http.NotFoundHandler())
+		remoteBackendURL, err := url.Parse(server.URL)
 		if err != nil {
 			t.Fatalf("url.Parse: %v", err)
 		}
-		req.URL = backendURL
+		server.Close()
+
+		var buf bytes.Buffer
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&buf, nil)))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello?token=secret", nil)
 		rec := httptest.NewRecorder()
 
-		proxyErrorHandler(rec, req, errors.New("connection refused"))
+		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
 
-		if got := logs.String(); strings.Contains(got, "secret") {
-			t.Errorf("want logs: without %q; got: %q", "secret", got)
+		if got := buf.String(); strings.Contains(got, "secret") {
+			t.Errorf("want: not containing %q; got: %q", "secret", got)
 		}
 
-		var entry logEntry
-		if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+		var record struct {
+			Path             string `json:"path"`
+			RemoteBackendURL string `json:"remote_backend_url"`
+		}
+		if err := json.Unmarshal(buf.Bytes(), &record); err != nil {
 			t.Fatalf("json.Unmarshal: %v", err)
 		}
-
-		if want, got := "/api/posts/hello", entry.Path; want != got {
+		if want, got := "/hello", record.Path; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if want, got := "http://backend.internal:8080/hello", entry.Backend; want != got {
+		if want, got := remoteBackendURL.String()+"/hello", record.RemoteBackendURL; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("writes no response and logs nothing when the client cancels the request", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.NotFoundHandler())
+
+		var buf bytes.Buffer
+		ctx, cancel := context.WithCancel(middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&buf, nil))))
+		cancel()
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello", nil)
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+
+		if got := rec.Body.String(); got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+		if got := buf.String(); got != "" {
+			t.Errorf("want: empty; got: %q", got)
 		}
 	})
 }

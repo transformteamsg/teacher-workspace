@@ -2,40 +2,16 @@ import { registerRemotes } from '@module-federation/enhanced/runtime';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { preloadedState } from '~/stores/preloaded-state';
+
 import './App.css';
 import App from './App';
 
-interface RuntimeRemote {
-  name: string;
-  entry: string;
-}
-
-interface RuntimeConfig {
-  remotes: RuntimeRemote[];
-}
-
-// A page served without the block, such as one loaded straight from the rsbuild
-// dev server, runs with no remotes and the routes that need one show their fallback.
-function readRuntimeConfig(): RuntimeConfig {
-  try {
-    const source = document.getElementById('runtime-config')?.textContent ?? '';
-    const config = (JSON.parse(source) ?? {}) as Partial<RuntimeConfig>;
-    return { remotes: config.remotes ?? [] };
-  } catch (error: unknown) {
-    // The shell has no logger of its own, so the console is where a page served
-    // without the block, such as one loaded straight from the dev server, shows up.
-    // oxlint-disable-next-line no-console
-    console.error('Could not read the runtime config from the page; no remotes registered', error);
-    return { remotes: [] };
-  }
-}
+// Register the remotes immediately so that remote routes can load their modules.
+registerRemotes([...preloadedState.remotes]);
 
 const container = document.getElementById('root');
-if (!container) throw new Error('Root element #root not found');
-
-// Registered before the first render, so a route that lazy-loads a remote
-// always finds its entry.
-registerRemotes(readRuntimeConfig().remotes);
+if (!container) throw new Error('Page has no #root element');
 
 createRoot(container).render(
   <React.StrictMode>

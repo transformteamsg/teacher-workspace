@@ -1,114 +1,131 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
 	stdhttputil "net/http/httputil"
+	"net/url"
+	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/htmlutil"
 	"github.com/String-sg/teacher-workspace/server/internal/httputil"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
-	"github.com/String-sg/teacher-workspace/server/internal/oidc"
+	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
 )
 
-// Handler represents a handler for the application.
+var errDevServerResourceNotFound = errors.New("resource not found")
+
 type Handler struct {
 	cfg *config.Config
 
-	rp *oidc.RelyingParty
+	indexTemplate  htmlutil.Template
+	devServerProxy http.Handler
+	prdFileSystem  fs.FS
 
-	devProxy             *stdhttputil.ReverseProxy
-	studentInsightsProxy *stdhttputil.ReverseProxy
-	postsProxy           *stdhttputil.ReverseProxy
-	assets               http.Handler
-	indexTemplate        htmlutil.Template
-	runtime              runtimeConfig
+	edupassHTTPClient      *http.Client
+	edupassOAuth2Config    *oauth2.Config
+	edupassIDTokenVerifier *oidc.IDTokenVerifier
+
+	// now is the time source for signed tokens. Nil means [time.Now].
+	now func() time.Time
 }
 
-// New creates a new Handler. In production it parses index.html once, so a
-// missing or malformed page fails here rather than on the first request.
-func New(cfg *config.Config, rp *oidc.RelyingParty) (*Handler, error) {
+func New(cfg *config.Config) (*Handler, error) {
+	edupassHTTPClient := &http.Client{Timeout: 10 * time.Second}
+
 	h := &Handler{
-		cfg:     cfg,
-		runtime: newRuntimeConfig(cfg.Remote),
-		rp:      rp,
-		studentInsightsProxy: &stdhttputil.ReverseProxy{
-			Rewrite: func(pr *stdhttputil.ProxyRequest) {
-				pr.SetURL(cfg.APIProxy.StudentInsightsBaseURL)
+		cfg:               cfg,
+		edupassHTTPClient: edupassHTTPClient,
+		edupassOAuth2Config: &oauth2.Config{
+			ClientID:     cfg.Edupass.ClientID,
+			ClientSecret: cfg.Edupass.ClientSecret,
+			RedirectURL:  cfg.Edupass.RedirectURL.String(),
+			Endpoint: oauth2.Endpoint{
+				AuthURL:   cfg.Edupass.AuthURL.String(),
+				TokenURL:  cfg.Edupass.TokenURL.String(),
+				AuthStyle: oauth2.AuthStyleInParams,
 			},
-			ErrorHandler: proxyErrorHandler,
+			Scopes: []string{oidc.ScopeOpenID},
 		},
-		postsProxy: &stdhttputil.ReverseProxy{
-			Rewrite: func(pr *stdhttputil.ProxyRequest) {
-				pr.SetURL(cfg.APIProxy.PostsBaseURL)
-			},
-			ErrorHandler: proxyErrorHandler,
-		},
+		edupassIDTokenVerifier: oidc.NewVerifier(
+			cfg.Edupass.IssuerURL.String(),
+			oidc.NewRemoteKeySet(
+				oidc.ClientContext(context.Background(), edupassHTTPClient),
+				cfg.Edupass.JWKSURL.String(),
+			),
+			&oidc.Config{ClientID: cfg.Edupass.ClientID},
+		),
 	}
 
 	switch cfg.Env {
 	case config.EnvDevelopment:
-		h.devProxy = stdhttputil.NewSingleHostReverseProxy(cfg.DevServerURL)
 		h.indexTemplate = htmlutil.NewURLTemplate(cfg.DevServerURL.String())
-	case config.EnvProduction:
-		h.assets = http.FileServer(fileOnlyFS{http.Dir(cfg.BuildDir)})
 
+		h.devServerProxy = newDevServerProxy(cfg.DevServerURL)
+	case config.EnvProduction:
 		tmpl, err := htmlutil.NewFileTemplate(filepath.Join(cfg.BuildDir, "index.html"))
 		if err != nil {
-			return nil, fmt.Errorf("index.html: %w", err)
+			return nil, fmt.Errorf("load index template: %w", err)
 		}
 		h.indexTemplate = tmpl
+
+		root, err := os.OpenRoot(cfg.BuildDir)
+		if err != nil {
+			return nil, fmt.Errorf("open build directory: %w", err)
+		}
+		h.prdFileSystem = root.FS()
+	default:
+		return nil, fmt.Errorf("unsupported environment: %s", cfg.Env)
 	}
 
 	return h, nil
 }
 
-type fileOnlyFS struct {
-	http.FileSystem
-}
-
-func (fsys fileOnlyFS) Open(name string) (http.File, error) {
-	f, err := fsys.FileSystem.Open(name)
-	if err != nil {
-		return nil, err
-	}
-
-	info, err := f.Stat()
-	if err != nil {
-		_ = f.Close()
-		return nil, err
-	}
-	if info.IsDir() {
-		_ = f.Close()
-		return nil, fs.ErrNotExist
-	}
-
-	return f, nil
-}
-
-// Register registers all application routes on the given HTTP server mux.
-// Application routes are wrapped in the session middleware; static asset routes
-// are not.
-func (h *Handler) Register(mux *http.ServeMux, session middleware.Middleware) {
-	mux.HandleFunc("/static/", h.static)
-
-	// Session-scoped routes: everything registered on this sub-mux runs
-	// through the session middleware, which is applied a single time.
+// Routes returns the application's routes. Every route except static assets
+// runs through session, which must be the middleware returned by
+// [middleware.Session].
+func (h *Handler) Routes(session middleware.Middleware) http.Handler {
 	app := http.NewServeMux()
 	app.HandleFunc("GET /auth/edupass", h.authEdupass)
 	app.HandleFunc("GET /auth/edupass/callback", h.authEdupassCallback)
-	app.HandleFunc("/", h.index)
+	app.HandleFunc("/api/", h.proxy())
+	app.HandleFunc("/", h.index())
 
-	app.HandleFunc("/api/{app}/", h.proxy)
-	app.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		logger := middleware.LoggerFromContext(r.Context())
-		httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
-			Message: http.StatusText(http.StatusNotFound),
-		})
-	})
-
+	mux := http.NewServeMux()
+	mux.HandleFunc("/static/", h.static)
 	mux.Handle("/", session(app))
+
+	return mux
+}
+
+func newDevServerProxy(target *url.URL) *stdhttputil.ReverseProxy {
+	return &stdhttputil.ReverseProxy{
+		Rewrite: func(pr *stdhttputil.ProxyRequest) {
+			pr.SetURL(target)
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			if resp.StatusCode == http.StatusNotFound {
+				return errDevServerResourceNotFound
+			}
+			return nil
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			logger := middleware.LoggerFromContext(r.Context())
+
+			if errors.Is(err, errDevServerResourceNotFound) {
+				httputil.RenderPlain(w, logger, http.StatusNotFound)
+				return
+			}
+
+			logger.Error("failed to proxy request to dev server", "err", err)
+			httputil.RenderPlain(w, logger, http.StatusBadGateway)
+		},
+	}
 }

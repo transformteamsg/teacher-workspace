@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	stdhttputil "net/http/httputil"
+	"net/url"
 	"strings"
 	"time"
 
@@ -11,65 +14,106 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// proxy forwards a request to that app's backend, stripping the
-// /api/<app> prefix. It swaps the session cookie for JWT. Responds 404
-// for unknown apps and 500 if the token cannot be signed.
-func (h *Handler) proxy(w http.ResponseWriter, r *http.Request) {
-	logger := middleware.LoggerFromContext(r.Context())
-	app := r.PathValue("app")
+type ctxKeySignedToken struct{}
 
-	var p *stdhttputil.ReverseProxy
-	var signingKey, aud string
-	switch app {
-	case "student-insights":
-		p, signingKey, aud = h.studentInsightsProxy, h.cfg.APIProxy.StudentInsightsSigningKey, "si"
-	case "posts":
-		p, signingKey, aud = h.postsProxy, h.cfg.APIProxy.PostsSigningKey, "pg"
-	default:
-		httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
-			Message: http.StatusText(http.StatusNotFound),
-		})
-		return
-	}
-
-	now := time.Now()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Issuer:    "TW",
-		Audience:  jwt.ClaimStrings{aud},
-		IssuedAt:  jwt.NewNumericDate(now),
-		ExpiresAt: jwt.NewNumericDate(now.Add(h.cfg.APIProxy.TokenTTL)),
-	})
-	signedToken, err := token.SignedString([]byte(signingKey))
-	if err != nil {
-		logger.Error("failed to sign JWT", "app", app, "err", err)
-		httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
-			Message: http.StatusText(http.StatusInternalServerError),
-		})
-		return
-	}
-
-	r.Header.Del("Cookie")
-	r.Header.Set("Authorization", "Bearer "+signedToken)
-
-	http.StripPrefix("/api/"+app, p).ServeHTTP(w, r)
+type remoteBackend struct {
+	proxy      http.Handler
+	signingKey string
+	audience   string
 }
 
-// Logs the failure and answers 502 when a backend request fails. Query strings
-// are dropped to keep credentials and other sensitive values out of the logs.
-func proxyErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
-	path, _, _ := strings.Cut(r.RequestURI, "?")
-	backend := *r.URL
-	backend.RawQuery = ""
+func (h *Handler) proxy() http.HandlerFunc {
+	remoteBackends := map[string]remoteBackend{}
 
-	logger := middleware.LoggerFromContext(r.Context())
-	logger.Error("failed to proxy request",
-		"method", r.Method,
-		"path", path,
-		"backend", backend.String(),
-		"err", err,
-	)
+	if h.cfg.RemoteApps.IsPostsRegistered() {
+		remoteBackends["posts"] = remoteBackend{
+			proxy:      newRemoteBackendProxy(h.cfg.RemoteApps.PostsBackendBaseURL),
+			signingKey: h.cfg.RemoteApps.PostsBackendSigningKey,
+			audience:   "pg",
+		}
+	}
+	if h.cfg.RemoteApps.IsStudentInsightsRegistered() {
+		remoteBackends["student-insights"] = remoteBackend{
+			proxy:      newRemoteBackendProxy(h.cfg.RemoteApps.StudentInsightsBackendBaseURL),
+			signingKey: h.cfg.RemoteApps.StudentInsightsBackendSigningKey,
+			audience:   "si",
+		}
+	}
 
-	httputil.RenderJSON(w, logger, http.StatusBadGateway, &httputil.ErrorResponse{
-		Message: http.StatusText(http.StatusBadGateway),
-	})
+	now := h.now
+	if now == nil {
+		now = time.Now
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		logger := middleware.LoggerFromContext(r.Context())
+
+		name, _, found := strings.Cut(strings.TrimPrefix(r.URL.Path, "/api/"), "/")
+		b, ok := remoteBackends[name]
+		if !found || !ok {
+			httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
+				Message: http.StatusText(http.StatusNotFound),
+			})
+			return
+		}
+
+		issuedAt := now()
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+			Issuer:    "tw",
+			Audience:  jwt.ClaimStrings{b.audience},
+			IssuedAt:  jwt.NewNumericDate(issuedAt),
+			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
+		})
+		signedToken, err := token.SignedString([]byte(b.signingKey))
+		if err != nil {
+			logger.Error("failed to sign JWT", "app", name, "err", err)
+			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
+				Message: http.StatusText(http.StatusInternalServerError),
+			})
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), ctxKeySignedToken{}, signedToken)
+		http.StripPrefix("/api/"+name, b.proxy).ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+func newRemoteBackendProxy(target *url.URL) *stdhttputil.ReverseProxy {
+	return &stdhttputil.ReverseProxy{
+		Rewrite: func(pr *stdhttputil.ProxyRequest) {
+			pr.SetURL(target)
+
+			pr.Out.Header.Del("Cookie")
+			if signedToken, ok := pr.In.Context().Value(ctxKeySignedToken{}).(string); ok {
+				pr.Out.Header.Set("Authorization", "Bearer "+signedToken)
+			}
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Del("Set-Cookie")
+			return nil
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) {
+				// Cancellation means the client disconnected, which is expected.
+				// Logging it would only add noise, and the response would be lost.
+				return
+			}
+
+			path, _, _ := strings.Cut(r.RequestURI, "?")
+			remoteBackendURL := *r.URL
+			remoteBackendURL.RawQuery = ""
+
+			logger := middleware.LoggerFromContext(r.Context())
+			logger.Error("failed to proxy request",
+				"method", r.Method,
+				"path", path,
+				"remote_backend_url", remoteBackendURL.String(),
+				"err", err,
+			)
+
+			httputil.RenderJSON(w, logger, http.StatusBadGateway, &httputil.ErrorResponse{
+				Message: http.StatusText(http.StatusBadGateway),
+			})
+		},
+	}
 }

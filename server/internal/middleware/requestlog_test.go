@@ -13,24 +13,11 @@ import (
 	"github.com/String-sg/teacher-workspace/server/pkg/require"
 )
 
-func newCtxWithLogger(buf *bytes.Buffer) context.Context {
-	logger := slog.New(slog.NewJSONHandler(buf, nil))
-	return context.WithValue(context.Background(), ctxKeyLogger{}, logger)
-}
-
 func TestRequestLog(t *testing.T) {
-	type logEntry struct {
-		Level      string `json:"level"`
-		Msg        string `json:"msg"`
-		Method     string `json:"method"`
-		Path       string `json:"path"`
-		Status     int    `json:"status"`
-		DurationMS int64  `json:"duration_ms"`
-	}
-
 	t.Run("logs method, path, status, and duration", func(t *testing.T) {
-		var buf bytes.Buffer
-		ctx := newCtxWithLogger(&buf)
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		ctx := context.WithValue(t.Context(), ctxKeyLogger{}, logger)
 
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusCreated)
@@ -41,24 +28,32 @@ func TestRequestLog(t *testing.T) {
 
 		RequestLog(next).ServeHTTP(rec, req)
 
-		var entry logEntry
-		if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
+		var record struct {
+			Level      string `json:"level"`
+			Msg        string `json:"msg"`
+			Method     string `json:"method"`
+			Path       string `json:"path"`
+			Status     int    `json:"status"`
+			DurationMS int64  `json:"duration_ms"`
+		}
+		if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
 			t.Fatalf("failed to unmarshal log entry: %v", err)
 		}
 
-		require.Equal(t, "INFO", entry.Level)
-		require.Equal(t, "request", entry.Msg)
-		require.Equal(t, http.MethodPost, entry.Method)
-		require.Equal(t, "/users", entry.Path)
-		require.Equal(t, http.StatusCreated, entry.Status)
-		if entry.DurationMS < 0 {
-			t.Errorf("want: >= 0; got: %d", entry.DurationMS)
+		require.Equal(t, "INFO", record.Level)
+		require.Equal(t, "request", record.Msg)
+		require.Equal(t, http.MethodPost, record.Method)
+		require.Equal(t, "/users", record.Path)
+		require.Equal(t, http.StatusCreated, record.Status)
+		if record.DurationMS < 0 {
+			t.Errorf("want: >= 0; got: %d", record.DurationMS)
 		}
 	})
 
 	t.Run("logs status 200 when handler never calls WriteHeader", func(t *testing.T) {
-		var buf bytes.Buffer
-		ctx := newCtxWithLogger(&buf)
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		ctx := context.WithValue(t.Context(), ctxKeyLogger{}, logger)
 
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
@@ -67,17 +62,20 @@ func TestRequestLog(t *testing.T) {
 
 		RequestLog(next).ServeHTTP(rec, req)
 
-		var entry logEntry
-		if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
+		var record struct {
+			Status int `json:"status"`
+		}
+		if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
 			t.Fatalf("failed to unmarshal log entry: %v", err)
 		}
 
-		require.Equal(t, http.StatusOK, entry.Status)
+		require.Equal(t, http.StatusOK, record.Status)
 	})
 
 	t.Run("not-found responses are logged with status 404", func(t *testing.T) {
-		var buf bytes.Buffer
-		ctx := newCtxWithLogger(&buf)
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		ctx := context.WithValue(t.Context(), ctxKeyLogger{}, logger)
 
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
@@ -88,18 +86,22 @@ func TestRequestLog(t *testing.T) {
 
 		RequestLog(next).ServeHTTP(rec, req)
 
-		var entry logEntry
-		if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
+		var record struct {
+			Path   string `json:"path"`
+			Status int    `json:"status"`
+		}
+		if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
 			t.Fatalf("failed to unmarshal log entry: %v", err)
 		}
 
-		require.Equal(t, "/unknown", entry.Path)
-		require.Equal(t, http.StatusNotFound, entry.Status)
+		require.Equal(t, "/unknown", record.Path)
+		require.Equal(t, http.StatusNotFound, record.Status)
 	})
 
 	t.Run("records status from first WriteHeader call only", func(t *testing.T) {
-		var buf bytes.Buffer
-		ctx := newCtxWithLogger(&buf)
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		ctx := context.WithValue(t.Context(), ctxKeyLogger{}, logger)
 
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusTeapot)
@@ -111,17 +113,20 @@ func TestRequestLog(t *testing.T) {
 
 		RequestLog(next).ServeHTTP(rec, req)
 
-		var entry logEntry
-		if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
+		var record struct {
+			Status int `json:"status"`
+		}
+		if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
 			t.Fatalf("failed to unmarshal log entry: %v", err)
 		}
 
-		require.Equal(t, http.StatusTeapot, entry.Status)
+		require.Equal(t, http.StatusTeapot, record.Status)
 	})
 
 	t.Run("records implicit 200 when handler writes body without WriteHeader", func(t *testing.T) {
-		var buf bytes.Buffer
-		ctx := newCtxWithLogger(&buf)
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		ctx := context.WithValue(t.Context(), ctxKeyLogger{}, logger)
 
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if _, err := w.Write([]byte("hello")); err != nil {
@@ -134,17 +139,20 @@ func TestRequestLog(t *testing.T) {
 
 		RequestLog(next).ServeHTTP(rec, req)
 
-		var entry logEntry
-		if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
+		var record struct {
+			Status int `json:"status"`
+		}
+		if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
 			t.Fatalf("failed to unmarshal log entry: %v", err)
 		}
 
-		require.Equal(t, http.StatusOK, entry.Status)
+		require.Equal(t, http.StatusOK, record.Status)
 	})
 
 	t.Run("unwraps requestLogResponseWriter for ResponseController", func(t *testing.T) {
-		var buf bytes.Buffer
-		ctx := newCtxWithLogger(&buf)
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		ctx := context.WithValue(t.Context(), ctxKeyLogger{}, logger)
 
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if err := http.NewResponseController(w).Flush(); err != nil {
@@ -181,8 +189,9 @@ func TestRequestLog(t *testing.T) {
 			go func() {
 				defer wg.Done()
 
-				var buf bytes.Buffer
-				ctx := newCtxWithLogger(&buf)
+				var logs bytes.Buffer
+				logger := slog.New(slog.NewJSONHandler(&logs, nil))
+				ctx := context.WithValue(t.Context(), ctxKeyLogger{}, logger)
 
 				next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)

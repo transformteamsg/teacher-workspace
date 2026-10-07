@@ -12,22 +12,35 @@ import (
 	"syscall"
 	"time"
 
-	glide "github.com/valkey-io/valkey-glide/go/v2"
-	glideconfig "github.com/valkey-io/valkey-glide/go/v2/config"
-
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/handler"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
-	"github.com/String-sg/teacher-workspace/server/internal/oidc"
 	"github.com/String-sg/teacher-workspace/server/internal/session"
 	"github.com/String-sg/teacher-workspace/server/internal/session/memstore"
 	"github.com/String-sg/teacher-workspace/server/internal/session/valkeystore"
 	"github.com/String-sg/teacher-workspace/server/pkg/dotenv"
+	glide "github.com/valkey-io/valkey-glide/go/v2"
+	glideconfig "github.com/valkey-io/valkey-glide/go/v2/config"
 )
 
 const shutdownTimeout = 30 * time.Second
 
 func main() {
+	level := new(slog.LevelVar)
+	level.Set(slog.LevelInfo)
+
+	sh := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				return slog.String(slog.TimeKey, a.Value.Time().Format(time.RFC3339))
+			}
+			return a
+		},
+	})
+
+	slog.SetDefault(slog.New(sh))
+
 	cfg := config.Default()
 	if err := dotenv.Load(&cfg); err != nil {
 		slog.Error("failed to load config", "err", err)
@@ -38,9 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: cfg.LogLevel,
-	})))
+	level.Set(cfg.LogLevel)
 
 	var store session.Store
 	switch cfg.Session.StoreProvider {
@@ -77,34 +88,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	sessionMiddleware := middleware.Session(store, middleware.SessionOptions{
-		Name:             cfg.Session.Name,
-		DefaultTTL:       cfg.Session.DefaultTTL,
-		AuthenticatedTTL: cfg.Session.AuthenticatedTTL,
-		Secure:           cfg.Env == config.EnvProduction,
-	})
-
-	rp := oidc.New(
-		cfg.OIDC.IssuerURL.String(),
-		cfg.OIDC.ClientID,
-		cfg.OIDC.ClientSecret,
-		cfg.OIDC.RedirectURL.String(),
-		cfg.OIDC.AuthURL.String(),
-		cfg.OIDC.TokenURL.String(),
-		cfg.OIDC.JWKSURI.String(),
-	)
-
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	mux := http.NewServeMux()
-	h, err := handler.New(&cfg, rp)
+	h, err := handler.New(&cfg)
 	if err != nil {
 		slog.Error("failed to create handler", "err", err)
 		os.Exit(1)
 	}
-	h.Register(mux, sessionMiddleware)
+
+	session := middleware.Session(store, middleware.SessionOptions{
+		Name:             cfg.Session.Name,
+		DefaultTTL:       cfg.Session.DefaultTTL,
+		AuthenticatedTTL: cfg.Session.AuthenticatedTTL,
+		Secure:           cfg.Session.Secure,
+	})
+
+	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           middleware.RequestID(middleware.RequestLog(mux)),
+		Handler:           middleware.Chain(h.Routes(session), middleware.RequestID, middleware.RequestLog),
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
 		ReadTimeout:       cfg.Server.ReadTimeout,
 		WriteTimeout:      cfg.Server.WriteTimeout,
