@@ -962,6 +962,55 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("signs in with a base role elsewhere when an MK-anchored role is filtered out", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"1234_TW_ROLE_TEACHER", "6100_TW_ROLE_HOD"}
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Fatalf("want: %d; got: %d", want, got)
+		}
+		if sess.User() == nil {
+			t.Fatal("want: non-nil; got: nil")
+		}
+		if want, got := "ROLE_TEACHER", sess.User().Role; want != got {
+			t.Errorf("Role: want: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("refuses sign-in when the only role is filtered out for being at an MK school", func(t *testing.T) {
+		env := newCallbackTestEnv(t)
+
+		state := "test-state"
+		nonce := "test-nonce"
+		*env.tokenNonce = nonce
+		*env.tokenEmail = "jane@example.com"
+		*env.tokenRoles = []string{"6100_TW_ROLE_TEACHER"}
+
+		sess := newSessionWithOIDC(state, nonce, "test-verifier")
+		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
+		req = req.WithContext(middleware.WithSession(req.Context(), sess))
+		rec := httptest.NewRecorder()
+
+		env.h.authEdupassCallback(rec, req)
+
+		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
+		if sess.User() != nil {
+			t.Error("want: nil; got: non-nil")
+		}
+	})
+
 	t.Run("refuses sign-in when more than one recognized base role shares a location", func(t *testing.T) {
 		env := newCallbackTestEnv(t)
 

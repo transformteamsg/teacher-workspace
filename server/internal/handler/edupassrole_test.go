@@ -167,4 +167,68 @@ func TestResolveEdupassGroups(t *testing.T) {
 			t.Errorf("unrecognized: want: %v; got: %v", want, got)
 		}
 	})
+
+	t.Run("keeps a base role that isn't at an MK school", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER"})
+
+		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("roles: want: %v; got: %v", want, got)
+		}
+		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("unrecognized: want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("filters out an MK-anchored role, keeping a valid role elsewhere", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "6100_TW_ROLE_HOD"})
+
+		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("roles: want: %v; got: %v", want, got)
+		}
+		if want, got := "ROLE_TEACHER", resolved.effectiveRole; want != got {
+			t.Errorf("effectiveRole: want: %q; got: %q", want, got)
+		}
+		if want, got := []string{"6100_TW_ROLE_HOD"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("unrecognized: want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("leaves no role when the only one is at an MK school", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"6100_TW_ROLE_TEACHER"})
+
+		if want, got := []string{}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("roles: want: %v; got: %v", want, got)
+		}
+		if want, got := "", resolved.effectiveRole; want != got {
+			t.Errorf("effectiveRole: want: %q; got: %q", want, got)
+		}
+		if want, got := []string{"6100_TW_ROLE_TEACHER"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("unrecognized: want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("keeps an attribute at an MK school, unlike a role there", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "6100_TW_ATTR_CCE"})
+
+		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("roles: want: %v; got: %v", want, got)
+		}
+		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("attributes: want: %v; got: %v", want, got)
+		}
+		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("unrecognized: want: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("resolves pre-prod MK codes the same as production codes", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"6100_TWSTG_ROLE_TEACHER"})
+
+		if want, got := []string{}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("roles: want: %v; got: %v", want, got)
+		}
+		if want, got := []string{"6100_TWSTG_ROLE_TEACHER"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("unrecognized: want: %v; got: %v", want, got)
+		}
+	})
 }
