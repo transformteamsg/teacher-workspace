@@ -205,48 +205,58 @@ const (
 	edupassAttrInfix = "_ATTR_"
 )
 
-// recognizedEdupassRoles lists every base role code Edupass issues. A staff
-// member is meant to hold exactly one for a location, but Edupass enforces
-// nothing: resolveEdupassGroups reports every one it sees and leaves the
-// "more than one" case to the caller, rather than guessing which was meant.
-// Add new codes here as they're recognized.
-var recognizedEdupassRoles = map[string]bool{
-	"ROLE_PRINCIPAL":                     true,
-	"ROLE_VICE_PRINCIPAL":                true,
-	"ROLE_VICE_PRINCIPAL_ADMINISTRATION": true,
-	"ROLE_ADMIN_MANAGER":                 true,
-	"ROLE_ADMIN_SUPPORT":                 true,
-	"ROLE_YEAR_HEAD":                     true,
-	"ROLE_ASST_YEAR_HEAD":                true,
-	"ROLE_HOD":                           true,
-	"ROLE_SUBJECT_HEAD":                  true,
-	"ROLE_LEVEL_HEAD":                    true,
-	"ROLE_SSD":                           true,
-	"ROLE_LEAD_TEACHER":                  true,
-	"ROLE_SNR_TEACHER":                   true,
-	"ROLE_TEACHER":                       true,
-	"ROLE_SNR_COUNSELLOR":                true,
-	"ROLE_COUNSELLOR":                    true,
-	"ROLE_SNR_SEN_OFFICER":               true,
-	"ROLE_SEN_OFFICER":                   true,
-	"ROLE_SNR_SWO":                       true,
-	"ROLE_SWO":                           true,
-	"ROLE_AED_TL":                        true,
-	"ROLE_ICT_MANAGER":                   true,
+// isRecognizedEdupassRole reports whether code is a base role Edupass
+// issues. A staff member is meant to hold exactly one for a location, but
+// Edupass enforces nothing: resolveEdupassGroups reports every one it sees
+// and leaves the "more than one" case to the caller, rather than guessing
+// which was meant. Add new codes here as they're recognized.
+func isRecognizedEdupassRole(code string) bool {
+	switch code {
+	case "ROLE_PRINCIPAL",
+		"ROLE_VICE_PRINCIPAL",
+		"ROLE_VICE_PRINCIPAL_ADMINISTRATION",
+		"ROLE_ADMIN_MANAGER",
+		"ROLE_ADMIN_SUPPORT",
+		"ROLE_YEAR_HEAD",
+		"ROLE_ASST_YEAR_HEAD",
+		"ROLE_HOD",
+		"ROLE_SUBJECT_HEAD",
+		"ROLE_LEVEL_HEAD",
+		"ROLE_SSD",
+		"ROLE_LEAD_TEACHER",
+		"ROLE_SNR_TEACHER",
+		"ROLE_TEACHER",
+		"ROLE_SNR_COUNSELLOR",
+		"ROLE_COUNSELLOR",
+		"ROLE_SNR_SEN_OFFICER",
+		"ROLE_SEN_OFFICER",
+		"ROLE_SNR_SWO",
+		"ROLE_SWO",
+		"ROLE_AED_TL",
+		"ROLE_ICT_MANAGER":
+		return true
+	default:
+		return false
+	}
 }
 
-// recognizedEdupassAttributes lists every attribute code Edupass issues. Add
-// new codes here as they're recognized.
-var recognizedEdupassAttributes = map[string]bool{
-	"ATTR_PG_ADMIN":      true,
-	"ATTR_PG_USER":       true,
-	"ATTR_CCE":           true,
-	"ATTR_DM":            true,
-	"ATTR_SDE":           true,
-	"ATTR_ECGC":          true,
-	"ATTR_WB_SPECIALIST": true,
-	"ATTR_WB_TCI":        true,
-	"ATTR_SLD":           true,
+// isRecognizedEdupassAttribute reports whether code is an attribute Edupass
+// issues. Add new codes here as they're recognized.
+func isRecognizedEdupassAttribute(code string) bool {
+	switch code {
+	case "ATTR_PG_ADMIN",
+		"ATTR_PG_USER",
+		"ATTR_CCE",
+		"ATTR_DM",
+		"ATTR_SDE",
+		"ATTR_ECGC",
+		"ATTR_WB_SPECIALIST",
+		"ATTR_WB_TCI",
+		"ATTR_SLD":
+		return true
+	default:
+		return false
+	}
 }
 
 // edupassGroups is the outcome of resolving one staff member's Edupass
@@ -297,7 +307,7 @@ func resolveEdupassGroups(raw []string) edupassGroups {
 			code := codeAfterInfix(entry, edupassRoleInfix)
 			if !fromRecognizedEdupassEnv(entry, edupassRoleInfix) {
 				unrecognized = append(unrecognized, entry)
-			} else if recognizedEdupassRoles[code] {
+			} else if isRecognizedEdupassRole(code) {
 				roles = append(roles, code)
 			} else {
 				unrecognized = append(unrecognized, entry)
@@ -306,7 +316,7 @@ func resolveEdupassGroups(raw []string) edupassGroups {
 			code := codeAfterInfix(entry, edupassAttrInfix)
 			if !fromRecognizedEdupassEnv(entry, edupassAttrInfix) {
 				unrecognized = append(unrecognized, entry)
-			} else if recognizedEdupassAttributes[code] {
+			} else if isRecognizedEdupassAttribute(code) {
 				attributes = append(attributes, code)
 			} else {
 				unrecognized = append(unrecognized, entry)
