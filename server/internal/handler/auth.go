@@ -3,10 +3,10 @@ package handler
 import (
 	"net/http"
 	"net/url"
+	"strings"
 
 	"golang.org/x/oauth2"
 
-	"github.com/String-sg/teacher-workspace/server/internal/edupassrole"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/String-sg/teacher-workspace/server/internal/session"
 	"github.com/String-sg/teacher-workspace/server/pkg/random"
@@ -172,17 +172,17 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolved := edupassrole.Resolve(claims.Groups)
-	if len(resolved.Unrecognized) > 0 {
+	resolved := resolveEdupassGroups(claims.Groups)
+	if len(resolved.unrecognized) > 0 {
 		logger.Warn("discarded unrecognized Edupass role/attribute codes",
 			"subject", idToken.Subject,
-			"codes", resolved.Unrecognized,
+			"codes", resolved.unrecognized,
 		)
 	}
-	if len(resolved.Roles) != 1 {
+	if len(resolved.roles) != 1 {
 		logger.Warn("staff does not have exactly one recognized base role",
 			"subject", idToken.Subject,
-			"roles", resolved.Roles,
+			"roles", resolved.roles,
 		)
 		redirectLoginError(w, r, loginErrorOAuth2Callback, returnTo)
 		return
@@ -190,12 +190,167 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 
 	sess.SetUser(&session.User{
 		Email:      claims.Email,
-		Role:       resolved.Roles[0],
-		Attributes: resolved.Attributes,
+		Role:       resolved.roles[0],
+		Attributes: resolved.attributes,
 	})
 
 	if returnTo == "" {
 		returnTo = "/"
 	}
 	http.Redirect(w, r, returnTo, http.StatusSeeOther)
+}
+
+const (
+	edupassRoleInfix = "_ROLE_"
+	edupassAttrInfix = "_ATTR_"
+)
+
+// recognizedEdupassRoles lists every base role code Edupass issues. A staff
+// member is meant to hold exactly one for a location, but Edupass enforces
+// nothing: resolveEdupassGroups reports every one it sees and leaves the
+// "more than one" case to the caller, rather than guessing which was meant.
+// Add new codes here as they're recognized.
+var recognizedEdupassRoles = map[string]bool{
+	"ROLE_PRINCIPAL":                     true,
+	"ROLE_VICE_PRINCIPAL":                true,
+	"ROLE_VICE_PRINCIPAL_ADMINISTRATION": true,
+	"ROLE_ADMIN_MANAGER":                 true,
+	"ROLE_ADMIN_SUPPORT":                 true,
+	"ROLE_YEAR_HEAD":                     true,
+	"ROLE_ASST_YEAR_HEAD":                true,
+	"ROLE_HOD":                           true,
+	"ROLE_SUBJECT_HEAD":                  true,
+	"ROLE_LEVEL_HEAD":                    true,
+	"ROLE_SSD":                           true,
+	"ROLE_LEAD_TEACHER":                  true,
+	"ROLE_SNR_TEACHER":                   true,
+	"ROLE_TEACHER":                       true,
+	"ROLE_SNR_COUNSELLOR":                true,
+	"ROLE_COUNSELLOR":                    true,
+	"ROLE_SNR_SEN_OFFICER":               true,
+	"ROLE_SEN_OFFICER":                   true,
+	"ROLE_SNR_SWO":                       true,
+	"ROLE_SWO":                           true,
+	"ROLE_AED_TL":                        true,
+	"ROLE_ICT_MANAGER":                   true,
+}
+
+// recognizedEdupassAttributes lists every attribute code Edupass issues. Add
+// new codes here as they're recognized.
+var recognizedEdupassAttributes = map[string]bool{
+	"ATTR_PG_ADMIN":      true,
+	"ATTR_PG_USER":       true,
+	"ATTR_CCE":           true,
+	"ATTR_DM":            true,
+	"ATTR_SDE":           true,
+	"ATTR_ECGC":          true,
+	"ATTR_WB_SPECIALIST": true,
+	"ATTR_WB_TCI":        true,
+	"ATTR_SLD":           true,
+}
+
+// edupassGroups is the outcome of resolving one staff member's Edupass
+// `groups` claim.
+type edupassGroups struct {
+	// roles contains every recognized base role, stripped of location and
+	// environment prefix, in arrival order. More than one entry means
+	// Edupass returned conflicting base roles, whether for one location or
+	// spread across several.
+	roles []string
+	// effectiveRole is the sole entry in roles when resolveEdupassGroups
+	// found exactly one recognized base role. It's empty when roles holds
+	// zero or more than one: neither case has a single role to report.
+	effectiveRole string
+	// attributes contains every recognized attribute, stripped of location
+	// and environment prefix, unranked and in arrival order.
+	attributes []string
+	// unrecognized contains every raw entry that didn't split into a
+	// recognized base role or attribute, verbatim, for logging.
+	unrecognized []string
+}
+
+// resolveEdupassGroups splits raw (an Edupass `groups` claim) into recognized
+// base roles and attributes, stripping the location and environment prefix
+// from each.
+//
+// Edupass mixes two kinds of entries into one array, each prefixed with a
+// location code and an environment marker: `<location>_TW_ROLE_<CODE>` for a
+// base role and `<location>_TW_ATTR_<CODE>` for an attribute (pre-prod
+// Edupass issues `_TWSTG_` instead of `_TW_`). resolveEdupassGroups requires
+// `_TW_` or `_TWSTG_` to sit immediately ahead of the `_ROLE_`/`_ATTR_`
+// infix, rejecting a lookalike entry meant for a different application; the
+// location code ahead of the marker itself is never checked.
+//
+// An exact duplicate entry is only counted once: Edupass sending the same
+// string twice is redundant information, not a second role or attribute. A
+// code absent from both reference lists, or not immediately preceded by a
+// recognized environment marker, is reported in unrecognized rather than
+// blocking resolution: Edupass can add codes between Teacher Workspace
+// releases. resolveEdupassGroups doesn't decide whether sign-in proceeds; the
+// caller refuses unless roles holds exactly one entry.
+func resolveEdupassGroups(raw []string) edupassGroups {
+	roles := []string{}
+	attributes := []string{}
+	unrecognized := []string{}
+	seen := map[string]bool{}
+
+	for _, entry := range raw {
+		if seen[entry] {
+			continue
+		}
+		seen[entry] = true
+
+		switch {
+		case strings.Contains(entry, edupassRoleInfix):
+			code := codeAfterInfix(entry, edupassRoleInfix)
+			if !fromRecognizedEdupassEnv(entry, edupassRoleInfix) {
+				unrecognized = append(unrecognized, entry)
+			} else if recognizedEdupassRoles[code] {
+				roles = append(roles, code)
+			} else {
+				unrecognized = append(unrecognized, entry)
+			}
+		case strings.Contains(entry, edupassAttrInfix):
+			code := codeAfterInfix(entry, edupassAttrInfix)
+			if !fromRecognizedEdupassEnv(entry, edupassAttrInfix) {
+				unrecognized = append(unrecognized, entry)
+			} else if recognizedEdupassAttributes[code] {
+				attributes = append(attributes, code)
+			} else {
+				unrecognized = append(unrecognized, entry)
+			}
+		default:
+			unrecognized = append(unrecognized, entry)
+		}
+	}
+
+	effectiveRole := ""
+	if len(roles) == 1 {
+		effectiveRole = roles[0]
+	}
+
+	return edupassGroups{
+		roles:         roles,
+		effectiveRole: effectiveRole,
+		attributes:    attributes,
+		unrecognized:  unrecognized,
+	}
+}
+
+// codeAfterInfix returns entry with everything ahead of infix removed, the
+// infix's own leading underscore dropped, and the rest (its ROLE_/ATTR_
+// prefix included) kept as the code.
+func codeAfterInfix(entry, infix string) string {
+	idx := strings.Index(entry, infix)
+	return entry[idx+1:]
+}
+
+// fromRecognizedEdupassEnv reports whether entry's prefix, everything ahead
+// of infix, ends with a known Edupass environment marker: TW in production,
+// TWSTG pre-prod. It rejects a lookalike entry meant for a different
+// application that happens to share the ROLE_/ATTR_ infix shape, without
+// caring what the location code ahead of the marker itself says.
+func fromRecognizedEdupassEnv(entry, infix string) bool {
+	prefix := entry[:strings.Index(entry, infix)]
+	return strings.HasSuffix(prefix, "_TW") || strings.HasSuffix(prefix, "_TWSTG")
 }
