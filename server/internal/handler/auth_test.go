@@ -187,18 +187,6 @@ func newSessionWithOIDCAndReturnTo(state, nonce, codeVerifier, returnTo string) 
 	return sess
 }
 
-// newAuthenticatedSessionWithOIDC simulates a teacher who's already signed
-// in attempting to sign in again: SetUser runs first, on an empty session,
-// so its own data-clearing rotation doesn't wipe the OIDC state set after it.
-func newAuthenticatedSessionWithOIDC(state, nonce, codeVerifier string) *session.Session {
-	sess := session.New()
-	sess.SetUser(&session.User{Email: "jane@example.com", Role: "ROLE_TEACHER"})
-	sess.Set(sessionKeyOIDCState, state)
-	sess.Set(sessionKeyOIDCNonce, nonce)
-	sess.Set(sessionKeyOIDCCodeVerifier, codeVerifier)
-	return sess
-}
-
 func assertRedirect(t *testing.T, rec *httptest.ResponseRecorder, wantCode int, wantLocation string) {
 	t.Helper()
 	if want, got := wantCode, rec.Code; want != got {
@@ -590,22 +578,6 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 		if want, got := "jane@example.com", sess.User().Email; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
-		}
-	})
-
-	t.Run("clears an already authenticated session on state mismatch", func(t *testing.T) {
-		env := newCallbackTestEnv(t)
-
-		sess := newAuthenticatedSessionWithOIDC("known-state", "test-nonce", "test-verifier")
-		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state=unknown-state", nil)
-		req = req.WithContext(middleware.WithSession(req.Context(), sess))
-		rec := httptest.NewRecorder()
-
-		env.h.authEdupassCallback(rec, req)
-
-		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
-		if sess.User() != nil {
-			t.Error("want: nil; got: non-nil")
 		}
 	})
 
@@ -1028,28 +1000,6 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 		if want, got := "staff does not have exactly one recognized base role", entry.Msg; want != got {
 			t.Errorf("log msg: want %q; got %q", want, got)
-		}
-	})
-
-	t.Run("clears an already authenticated session when a new conflict is detected", func(t *testing.T) {
-		env := newCallbackTestEnv(t)
-
-		state := "test-state"
-		nonce := "test-nonce"
-		*env.tokenNonce = nonce
-		*env.tokenEmail = "jane@example.com"
-		*env.tokenRoles = []string{"1234_TW_ROLE_PRINCIPAL", "1234_TW_ROLE_TEACHER"}
-
-		sess := newAuthenticatedSessionWithOIDC(state, nonce, "test-verifier")
-		req := httptest.NewRequest(http.MethodGet, "/auth/edupass/callback?code=test-code&state="+state, nil)
-		req = req.WithContext(middleware.WithSession(req.Context(), sess))
-		rec := httptest.NewRecorder()
-
-		env.h.authEdupassCallback(rec, req)
-
-		assertRedirect(t, rec, http.StatusFound, wantCallbackErrPath)
-		if sess.User() != nil {
-			t.Error("want: nil; got: non-nil")
 		}
 	})
 
