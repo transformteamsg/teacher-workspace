@@ -9,8 +9,8 @@ description = "Go linter"
 run = "golangci-lint run"
 
 [tools]
-"github:golangci/golangci-lint" = "2.12.2"
-go = "1.26.5"
+"github:golangci/golangci-lint" = "2.14.0"
+go = "1.27.1"
 node = "24.19.0"
 "npm:pnpm" = "11.22.0"
 

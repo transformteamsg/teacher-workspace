@@ -7,10 +7,10 @@ Teacher Workspace is a unified platform that consolidates teacher-facing applica
 ### Prerequisites
 
 - **[mise](https://mise.jdx.dev/installing-mise.html)** 2026.3.5 or newer, which installs and pins the tools below
-  - **Go** 1.26.5
+  - **Go** 1.27.1
   - **Node.js** 24.19.0
   - **pnpm** 11.22.0
-  - **golangci-lint** 2.12.2
+  - **golangci-lint** 2.14.0
 - **Docker**, for the local Valkey and for the session store tests
 
 `mise.lock` pins each tool and records how it was verified, so a tampered download is caught before it is installed. Only mise [2026.3.5](https://github.com/jdx/mise/releases/tag/v2026.3.5) and newer writes and checks that record; older versions install the tools without it. `mise.toml` sets `min_version` so that nobody misses the check.

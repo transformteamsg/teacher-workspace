@@ -34,7 +34,7 @@ RUN pnpm --filter=@teacher-workspace/host build
 # ----------------------------------------
 # TW Server build stage
 # ----------------------------------------
-FROM golang:1.26.5-trixie AS tw-server-build
+FROM golang:1.27.1-trixie AS tw-server-build
 
 ENV CGO_ENABLED=1
 
