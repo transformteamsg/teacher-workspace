@@ -294,8 +294,10 @@ type edupassGroups struct {
 // A code absent from both reference lists, or not immediately preceded by a
 // recognized environment marker, is reported in unrecognized rather than
 // blocking resolution: Edupass can add codes between Teacher Workspace
-// releases. resolveEdupassGroups doesn't decide whether sign-in proceeds; the
-// caller refuses unless roles holds exactly one entry.
+// releases. A base role anchored to an MK school's location code is filtered
+// the same way; Teacher Workspace doesn't support MK staff, and an attribute
+// at an MK school is unaffected. resolveEdupassGroups doesn't decide whether
+// sign-in proceeds; the caller refuses unless roles holds exactly one entry.
 func resolveEdupassGroups(raw []string) edupassGroups {
 	roles := []string{}
 	attributes := []string{}
@@ -305,11 +307,14 @@ func resolveEdupassGroups(raw []string) edupassGroups {
 		switch {
 		case strings.Contains(entry, edupassRoleInfix):
 			code := codeAfterInfix(entry, edupassRoleInfix)
-			if !fromRecognizedEdupassEnv(entry, edupassRoleInfix) {
+			switch {
+			case !fromRecognizedEdupassEnv(entry, edupassRoleInfix):
 				unrecognized = append(unrecognized, entry)
-			} else if isRecognizedEdupassRole(code) {
+			case isMKSchoolCode(locationCode(entry)):
+				unrecognized = append(unrecognized, entry)
+			case isRecognizedEdupassRole(code):
 				roles = append(roles, code)
-			} else {
+			default:
 				unrecognized = append(unrecognized, entry)
 			}
 		case strings.Contains(entry, edupassAttrInfix):
@@ -355,4 +360,32 @@ func codeAfterInfix(entry, infix string) string {
 func fromRecognizedEdupassEnv(entry, infix string) bool {
 	prefix := entry[:strings.Index(entry, infix)]
 	return strings.HasSuffix(prefix, "_TW") || strings.HasSuffix(prefix, "_TWSTG")
+}
+
+// locationCode returns the digits ahead of the first underscore in entry,
+// the location code Edupass prefixes every role and attribute with (e.g.
+// "1234" from "1234_TW_ROLE_TEACHER"), regardless of which environment
+// marker follows it.
+func locationCode(entry string) string {
+	before, _, _ := strings.Cut(entry, "_")
+	return before
+}
+
+// isMKSchoolCode reports whether code is the location code of a MOE
+// Kindergarten (MK) school. Teacher Workspace doesn't support MK staff, so
+// resolveEdupassGroups filters out a base role entry anchored to one of
+// these the same way it filters an unrecognized code. Add new codes here as
+// they're recognized.
+func isMKSchoolCode(code string) bool {
+	switch code {
+	case "6100", "6101", "6102", "6103", "6104", "6105", "6106", "6107", "6108", "6109",
+		"6110", "6111", "6112", "6113", "6114", "6115", "6116", "6117", "6118", "6119",
+		"6120", "6121", "6122", "6123", "6124", "6126", "6127", "6128", "6129",
+		"6130", "6131", "6132", "6133", "6134", "6135", "6136", "6137", "6138", "6139",
+		"6140", "6141", "6142", "6143", "6144", "6145", "6146", "6147", "6148", "6149",
+		"6150", "6151", "6152", "6153", "6154", "6155", "6156", "6157", "6158", "6159":
+		return true
+	default:
+		return false
+	}
 }
