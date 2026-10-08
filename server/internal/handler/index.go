@@ -32,11 +32,6 @@ func (h *Handler) index() http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		if h.cfg.Env == config.EnvDevelopment && isRSBuildWebSocket(r) {
-			h.devServerProxy.ServeHTTP(w, r)
-			return
-		}
-
 		logger := middleware.LoggerFromContext(r.Context())
 		sess, ok := middleware.SessionFromContext(r.Context())
 		if !ok {
@@ -59,12 +54,6 @@ func (h *Handler) index() http.HandlerFunc {
 
 		httputil.RenderHTML(w, logger, http.StatusOK, buf.Bytes())
 	}
-}
-
-func isRSBuildWebSocket(r *http.Request) bool {
-	return r.URL.Path == "/rsbuild-hmr" &&
-		strings.EqualFold(r.Header.Get("Connection"), "upgrade") &&
-		strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
 }
 
 func (h *Handler) static(w http.ResponseWriter, r *http.Request) {
