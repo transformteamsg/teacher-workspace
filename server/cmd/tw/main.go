@@ -103,8 +103,12 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	srv := &http.Server{
-		Addr:              addr,
-		Handler:           middleware.Chain(h.Routes(session), middleware.RequestID, middleware.RequestLog),
+		Addr: addr,
+		Handler: middleware.Chain(
+			h.Routes(session),
+			middleware.RequestID,
+			middleware.RequestLog,
+		),
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
 		ReadTimeout:       cfg.Server.ReadTimeout,
 		WriteTimeout:      cfg.Server.WriteTimeout,
