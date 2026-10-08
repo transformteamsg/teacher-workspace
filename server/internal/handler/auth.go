@@ -66,7 +66,6 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 //
 // On failure, it redirects the user to the login page, which reports the
 // failure and keeps the path they asked to return to. It fails if:
-//
 //   - the session has no pending login
 //   - the callback does not belong to the pending login
 //   - Edupass reports an error
@@ -141,27 +140,27 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		oauth2.VerifierOption(codeVerifier),
 	)
 	if err != nil {
-		logger.Error("failed to exchange code for token", "err", err)
+		logger.Error("failed to exchange code for token", "provider", "edupass", "err", err)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
-		logger.Error("no ID token found in token")
+		logger.Error("no ID token found in token", "provider", "edupass")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 
 	idToken, err := h.edupassIDTokenVerifier.Verify(r.Context(), rawIDToken)
 	if err != nil {
-		logger.Error("failed to verify ID token", "err", err)
+		logger.Error("failed to verify ID token", "provider", "edupass", "err", err)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 
 	if idToken.Nonce != nonce {
-		logger.Error("nonce mismatch")
+		logger.Error("nonce mismatch", "provider", "edupass")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
@@ -170,12 +169,12 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
-		logger.Error("failed to unmarshal claims", "err", err)
+		logger.Error("failed to unmarshal claims", "provider", "edupass", "err", err)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 	if claims.Email == "" {
-		logger.Error("no email found in claims")
+		logger.Error("no email found in claims", "provider", "edupass")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
