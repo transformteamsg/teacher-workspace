@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -594,13 +595,14 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			now := time.Now()
 			idToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-				"iss":   cfg.Edupass.IssuerURL.String(),
-				"aud":   cfg.Edupass.ClientID,
-				"sub":   "test-sub",
-				"iat":   now.Unix(),
-				"exp":   now.Add(time.Hour).Unix(),
-				"nonce": "test-nonce",
-				"email": "john.smith@example.com",
+				"iss":    cfg.Edupass.IssuerURL.String(),
+				"aud":    cfg.Edupass.ClientID,
+				"sub":    "test-sub",
+				"iat":    now.Unix(),
+				"exp":    now.Add(time.Hour).Unix(),
+				"nonce":  "test-nonce",
+				"email":  "john.smith@example.com",
+				"groups": []string{"1234_TW_ROLE_TEACHER"},
 			})
 			signedIDToken, err := idToken.SignedString(signingKey)
 			if err != nil {
@@ -660,13 +662,14 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			now := time.Now()
 			idToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-				"iss":   cfg.Edupass.IssuerURL.String(),
-				"aud":   cfg.Edupass.ClientID,
-				"sub":   "test-sub",
-				"iat":   now.Unix(),
-				"exp":   now.Add(time.Hour).Unix(),
-				"nonce": "test-nonce",
-				"email": "john.smith@example.com",
+				"iss":    cfg.Edupass.IssuerURL.String(),
+				"aud":    cfg.Edupass.ClientID,
+				"sub":    "test-sub",
+				"iat":    now.Unix(),
+				"exp":    now.Add(time.Hour).Unix(),
+				"nonce":  "test-nonce",
+				"email":  "john.smith@example.com",
+				"groups": []string{"1234_TW_ROLE_TEACHER"},
 			})
 			signedIDToken, err := idToken.SignedString(signingKey)
 			if err != nil {
@@ -1335,13 +1338,14 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 				now := time.Now()
 				idToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-					"iss":   cfg.Edupass.IssuerURL.String(),
-					"aud":   cfg.Edupass.ClientID,
-					"sub":   "test-sub",
-					"iat":   now.Unix(),
-					"exp":   now.Add(time.Hour).Unix(),
-					"nonce": "test-nonce",
-					"email": "john.smith@example.com",
+					"iss":    cfg.Edupass.IssuerURL.String(),
+					"aud":    cfg.Edupass.ClientID,
+					"sub":    "test-sub",
+					"iat":    now.Unix(),
+					"exp":    now.Add(time.Hour).Unix(),
+					"nonce":  "test-nonce",
+					"email":  "john.smith@example.com",
+					"groups": []string{"1234_TW_ROLE_TEACHER"},
 				})
 				signedIDToken, err := idToken.SignedString(signingKey)
 				if err != nil {
@@ -1391,6 +1395,237 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		})
 	})
 
+	t.Run("logs the user in with the email, base role and attributes from their ID token", func(t *testing.T) {
+		h := newHandlerIssuingIDToken(t, jwt.MapClaims{
+			"email":  "john.smith@example.com",
+			"groups": []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_PG_ADMIN", "1234_TW_ATTR_CCE"},
+		})
+
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		user, ok := sess.User()
+		if !ok {
+			t.Fatal("want sess.User() ok: true; got: false")
+		}
+		want := session.User{
+			Email:      "john.smith@example.com",
+			Role:       "ROLE_TEACHER",
+			Attributes: []string{"ATTR_PG_ADMIN", "ATTR_CCE"},
+		}
+		if !reflect.DeepEqual(want, user) {
+			t.Errorf("want user: %+v; got: %+v", want, user)
+		}
+	})
+
+	t.Run("logs the user in when their ID token also carries unrecognized Edupass codes", func(t *testing.T) {
+		h := newHandlerIssuingIDToken(t, jwt.MapClaims{
+			"email":  "john.smith@example.com",
+			"groups": []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_SUPERINTENDENT", "1234_OTHERAPP_ROLE_PRINCIPAL"},
+		})
+
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		user, ok := sess.User()
+		if !ok {
+			t.Fatal("want sess.User() ok: true; got: false")
+		}
+		if want, got := "ROLE_TEACHER", user.Role; want != got {
+			t.Errorf("want user.Role: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("logs a warning when the ID token carries unrecognized Edupass codes", func(t *testing.T) {
+		h := newHandlerIssuingIDToken(t, jwt.MapClaims{
+			"email":  "john.smith@example.com",
+			"groups": []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_SUPERINTENDENT"},
+		})
+
+		var logs bytes.Buffer
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		records := decodeLogRecords(t, &logs)
+		if want, got := 2, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := slog.LevelWarn.String(), records[0].Level; want != got {
+			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		}
+		if want, got := "discarded unrecognized Edupass role/attribute codes", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+		if want, got := "edupass", records[0].Provider; want != got {
+			t.Errorf("want records[0].Provider: %q; got: %q", want, got)
+		}
+		if want, got := "test-sub", records[0].Subject; want != got {
+			t.Errorf("want records[0].Subject: %q; got: %q", want, got)
+		}
+		if want, got := []string{"1234_TW_ROLE_SUPERINTENDENT"}, records[0].Codes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want records[0].Codes: %q; got: %q", want, got)
+		}
+		if want, got := "logged in", records[1].Msg; want != got {
+			t.Errorf("want records[1].Msg: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("fails the login", func(t *testing.T) {
+		for _, test := range []struct {
+			name   string
+			groups []string
+		}{
+			{
+				name:   "when the ID token's groups claim is empty",
+				groups: []string{},
+			},
+			{
+				name:   "when the ID token carries no recognized base role",
+				groups: []string{"1234_TW_ATTR_CCE", "1234_TW_ROLE_SUPERINTENDENT"},
+			},
+			{
+				name:   "when the ID token carries more than one recognized base role",
+				groups: []string{"1234_TW_ROLE_PRINCIPAL", "5678_TW_ROLE_TEACHER"},
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				h := newHandlerIssuingIDToken(t, jwt.MapClaims{
+					"email":  "john.smith@example.com",
+					"groups": test.groups,
+				})
+
+				sess := session.New()
+				sess.Set(sessionKeyEdupassReturnTo, "/posts")
+				sess.Set(sessionKeyEdupassState, "test-state")
+				sess.Set(sessionKeyEdupassNonce, "test-nonce")
+				sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+				rec := httptest.NewRecorder()
+
+				h.authEdupassCallback(rec, req)
+
+				if want, got := http.StatusFound, rec.Code; want != got {
+					t.Fatalf("want status: %d; got: %d", want, got)
+				}
+				if want, got := loginFailedURL("/posts"), rec.Header().Get("Location"); want != got {
+					t.Errorf("want Location: %q; got: %q", want, got)
+				}
+				if sess.IsAuthenticated() {
+					t.Error("want sess.IsAuthenticated(): false; got: true")
+				}
+			})
+		}
+	})
+
+	t.Run("logs a warning when the ID token does not carry exactly one recognized base role", func(t *testing.T) {
+		h := newHandlerIssuingIDToken(t, jwt.MapClaims{
+			"email":  "john.smith@example.com",
+			"groups": []string{"1234_TW_ROLE_PRINCIPAL", "1234_TW_ROLE_TEACHER"},
+		})
+
+		var logs bytes.Buffer
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		records := decodeLogRecords(t, &logs)
+		if want, got := 1, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := slog.LevelWarn.String(), records[0].Level; want != got {
+			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		}
+		if want, got := "staff does not have exactly one recognized base role", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+		if want, got := "edupass", records[0].Provider; want != got {
+			t.Errorf("want records[0].Provider: %q; got: %q", want, got)
+		}
+		if want, got := "test-sub", records[0].Subject; want != got {
+			t.Errorf("want records[0].Subject: %q; got: %q", want, got)
+		}
+		if want, got := []string{"ROLE_PRINCIPAL", "ROLE_TEACHER"}, records[0].Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want records[0].Roles: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("replaces the user's role and attributes when they log in again", func(t *testing.T) {
+		firstHandler := newHandlerIssuingIDToken(t, jwt.MapClaims{
+			"email":  "john.smith@example.com",
+			"groups": []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE"},
+		})
+		secondHandler := newHandlerIssuingIDToken(t, jwt.MapClaims{
+			"email":  "john.smith@example.com",
+			"groups": []string{"1234_TW_ROLE_HOD"},
+		})
+
+		sess := session.New()
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		firstReq := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+		firstHandler.authEdupassCallback(httptest.NewRecorder(), firstReq)
+
+		firstUser, ok := sess.User()
+		if !ok {
+			t.Fatal("want sess.User() ok: true; got: false")
+		}
+		if want, got := "ROLE_TEACHER", firstUser.Role; want != got {
+			t.Fatalf("want firstUser.Role: %q; got: %q", want, got)
+		}
+
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		secondReq := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		secondHandler.authEdupassCallback(httptest.NewRecorder(), secondReq)
+
+		user, ok := sess.User()
+		if !ok {
+			t.Fatal("want sess.User() ok: true; got: false")
+		}
+		want := session.User{
+			Email:      "john.smith@example.com",
+			Role:       "ROLE_HOD",
+			Attributes: []string{},
+		}
+		if !reflect.DeepEqual(want, user) {
+			t.Errorf("want user: %+v; got: %+v", want, user)
+		}
+	})
 }
 
 func TestSafeReturnTo(t *testing.T) {
@@ -1571,6 +1806,158 @@ func TestSafeReturnTo(t *testing.T) {
 	})
 }
 
+func TestResolveEdupassGroups(t *testing.T) {
+	t.Run("resolves a single base role to itself", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER"})
+
+		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.roles: %q; got: %q", want, got)
+		}
+		if want, got := []string{}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("splits and strips roles and attributes", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_PG_ADMIN", "1234_TW_ATTR_CCE"})
+
+		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.roles: %q; got: %q", want, got)
+		}
+		if want, got := []string{"ATTR_PG_ADMIN", "ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("resolves pre-prod codes the same as production codes", func(t *testing.T) {
+		prod := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE"})
+		stg := resolveEdupassGroups([]string{"1234_TWSTG_ROLE_TEACHER", "1234_TWSTG_ATTR_CCE"})
+
+		if !reflect.DeepEqual(prod, stg) {
+			t.Errorf("want stg: %+v; got: %+v", prod, stg)
+		}
+	})
+
+	t.Run("resolves no base role when none is recognized", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ATTR_CCE"})
+
+		if want, got := []string{}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.roles: %q; got: %q", want, got)
+		}
+		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("resolves every base role", func(t *testing.T) {
+		for _, test := range []struct {
+			name string
+			raw  []string
+			want []string
+		}{
+			{
+				name: "when more than one shares a location",
+				raw:  []string{"1234_TW_ROLE_PRINCIPAL", "1234_TW_ROLE_TEACHER"},
+				want: []string{"ROLE_PRINCIPAL", "ROLE_TEACHER"},
+			},
+			{
+				name: "when they span more than one location",
+				raw:  []string{"1234_TW_ROLE_TEACHER", "5678_TW_ROLE_TEACHER"},
+				want: []string{"ROLE_TEACHER", "ROLE_TEACHER"},
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups(test.raw)
+
+				if want, got := test.want, resolved.roles; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.roles: %q; got: %q", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("drops and reports an unrecognized code without affecting the rest", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_SUPERINTENDENT"})
+
+		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.roles: %q; got: %q", want, got)
+		}
+		if want, got := []string{"1234_TW_ROLE_SUPERINTENDENT"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("reports an entry matching neither infix as unrecognized", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_SOMETHING_ELSE"})
+
+		if want, got := []string{"1234_TW_SOMETHING_ELSE"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("resolves an empty claim to an empty result", func(t *testing.T) {
+		for _, test := range []struct {
+			name string
+			raw  []string
+		}{
+			{
+				name: "when it is nil",
+				raw:  nil,
+			},
+			{
+				name: "when it is an empty list",
+				raw:  []string{},
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups(test.raw)
+
+				want := edupassGroups{
+					roles:        []string{},
+					attributes:   []string{},
+					unrecognized: []string{},
+				}
+				if !reflect.DeepEqual(want, resolved) {
+					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
+				}
+			})
+		}
+	})
+
+	t.Run("rejects an entry from a different application", func(t *testing.T) {
+		for _, test := range []struct {
+			name  string
+			entry string
+		}{
+			{
+				name:  "when it is role-shaped",
+				entry: "1234_OTHERAPP_ROLE_TEACHER",
+			},
+			{
+				name:  "when it is attribute-shaped",
+				entry: "1234_OTHERAPP_ATTR_CCE",
+			},
+			{
+				name:  "when its prefix merely ends in TW without the underscore",
+				entry: "1234_OTHERTW_ROLE_TEACHER",
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups([]string{test.entry})
+
+				want := edupassGroups{
+					roles:        []string{},
+					attributes:   []string{},
+					unrecognized: []string{test.entry},
+				}
+				if !reflect.DeepEqual(want, resolved) {
+					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
+				}
+			})
+		}
+	})
+}
+
 // newEdupassConfig returns a development config with every Edupass setting
 // filled in, so [New] can build a handler from it.
 func newEdupassConfig() *config.Config {
@@ -1614,10 +2001,13 @@ func newEdupassConfig() *config.Config {
 
 // logRecord is one record written by a [slog.JSONHandler].
 type logRecord struct {
-	Level    string `json:"level"`
-	Msg      string `json:"msg"`
-	Err      string `json:"err"`
-	Provider string `json:"provider"`
+	Level    string   `json:"level"`
+	Msg      string   `json:"msg"`
+	Err      string   `json:"err"`
+	Provider string   `json:"provider"`
+	Subject  string   `json:"subject"`
+	Codes    []string `json:"codes"`
+	Roles    []string `json:"roles"`
 }
 
 // decodeLogRecords returns the records in logs, the output of a
@@ -1635,4 +2025,58 @@ func decodeLogRecords(t *testing.T, logs *bytes.Buffer) []logRecord {
 	}
 
 	return records
+}
+
+// newHandlerIssuingIDToken returns a handler built from [newEdupassConfig]
+// whose Edupass token endpoint issues a valid ID token for subject "test-sub"
+// and nonce "test-nonce", carrying claims on top of those.
+func newHandlerIssuingIDToken(t *testing.T, claims jwt.MapClaims) *Handler {
+	t.Helper()
+
+	signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+
+	cfg := newEdupassConfig()
+
+	edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
+		idTokenClaims := jwt.MapClaims{
+			"iss":   cfg.Edupass.IssuerURL.String(),
+			"aud":   cfg.Edupass.ClientID,
+			"sub":   "test-sub",
+			"iat":   now.Unix(),
+			"exp":   now.Add(time.Hour).Unix(),
+			"nonce": "test-nonce",
+		}
+		maps.Copy(idTokenClaims, claims)
+		signedIDToken, err := jwt.NewWithClaims(jwt.SigningMethodRS256, idTokenClaims).SignedString(signingKey)
+		if err != nil {
+			t.Errorf("SignedString: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "test-access-token",
+			"token_type":   "Bearer",
+			"expires_in":   3599,
+			"id_token":     signedIDToken,
+		}); err != nil {
+			t.Errorf("Encode: %v", err)
+		}
+	}))
+	t.Cleanup(edupass.Close)
+
+	cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
+	h, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	h.edupassIDTokenVerifier = oidc.NewVerifier(
+		cfg.Edupass.IssuerURL.String(),
+		&oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{&signingKey.PublicKey}},
+		&oidc.Config{ClientID: cfg.Edupass.ClientID},
+	)
+
+	return h
 }
