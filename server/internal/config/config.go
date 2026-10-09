@@ -382,6 +382,7 @@ func (cfg *EdupassConfig) validate() error {
 		if !isRSA {
 			return fmt.Errorf("%s: not RSA, got %T", privateKeyVariable, pkcs8PrivateKey)
 		}
+		// RFC 7518, section 3.5 requires a key of 2048 bits or larger.
 		if privateKeyBits := privateKey.N.BitLen(); privateKeyBits < 2048 {
 			return fmt.Errorf("%s: %d bits, want at least 2048", privateKeyVariable, privateKeyBits)
 		}
