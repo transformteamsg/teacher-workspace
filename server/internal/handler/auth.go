@@ -199,6 +199,8 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 					"status", retrieveErr.Response.StatusCode,
 					"error", retrieveErr.ErrorCode,
 					"error_description", retrieveErr.ErrorDescription,
+					"error_codes", edupassErrorExtensions.ErrorCodes,
+					"timestamp", edupassErrorExtensions.Timestamp,
 					"trace_id", edupassErrorExtensions.TraceID,
 					"correlation_id", edupassErrorExtensions.CorrelationID,
 				)
@@ -246,6 +248,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 
 	sess.SetUser(session.User{Email: claims.Email})
 
+	logger.Info("logged in", "provider", "edupass")
 	httputil.Redirect(w, logger, http.StatusFound, returnTo)
 }
 

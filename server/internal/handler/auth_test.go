@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/String-sg/teacher-workspace/server/internal/session"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
 )
@@ -437,7 +440,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		t.Cleanup(edupass.Close)
 
 		cfg := newEdupassConfig()
-		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 		h, err := New(cfg)
 		if err != nil {
 			t.Fatalf("New: %v", err)
@@ -512,7 +515,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			t.Cleanup(edupass.Close)
 
 			cfg := newEdupassConfig()
-			cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 			h, err := New(cfg)
 			if err != nil {
 				t.Fatalf("New: %v", err)
@@ -551,7 +554,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		t.Cleanup(edupass.Close)
 
 		cfg := newEdupassConfig()
-		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 		h, err := New(cfg)
 		if err != nil {
 			t.Fatalf("New: %v", err)
@@ -580,6 +583,147 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("logs in and redirects to the return path when Edupass issues a valid ID token", func(t *testing.T) {
+		signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatalf("rsa.GenerateKey: %v", err)
+		}
+
+		cfg := newEdupassConfig()
+
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
+			idToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+				"iss":   cfg.Edupass.IssuerURL.String(),
+				"aud":   cfg.Edupass.ClientID,
+				"sub":   "test-sub",
+				"iat":   now.Unix(),
+				"exp":   now.Add(time.Hour).Unix(),
+				"nonce": "test-nonce",
+				"email": "john.smith@example.com",
+			})
+			signedIDToken, err := idToken.SignedString(signingKey)
+			if err != nil {
+				t.Errorf("SignedString: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-access-token",
+				"token_type":   "Bearer",
+				"expires_in":   3599,
+				"id_token":     signedIDToken,
+			}); err != nil {
+				t.Errorf("Encode: %v", err)
+			}
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		h.edupassIDTokenVerifier = oidc.NewVerifier(
+			cfg.Edupass.IssuerURL.String(),
+			&oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{&signingKey.PublicKey}},
+			&oidc.Config{ClientID: cfg.Edupass.ClientID},
+		)
+
+		sess := session.New()
+		sess.Set(sessionKeyEdupassReturnTo, "/posts")
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupassCallback(rec, req)
+
+		if want, got := "/posts", rec.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+		if !sess.IsAuthenticated() {
+			t.Error("want sess.IsAuthenticated(): true; got: false")
+		}
+	})
+
+	t.Run("logs the login without the email", func(t *testing.T) {
+		signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatalf("rsa.GenerateKey: %v", err)
+		}
+
+		cfg := newEdupassConfig()
+
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
+			idToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+				"iss":   cfg.Edupass.IssuerURL.String(),
+				"aud":   cfg.Edupass.ClientID,
+				"sub":   "test-sub",
+				"iat":   now.Unix(),
+				"exp":   now.Add(time.Hour).Unix(),
+				"nonce": "test-nonce",
+				"email": "john.smith@example.com",
+			})
+			signedIDToken, err := idToken.SignedString(signingKey)
+			if err != nil {
+				t.Errorf("SignedString: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-access-token",
+				"token_type":   "Bearer",
+				"expires_in":   3599,
+				"id_token":     signedIDToken,
+			}); err != nil {
+				t.Errorf("Encode: %v", err)
+			}
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		h.edupassIDTokenVerifier = oidc.NewVerifier(
+			cfg.Edupass.IssuerURL.String(),
+			&oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{&signingKey.PublicKey}},
+			&oidc.Config{ClientID: cfg.Edupass.ClientID},
+		)
+
+		var logs bytes.Buffer
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		records := decodeLogRecords(t, &logs)
+		if want, got := 1, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := slog.LevelInfo.String(), records[0].Level; want != got {
+			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		}
+		if want, got := "logged in", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+		if want, got := "edupass", records[0].Provider; want != got {
+			t.Errorf("want records[0].Provider: %q; got: %q", want, got)
+		}
+		if got := logs.String(); strings.Contains(got, "john.smith@example.com") {
+			t.Errorf("want logs: without the email; got: %s", got)
+		}
+	})
+
 	t.Run("logs the fields of a failed token response but not the client secret", func(t *testing.T) {
 		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -587,6 +731,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			if _, err := w.Write([]byte(`{
 				"error": "invalid_client",
 				"error_description": "client authentication failed",
+				"error_codes": [7000215],
+				"timestamp": "2026-10-09 02:02:12Z",
 				"trace_id": "test-trace-id",
 				"correlation_id": "test-correlation-id"
 			}`)); err != nil {
@@ -596,7 +742,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		t.Cleanup(edupass.Close)
 
 		cfg := newEdupassConfig()
-		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 		cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{Secret: "test-secret"}
 		h, err := New(cfg)
 		if err != nil {
@@ -624,12 +770,16 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			"status":            float64(http.StatusUnauthorized),
 			"error":             "invalid_client",
 			"error_description": "client authentication failed",
+			"timestamp":         "2026-10-09 02:02:12Z",
 			"trace_id":          "test-trace-id",
 			"correlation_id":    "test-correlation-id",
 		} {
 			if got := record[field]; want != got {
 				t.Errorf("want record[%q]: %v; got: %v", field, want, got)
 			}
+		}
+		if want, got := []any{float64(7000215)}, record["error_codes"]; !reflect.DeepEqual(want, got) {
+			t.Errorf("want record[\"error_codes\"]: %v; got: %v", want, got)
 		}
 		if got := logs.String(); strings.Contains(got, "test-secret") {
 			t.Errorf("want logs: without the client secret; got: %s", got)
@@ -647,7 +797,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		t.Cleanup(edupass.Close)
 
 		cfg := newEdupassConfig()
-		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 		h, err := New(cfg)
 		if err != nil {
 			t.Fatalf("New: %v", err)
@@ -690,7 +840,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		t.Cleanup(edupass.Close)
 
 		cfg := newEdupassConfig()
-		cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 		h, err := New(cfg)
 		if err != nil {
 			t.Fatalf("New: %v", err)
@@ -742,7 +892,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			t.Cleanup(edupass.Close)
 
 			cfg := newEdupassConfig()
-			cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodClientSecretPost
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{Secret: "test-secret"}
 			h, err := New(cfg)
@@ -790,7 +940,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				t.Fatalf("rsa.GenerateKey: %v", err)
 			}
 			cfg := newEdupassConfig()
-			cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Secret:                "test-secret",
@@ -843,7 +993,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				t.Fatalf("rsa.GenerateKey: %v", err)
 			}
 			cfg := newEdupassConfig()
-			cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Key:                   clientPrivateKey,
@@ -897,7 +1047,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				t.Fatalf("rsa.GenerateKey: %v", err)
 			}
 			cfg := newEdupassConfig()
-			cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Key:                   clientPrivateKey,
@@ -953,7 +1103,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				t.Fatalf("rsa.GenerateKey: %v", err)
 			}
 			cfg := newEdupassConfig()
-			cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Key:                   clientPrivateKey,
@@ -1007,7 +1157,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				t.Fatalf("rsa.GenerateKey: %v", err)
 			}
 			cfg := newEdupassConfig()
-			cfg.Edupass.TokenURL = mustParseURL(t, edupass.URL+"/token")
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
 			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{Key: clientPrivateKey}
 			h, err := New(cfg)
@@ -1040,6 +1190,102 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 			if want, got := clientAssertionIDs[0], clientAssertionIDs[1]; want == got {
 				t.Errorf("want: != %q; got: %q", want, got)
+			}
+		})
+
+		t.Run("logs in and redirects to the return path when Edupass accepts the client assertion", func(t *testing.T) {
+			clientPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatalf("rsa.GenerateKey: %v", err)
+			}
+			signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatalf("rsa.GenerateKey: %v", err)
+			}
+
+			cfg := newEdupassConfig()
+			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
+				Key:                   clientPrivateKey,
+				CertificateThumbprint: "test-certificate-thumbprint",
+			}
+
+			edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := r.ParseForm(); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				if _, err := jwt.Parse(
+					r.PostForm.Get("client_assertion"),
+					func(*jwt.Token) (any, error) { return &clientPrivateKey.PublicKey, nil },
+					jwt.WithValidMethods([]string{jwt.SigningMethodPS256.Alg()}),
+					jwt.WithAudience(cfg.Edupass.TokenURL.String()),
+					jwt.WithIssuer(cfg.Edupass.ClientID),
+					jwt.WithSubject(cfg.Edupass.ClientID),
+				); err != nil {
+					t.Errorf("jwt.Parse(client_assertion): %v", err)
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					if _, err := w.Write([]byte(`{"error":"invalid_client"}`)); err != nil {
+						t.Errorf("w.Write: %v", err)
+					}
+					return
+				}
+
+				now := time.Now()
+				idToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+					"iss":   cfg.Edupass.IssuerURL.String(),
+					"aud":   cfg.Edupass.ClientID,
+					"sub":   "test-sub",
+					"iat":   now.Unix(),
+					"exp":   now.Add(time.Hour).Unix(),
+					"nonce": "test-nonce",
+					"email": "john.smith@example.com",
+				})
+				signedIDToken, err := idToken.SignedString(signingKey)
+				if err != nil {
+					t.Errorf("SignedString: %v", err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				if err := json.NewEncoder(w).Encode(map[string]any{
+					"access_token": "test-access-token",
+					"token_type":   "Bearer",
+					"expires_in":   3599,
+					"id_token":     signedIDToken,
+				}); err != nil {
+					t.Errorf("Encode: %v", err)
+				}
+			}))
+			t.Cleanup(edupass.Close)
+
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
+			h, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			h.edupassIDTokenVerifier = oidc.NewVerifier(
+				cfg.Edupass.IssuerURL.String(),
+				&oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{&signingKey.PublicKey}},
+				&oidc.Config{ClientID: cfg.Edupass.ClientID},
+			)
+
+			sess := session.New()
+			sess.Set(sessionKeyEdupassReturnTo, "/posts")
+			sess.Set(sessionKeyEdupassState, "test-state")
+			sess.Set(sessionKeyEdupassNonce, "test-nonce")
+			sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+			ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+			ctx = middleware.WithSession(ctx, sess)
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+			rec := httptest.NewRecorder()
+
+			h.authEdupassCallback(rec, req)
+
+			if want, got := "/posts", rec.Header().Get("Location"); want != got {
+				t.Errorf("want Location: %q; got: %q", want, got)
+			}
+			if !sess.IsAuthenticated() {
+				t.Error("want sess.IsAuthenticated(): true; got: false")
 			}
 		})
 	})
@@ -1263,17 +1509,6 @@ func newEdupassConfig() *config.Config {
 			ClientCredentials: config.EdupassClientCredentials{Secret: "teacher-workspace-secret"},
 		},
 	}
-}
-
-// mustParseURL returns rawURL parsed, failing t if it does not parse.
-func mustParseURL(t *testing.T, rawURL string) *url.URL {
-	t.Helper()
-
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		t.Fatalf("url.Parse: %v", err)
-	}
-	return u
 }
 
 // logRecord is one record written by a [slog.JSONHandler].
