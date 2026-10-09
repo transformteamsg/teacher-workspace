@@ -150,7 +150,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	var edupassTokenResponse *oauth2.Token
 	var err error
 	switch h.cfg.Edupass.ClientAuthMethod {
-	case config.EdupassClientAuthMethodPrivateKeyJWT:
+	case config.OAuth2ClientAuthMethodPrivateKeyJWT:
 		issuedAt := time.Now()
 		clientAssertion := jwt.NewWithClaims(jwt.SigningMethodPS256, jwt.RegisteredClaims{
 			Issuer:    h.edupassOAuth2Config.ClientID,
@@ -174,7 +174,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			oauth2.SetAuthURLParam("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"),
 			oauth2.SetAuthURLParam("client_assertion", signedClientAssertion),
 		)
-	case config.EdupassClientAuthMethodClientSecretPost:
+	case config.OAuth2ClientAuthMethodClientSecretPost:
 		edupassTokenResponse, err = h.edupassOAuth2Config.Exchange(exchangeContext, query.Get("code"),
 			oauth2.VerifierOption(codeVerifier),
 			oauth2.SetAuthURLParam("client_secret", h.cfg.Edupass.ClientCredentials.Secret),

@@ -893,7 +893,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 			cfg := newEdupassConfig()
 			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
-			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodClientSecretPost
+			cfg.Edupass.ClientAuthMethod = config.OAuth2ClientAuthMethodClientSecretPost
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{Secret: "test-secret"}
 			h, err := New(cfg)
 			if err != nil {
@@ -941,7 +941,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 			cfg := newEdupassConfig()
 			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
-			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientAuthMethod = config.OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Secret:                "test-secret",
 				Key:                   clientPrivateKey,
@@ -994,7 +994,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 			cfg := newEdupassConfig()
 			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
-			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientAuthMethod = config.OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Key:                   clientPrivateKey,
 				CertificateThumbprint: "test-certificate-thumbprint",
@@ -1044,7 +1044,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 			cfg := newEdupassConfig()
 			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
-			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientAuthMethod = config.OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Key:                   clientPrivateKey,
 				CertificateThumbprint: "test-certificate-thumbprint",
@@ -1095,7 +1095,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 			cfg := newEdupassConfig()
 			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
-			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientAuthMethod = config.OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Key:                   clientPrivateKey,
 				CertificateThumbprint: "test-certificate-thumbprint",
@@ -1149,7 +1149,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 			cfg := newEdupassConfig()
 			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
-			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientAuthMethod = config.OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Key:                   clientPrivateKey,
 				CertificateThumbprint: "test-certificate-thumbprint",
@@ -1205,7 +1205,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 			cfg := newEdupassConfig()
 			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
-			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientAuthMethod = config.OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Key:                   clientPrivateKey,
 				CertificateThumbprint: "test-certificate-thumbprint",
@@ -1259,7 +1259,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 			cfg := newEdupassConfig()
 			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
-			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientAuthMethod = config.OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{Key: clientPrivateKey}
 			h, err := New(cfg)
 			if err != nil {
@@ -1305,7 +1305,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 
 			cfg := newEdupassConfig()
-			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientAuthMethod = config.OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
 				Key:                   clientPrivateKey,
 				CertificateThumbprint: "test-certificate-thumbprint",
@@ -1606,7 +1606,7 @@ func newEdupassConfig() *config.Config {
 				Host:   "tw.example.com",
 				Path:   "/auth/edupass/callback",
 			},
-			ClientAuthMethod:  config.EdupassClientAuthMethodClientSecretPost,
+			ClientAuthMethod:  config.OAuth2ClientAuthMethodClientSecretPost,
 			ClientCredentials: config.EdupassClientCredentials{Secret: "teacher-workspace-secret"},
 		},
 	}

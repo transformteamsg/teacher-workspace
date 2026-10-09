@@ -65,7 +65,7 @@ func Default() Config {
 			},
 		},
 		Edupass: EdupassConfig{
-			ClientAuthMethod: EdupassClientAuthMethodClientSecretPost,
+			ClientAuthMethod: OAuth2ClientAuthMethodClientSecretPost,
 		},
 		RemoteApps: RemoteAppsConfig{
 			SignedTokenTTL: 1 * time.Minute,
@@ -226,11 +226,11 @@ func (cfg SessionValkeyConfig) validate() error {
 	return errors.Join(errs...)
 }
 
-type EdupassClientAuthMethod string
+type OAuth2ClientAuthMethod string
 
 const (
-	EdupassClientAuthMethodClientSecretPost EdupassClientAuthMethod = "client_secret_post"
-	EdupassClientAuthMethodPrivateKeyJWT    EdupassClientAuthMethod = "private_key_jwt"
+	OAuth2ClientAuthMethodClientSecretPost OAuth2ClientAuthMethod = "client_secret_post"
+	OAuth2ClientAuthMethodPrivateKeyJWT    OAuth2ClientAuthMethod = "private_key_jwt"
 )
 
 type EdupassClientCredentials struct {
@@ -249,13 +249,13 @@ type EdupassConfig struct {
 	ClientID    string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
 	RedirectURL *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
 
-	ClientAuthMethod      EdupassClientAuthMethod `dotenv:"TW_EDUPASS_CLIENT_AUTH_METHOD"`
-	ClientSecret          string                  `dotenv:"TW_EDUPASS_CLIENT_SECRET"`
-	ClientSecretFile      string                  `dotenv:"TW_EDUPASS_CLIENT_SECRET_FILE"`
-	ClientPrivateKey      string                  `dotenv:"TW_EDUPASS_CLIENT_PRIVATE_KEY"`
-	ClientPrivateKeyFile  string                  `dotenv:"TW_EDUPASS_CLIENT_PRIVATE_KEY_FILE"`
-	ClientCertificate     string                  `dotenv:"TW_EDUPASS_CLIENT_CERTIFICATE"`
-	ClientCertificateFile string                  `dotenv:"TW_EDUPASS_CLIENT_CERTIFICATE_FILE"`
+	ClientAuthMethod      OAuth2ClientAuthMethod `dotenv:"TW_EDUPASS_CLIENT_AUTH_METHOD"`
+	ClientSecret          string                 `dotenv:"TW_EDUPASS_CLIENT_SECRET"`
+	ClientSecretFile      string                 `dotenv:"TW_EDUPASS_CLIENT_SECRET_FILE"`
+	ClientPrivateKey      string                 `dotenv:"TW_EDUPASS_CLIENT_PRIVATE_KEY"`
+	ClientPrivateKeyFile  string                 `dotenv:"TW_EDUPASS_CLIENT_PRIVATE_KEY_FILE"`
+	ClientCertificate     string                 `dotenv:"TW_EDUPASS_CLIENT_CERTIFICATE"`
+	ClientCertificateFile string                 `dotenv:"TW_EDUPASS_CLIENT_CERTIFICATE_FILE"`
 
 	ClientCredentials EdupassClientCredentials `dotenv:"-"`
 }
@@ -319,7 +319,7 @@ func (cfg *EdupassConfig) validate() error {
 	}
 
 	switch cfg.ClientAuthMethod {
-	case EdupassClientAuthMethodClientSecretPost:
+	case OAuth2ClientAuthMethodClientSecretPost:
 		if cfg.ClientSecret != "" && cfg.ClientSecretFile != "" {
 			errs = append(errs, errors.New("TW_EDUPASS_CLIENT_SECRET and TW_EDUPASS_CLIENT_SECRET_FILE are both set; set only one"))
 		}
@@ -343,7 +343,7 @@ func (cfg *EdupassConfig) validate() error {
 		}
 		cfg.ClientCredentials = EdupassClientCredentials{Secret: clientSecret}
 
-	case EdupassClientAuthMethodPrivateKeyJWT:
+	case OAuth2ClientAuthMethodPrivateKeyJWT:
 		if cfg.ClientPrivateKey != "" && cfg.ClientPrivateKeyFile != "" {
 			errs = append(errs, errors.New("TW_EDUPASS_CLIENT_PRIVATE_KEY and TW_EDUPASS_CLIENT_PRIVATE_KEY_FILE are both set; set only one"))
 		}
@@ -419,7 +419,7 @@ func (cfg *EdupassConfig) validate() error {
 
 	default:
 		errs = append(errs, fmt.Errorf("TW_EDUPASS_CLIENT_AUTH_METHOD must be %q or %q; got %q",
-			EdupassClientAuthMethodClientSecretPost, EdupassClientAuthMethodPrivateKeyJWT, cfg.ClientAuthMethod))
+			OAuth2ClientAuthMethodClientSecretPost, OAuth2ClientAuthMethodPrivateKeyJWT, cfg.ClientAuthMethod))
 	}
 
 	return errors.Join(errs...)

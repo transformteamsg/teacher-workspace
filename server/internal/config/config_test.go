@@ -100,7 +100,7 @@ func TestDefault(t *testing.T) {
 		if got := cfg.Edupass.ClientID; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
-		if want, got := EdupassClientAuthMethodClientSecretPost, cfg.Edupass.ClientAuthMethod; want != got {
+		if want, got := OAuth2ClientAuthMethodClientSecretPost, cfg.Edupass.ClientAuthMethod; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 		if got := cfg.Edupass.ClientSecret; got != "" {
@@ -158,7 +158,7 @@ func validConfig() Config {
 		ClientID:    "teacher-workspace",
 		RedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
 
-		ClientAuthMethod: EdupassClientAuthMethodClientSecretPost,
+		ClientAuthMethod: OAuth2ClientAuthMethodClientSecretPost,
 		ClientSecret:     "teacher-workspace-secret",
 	}
 	cfg.RemoteApps.PostsManifestURL = &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"}
@@ -914,7 +914,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 
 		t.Run("rejects a private key set both ways", func(t *testing.T) {
 			cfg := validConfig().Edupass
-			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.ClientSecret = ""
 			cfg.ClientPrivateKey = clientPrivateKeyPEM
 			cfg.ClientPrivateKeyFile = "/run/secrets/client.key"
@@ -932,7 +932,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 
 		t.Run("rejects a missing private key", func(t *testing.T) {
 			cfg := validConfig().Edupass
-			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.ClientSecret = ""
 			cfg.ClientCertificate = clientCertificatePEM
 
@@ -948,7 +948,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 
 		t.Run("rejects a certificate set both ways", func(t *testing.T) {
 			cfg := validConfig().Edupass
-			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.ClientSecret = ""
 			cfg.ClientPrivateKey = clientPrivateKeyPEM
 			cfg.ClientCertificate = clientCertificatePEM
@@ -966,7 +966,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 
 		t.Run("rejects a missing certificate", func(t *testing.T) {
 			cfg := validConfig().Edupass
-			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.ClientSecret = ""
 			cfg.ClientPrivateKey = clientPrivateKeyPEM
 
@@ -1014,7 +1014,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 			} {
 				t.Run(tt.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
-					cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+					cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 					cfg.ClientSecret = ""
 					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = tt.clientPrivateKey, tt.clientPrivateKeyFile
 					cfg.ClientCertificate, cfg.ClientCertificateFile = tt.clientCertificate, tt.clientCertificateFile
@@ -1086,7 +1086,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 			} {
 				t.Run(tt.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
-					cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+					cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 					cfg.ClientSecret = ""
 					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = tt.clientPrivateKey, tt.clientPrivateKeyFile
 					cfg.ClientCertificate = clientCertificatePEM
@@ -1153,7 +1153,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 			} {
 				t.Run(tt.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
-					cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+					cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 					cfg.ClientSecret = ""
 					cfg.ClientPrivateKey = clientPrivateKeyPEM
 					cfg.ClientCertificate, cfg.ClientCertificateFile = tt.clientCertificate, tt.clientCertificateFile
@@ -1177,7 +1177,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 			}
 			pkcs1PrivateKeyPEM := pkcs1PrivateKeyPEMBuffer.String()
 			cfg := validConfig().Edupass
-			cfg.ClientAuthMethod = EdupassClientAuthMethodPrivateKeyJWT
+			cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 			cfg.ClientSecret = ""
 			cfg.ClientPrivateKey = pkcs1PrivateKeyPEM
 			cfg.ClientCertificate = clientCertificatePEM
