@@ -58,6 +58,13 @@ type snapshot struct {
 // User is the authenticated principal of a Session.
 type User struct {
 	Email string `json:"email"`
+	// Role is the staff member's Edupass base role, without its location and
+	// environment prefix, such as "ROLE_TEACHER".
+	Role string `json:"role"`
+	// Attributes contains the staff member's Edupass attributes, without their
+	// location and environment prefix, such as "ATTR_PG_ADMIN", unranked and in
+	// the order Edupass issued them.
+	Attributes []string `json:"attributes"`
 }
 
 // New returns a new unauthenticated Session.

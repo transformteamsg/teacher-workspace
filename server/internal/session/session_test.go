@@ -81,7 +81,7 @@ func TestLoad(t *testing.T) {
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if want := (User{Email: "a@example.com"}); want != user {
+		if want := (User{Email: "a@example.com"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
 		val, ok := sess.Get[string]("key")
@@ -187,7 +187,7 @@ func TestSave(t *testing.T) {
 	t.Run("writes session under its ID with TTL", func(t *testing.T) {
 		store := &fakeStore{}
 		sess := New()
-		sess.SetUser(User{Email: "a@example.com"})
+		sess.SetUser(User{Email: "a@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
 		sess.Set("key", "value")
 
 		err := Save(t.Context(), store, sess, time.Hour)
@@ -198,8 +198,12 @@ func TestSave(t *testing.T) {
 		want := map[string]any{
 			"id":         sess.ID(),
 			"csrf_token": sess.csrfToken,
-			"user":       map[string]any{"email": "a@example.com"},
-			"data":       map[string]any{"key": "value"},
+			"user": map[string]any{
+				"email":      "a@example.com",
+				"role":       "ROLE_TEACHER",
+				"attributes": []any{"ATTR_CCE"},
+			},
+			"data": map[string]any{"key": "value"},
 		}
 		entry, ok := store.entries[sess.ID()]
 		if !ok {
@@ -324,7 +328,7 @@ func TestSession_User(t *testing.T) {
 		if !ok {
 			t.Fatal("want ok: true; got: false")
 		}
-		if want := (User{Email: "a@example.com"}); want != user {
+		if want := (User{Email: "a@example.com"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
 	})
@@ -504,7 +508,7 @@ func TestSession_SetUser(t *testing.T) {
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if want := (User{Email: "a@example.com"}); want != user {
+		if want := (User{Email: "a@example.com"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
 	})
@@ -519,7 +523,7 @@ func TestSession_SetUser(t *testing.T) {
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if want := (User{Email: "b@example.com"}); want != user {
+		if want := (User{Email: "b@example.com"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
 	})
