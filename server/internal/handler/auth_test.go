@@ -976,6 +976,107 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			}
 		})
 
+		t.Run("sends the code verifier", func(t *testing.T) {
+			var tokenPostForm url.Values
+			edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := r.ParseForm(); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				tokenPostForm = r.PostForm
+				w.WriteHeader(http.StatusBadRequest)
+			}))
+			t.Cleanup(edupass.Close)
+
+			clientPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatalf("rsa.GenerateKey: %v", err)
+			}
+			cfg := newEdupassConfig()
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
+			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
+				Key:                   clientPrivateKey,
+				CertificateThumbprint: "test-certificate-thumbprint",
+			}
+			h, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			sess := session.New()
+			sess.Set(sessionKeyEdupassState, "test-state")
+			sess.Set(sessionKeyEdupassNonce, "test-nonce")
+			sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+			ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+			ctx = middleware.WithSession(ctx, sess)
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+			h.authEdupassCallback(httptest.NewRecorder(), req)
+
+			if tokenPostForm == nil {
+				t.Fatal("want: a token request; got: none")
+			}
+			if want, got := "test-verifier", tokenPostForm.Get("code_verifier"); want != got {
+				t.Errorf("want code_verifier: %q; got: %q", want, got)
+			}
+		})
+
+		t.Run("logs a failed token response without the client assertion", func(t *testing.T) {
+			var tokenPostForm url.Values
+			edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := r.ParseForm(); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				tokenPostForm = r.PostForm
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				if _, err := w.Write([]byte(`{"error":"invalid_client","error_description":"client authentication failed"}`)); err != nil {
+					t.Errorf("w.Write: %v", err)
+				}
+			}))
+			t.Cleanup(edupass.Close)
+
+			clientPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatalf("rsa.GenerateKey: %v", err)
+			}
+			cfg := newEdupassConfig()
+			cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
+			cfg.Edupass.ClientAuthMethod = config.EdupassClientAuthMethodPrivateKeyJWT
+			cfg.Edupass.ClientCredentials = config.EdupassClientCredentials{
+				Key:                   clientPrivateKey,
+				CertificateThumbprint: "test-certificate-thumbprint",
+			}
+			h, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			var logs bytes.Buffer
+			sess := session.New()
+			sess.Set(sessionKeyEdupassState, "test-state")
+			sess.Set(sessionKeyEdupassNonce, "test-nonce")
+			sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+			ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+			ctx = middleware.WithSession(ctx, sess)
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+			h.authEdupassCallback(httptest.NewRecorder(), req)
+
+			clientAssertion := tokenPostForm.Get("client_assertion")
+			if clientAssertion == "" {
+				t.Fatal("want client_assertion: non-empty; got: empty")
+			}
+			if logs.Len() == 0 {
+				t.Fatal("want logs: non-empty; got: empty")
+			}
+			if got := logs.String(); strings.Contains(got, clientAssertion) {
+				t.Errorf("want logs: without the client assertion; got: %s", got)
+			}
+		})
+
 		t.Run("signs client_assertion with PS256 and the certificate thumbprint", func(t *testing.T) {
 			var tokenPostForm url.Values
 			edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
