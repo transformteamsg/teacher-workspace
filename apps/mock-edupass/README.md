@@ -43,7 +43,7 @@ Configure your relying party with these values:
 | `staff-2` | alice.tan@example.com | Alice Tan | `1234_TW_ROLE_TEACHER` | Single location-scoped role |
 | `staff-3` | bob.chen@example.com | Bob Chen | `X_TW_ROLE_TEACHER`, `X_TW_ATTR_PG_ADMIN` | Global role (location=X) and attribute |
 | `staff-4` | carol.lim@example.com | Carol Lim | `0001_TW_ROLE_TEACHER`, `0001_TW_ROLE_HOD` | **Conflict fixture:** two TW roles at same location |
-| `staff-5` | david.ng@example.com | David Ng | `0001_TWSTG_ROLE_TEACHER` | Pre-prod TWSTG app code |
+| `staff-5` | david.ng@example.com | David Ng | `0001_TWSTG_ROLE_TEACHER` | Pre-prod TWSTG app code; refused unless Teacher Workspace sets `TW_EDUPASS_GROUP_SUFFIX=TWSTG` |
 | `staff-6` | elena.foo@example.com | Elena Foo | `0001_TW_ROLE_TEACHER`, `1001_TW_ROLE_HOD` | Different roles at different schools |
 | `staff-7` | jane.doe@example.com | Jane Doe | `X_TW_ROLE_TEACHER`, `X_XX_ROLE_COUNSELLOR` | Non-TW role present; for unknown-role rejection testing |
 | `staff-8` | no-name@example.com | _(absent)_ | `[]` | Empty groups and missing name |

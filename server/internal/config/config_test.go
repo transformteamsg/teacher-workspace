@@ -73,6 +73,10 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 
+		if want, got := EdupassGroupSuffixTW, cfg.Edupass.GroupSuffix; want != got {
+			t.Errorf("want: %q; got: %q", want, got)
+		}
+
 		if want, got := time.Minute, cfg.RemoteApps.SignedTokenTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
@@ -157,6 +161,8 @@ func validConfig() Config {
 		JWKSURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
 		ClientID:    "teacher-workspace",
 		RedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
+
+		GroupSuffix: EdupassGroupSuffixTW,
 
 		ClientAuthMethod: OAuth2ClientAuthMethodClientSecretPost,
 		ClientSecret:     "teacher-workspace-secret",
@@ -665,6 +671,19 @@ func TestEdupassConfig_validate(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts the production and pre-prod group suffixes", func(t *testing.T) {
+		for _, suffix := range []EdupassGroupSuffix{EdupassGroupSuffixTW, EdupassGroupSuffixTWSTG} {
+			t.Run(string(suffix), func(t *testing.T) {
+				cfg := validConfig().Edupass
+				cfg.GroupSuffix = suffix
+
+				if err := cfg.validate(); err != nil {
+					t.Errorf("want err: nil; got: %v", err)
+				}
+			})
+		}
+	})
+
 	t.Run("rejects invalid values", func(t *testing.T) {
 		for _, tt := range []struct {
 			name   string
@@ -778,6 +797,20 @@ func TestEdupassConfig_validate(t *testing.T) {
 			t.Fatal("want err: non-nil; got: nil")
 		}
 		if want := `TW_EDUPASS_CLIENT_AUTH_METHOD must be "client_secret_post" or "private_key_jwt"; got "client_secret_basic"`; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+	})
+
+	t.Run("rejects an unknown group suffix", func(t *testing.T) {
+		cfg := validConfig().Edupass
+		cfg.GroupSuffix = "TWUAT"
+
+		err := cfg.validate()
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := `TW_EDUPASS_GROUP_SUFFIX must be "TW" or "TWSTG"; got "TWUAT"`; !strings.Contains(err.Error(), want) {
 			t.Errorf("want err: containing %q; got: %q", want, err)
 		}
 	})

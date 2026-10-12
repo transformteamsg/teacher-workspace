@@ -250,7 +250,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolved := resolveEdupassGroups(claims.Groups)
+	resolved := resolveEdupassGroups(claims.Groups, h.cfg.Edupass.GroupSuffix)
 	if len(resolved.unrecognized) > 0 {
 		logger.Warn(
 			"discarded unrecognized Edupass role/attribute codes",
@@ -399,19 +399,19 @@ type edupassGroups struct {
 // from each. Every slice in the result is non-nil, even when empty.
 //
 // Edupass mixes two kinds of entries into one array, each prefixed with a
-// location code and an environment marker: `<location>_TW_ROLE_<CODE>` for a
-// base role and `<location>_TW_ATTR_<CODE>` for an attribute (pre-prod
-// Edupass issues `_TWSTG_` instead of `_TW_`). resolveEdupassGroups requires
-// `_TW_` or `_TWSTG_` to sit immediately ahead of the `_ROLE_`/`_ATTR_`
-// infix, rejecting a lookalike entry meant for a different application; the
-// location code ahead of the marker itself is never checked.
+// location code and a group suffix: `<location>_TW_ROLE_<CODE>` for a base
+// role and `<location>_TW_ATTR_<CODE>` for an attribute (pre-prod Edupass
+// issues `_TWSTG_` instead of `_TW_`). resolveEdupassGroups requires suffix to
+// sit immediately ahead of the `_ROLE_`/`_ATTR_` infix, rejecting a lookalike
+// entry meant for a different application or Edupass environment; the
+// location code ahead of the suffix is never checked.
 //
-// A code absent from both reference lists, or not immediately preceded by a
-// recognized environment marker, is reported in unrecognized rather than
-// blocking resolution: Edupass can add codes between Teacher Workspace
-// releases. resolveEdupassGroups doesn't decide whether sign-in proceeds; the
-// caller refuses unless roles holds exactly one entry.
-func resolveEdupassGroups(raw []string) edupassGroups {
+// A code absent from both reference lists, or not immediately preceded by
+// suffix, is reported in unrecognized rather than blocking resolution: Edupass
+// can add codes between Teacher Workspace releases. resolveEdupassGroups
+// doesn't decide whether sign-in proceeds; the caller refuses unless roles
+// holds exactly one entry.
+func resolveEdupassGroups(raw []string, suffix config.EdupassGroupSuffix) edupassGroups {
 	roles := []string{}
 	attributes := []string{}
 	unrecognized := []string{}
@@ -420,7 +420,7 @@ func resolveEdupassGroups(raw []string) edupassGroups {
 		switch {
 		case strings.Contains(entry, edupassRoleInfix):
 			code := codeAfterInfix(entry, edupassRoleInfix)
-			if !fromRecognizedEdupassEnv(entry, edupassRoleInfix) {
+			if !hasEdupassGroupSuffix(entry, edupassRoleInfix, suffix) {
 				unrecognized = append(unrecognized, entry)
 			} else if isRecognizedEdupassRole(code) {
 				roles = append(roles, code)
@@ -429,7 +429,7 @@ func resolveEdupassGroups(raw []string) edupassGroups {
 			}
 		case strings.Contains(entry, edupassAttrInfix):
 			code := codeAfterInfix(entry, edupassAttrInfix)
-			if !fromRecognizedEdupassEnv(entry, edupassAttrInfix) {
+			if !hasEdupassGroupSuffix(entry, edupassAttrInfix, suffix) {
 				unrecognized = append(unrecognized, entry)
 			} else if isRecognizedEdupassAttribute(code) {
 				attributes = append(attributes, code)
@@ -456,12 +456,12 @@ func codeAfterInfix(entry, infix string) string {
 	return entry[idx+1:]
 }
 
-// fromRecognizedEdupassEnv reports whether entry's prefix, everything ahead
-// of infix, ends with a known Edupass environment marker: TW in production,
-// TWSTG pre-prod. It rejects a lookalike entry meant for a different
-// application that happens to share the ROLE_/ATTR_ infix shape, without
-// caring what the location code ahead of the marker itself says.
-func fromRecognizedEdupassEnv(entry, infix string) bool {
+// hasEdupassGroupSuffix reports whether entry's prefix, everything ahead of
+// infix, ends with suffix as its own underscore-separated part. It rejects a
+// lookalike entry meant for a different application or Edupass environment
+// that happens to share the ROLE_/ATTR_ infix shape, without caring what the
+// location code ahead of the suffix says.
+func hasEdupassGroupSuffix(entry, infix string, suffix config.EdupassGroupSuffix) bool {
 	prefix := entry[:strings.Index(entry, infix)]
-	return strings.HasSuffix(prefix, "_TW") || strings.HasSuffix(prefix, "_TWSTG")
+	return strings.HasSuffix(prefix, "_"+string(suffix))
 }

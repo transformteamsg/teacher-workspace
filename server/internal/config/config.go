@@ -65,6 +65,7 @@ func Default() Config {
 			},
 		},
 		Edupass: EdupassConfig{
+			GroupSuffix:      EdupassGroupSuffixTW,
 			ClientAuthMethod: OAuth2ClientAuthMethodClientSecretPost,
 		},
 		RemoteApps: RemoteAppsConfig{
@@ -233,6 +234,17 @@ const (
 	OAuth2ClientAuthMethodPrivateKeyJWT    OAuth2ClientAuthMethod = "private_key_jwt"
 )
 
+// EdupassGroupSuffix is the app code that ends the prefix of each Edupass
+// `groups` entry issued to Teacher Workspace, just ahead of its role or
+// attribute code: "TW" in `1234_TW_ROLE_TEACHER`. Production Edupass issues
+// [EdupassGroupSuffixTW], and pre-prod Edupass [EdupassGroupSuffixTWSTG].
+type EdupassGroupSuffix string
+
+const (
+	EdupassGroupSuffixTW    EdupassGroupSuffix = "TW"
+	EdupassGroupSuffixTWSTG EdupassGroupSuffix = "TWSTG"
+)
+
 type EdupassClientCredentials struct {
 	Secret                string
 	Key                   *rsa.PrivateKey
@@ -248,6 +260,8 @@ type EdupassConfig struct {
 
 	ClientID    string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
 	RedirectURL *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
+
+	GroupSuffix EdupassGroupSuffix `dotenv:"TW_EDUPASS_GROUP_SUFFIX"`
 
 	ClientAuthMethod      OAuth2ClientAuthMethod `dotenv:"TW_EDUPASS_CLIENT_AUTH_METHOD"`
 	ClientSecret          string                 `dotenv:"TW_EDUPASS_CLIENT_SECRET"`
@@ -316,6 +330,11 @@ func (cfg *EdupassConfig) validate() error {
 		if cfg.RedirectURL.Host == "" {
 			errs = append(errs, fmt.Errorf("TW_EDUPASS_REDIRECT_URL must include host[:port]; got %q", cfg.RedirectURL))
 		}
+	}
+
+	if cfg.GroupSuffix != EdupassGroupSuffixTW && cfg.GroupSuffix != EdupassGroupSuffixTWSTG {
+		errs = append(errs, fmt.Errorf("TW_EDUPASS_GROUP_SUFFIX must be %q or %q; got %q",
+			EdupassGroupSuffixTW, EdupassGroupSuffixTWSTG, cfg.GroupSuffix))
 	}
 
 	switch cfg.ClientAuthMethod {
