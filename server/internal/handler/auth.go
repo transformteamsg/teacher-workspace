@@ -234,6 +234,18 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The verifier skips iat (issued at), so check it here, allowing 5 minutes for clock differences as it does for nbf.
+	if idToken.IssuedAt.IsZero() {
+		logger.Error("no iat found in ID token")
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+	if idToken.IssuedAt.After(time.Now().Add(5 * time.Minute)) {
+		logger.Error("ID token iat is in the future", "iat", idToken.IssuedAt)
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+
 	var claims struct {
 		ID       string   `json:"id"`
 		CESEmail string   `json:"cesEmail"`
