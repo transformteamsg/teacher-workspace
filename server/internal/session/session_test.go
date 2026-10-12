@@ -199,7 +199,7 @@ func TestSave(t *testing.T) {
 			"id":         sess.ID(),
 			"csrf_token": sess.csrfToken,
 			"user": map[string]any{
-				"email":      "a@example.com",
+				"ces_email":  "a@example.com",
 				"role":       "ROLE_TEACHER",
 				"attributes": []any{"ATTR_CCE"},
 			},

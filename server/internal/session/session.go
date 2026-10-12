@@ -57,7 +57,7 @@ type snapshot struct {
 
 // User is the authenticated principal of a Session.
 type User struct {
-	CESEmail   string   `json:"email"`
+	CESEmail   string   `json:"ces_email"`
 	Role       string   `json:"role"`
 	Attributes []string `json:"attributes"`
 }
