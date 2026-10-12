@@ -65,7 +65,7 @@ func Default() Config {
 			},
 		},
 		Edupass: EdupassConfig{
-			GroupSuffix:      EdupassGroupSuffixTW,
+			AppCode:          EdupassAppCodeTW,
 			ClientAuthMethod: OAuth2ClientAuthMethodClientSecretPost,
 		},
 		RemoteApps: RemoteAppsConfig{
@@ -234,15 +234,16 @@ const (
 	OAuth2ClientAuthMethodPrivateKeyJWT    OAuth2ClientAuthMethod = "private_key_jwt"
 )
 
-// EdupassGroupSuffix is the app code that ends the prefix of each Edupass
-// `groups` entry issued to Teacher Workspace, just ahead of its role or
-// attribute code: "TW" in `1234_TW_ROLE_TEACHER`. Production Edupass issues
-// [EdupassGroupSuffixTW], and pre-prod Edupass [EdupassGroupSuffixTWSTG].
-type EdupassGroupSuffix string
+// EdupassAppCode is Teacher Workspace's Edupass app code: the <app_code> in
+// each App Role ID Edupass issues it, named
+// `<location_code>_<app_code>_<role_code>`, such as "TW" in
+// `1234_TW_ROLE_TEACHER`. Production Edupass issues [EdupassAppCodeTW], and
+// pre-prod Edupass [EdupassAppCodeTWSTG].
+type EdupassAppCode string
 
 const (
-	EdupassGroupSuffixTW    EdupassGroupSuffix = "TW"
-	EdupassGroupSuffixTWSTG EdupassGroupSuffix = "TWSTG"
+	EdupassAppCodeTW    EdupassAppCode = "TW"
+	EdupassAppCodeTWSTG EdupassAppCode = "TWSTG"
 )
 
 type EdupassClientCredentials struct {
@@ -261,7 +262,7 @@ type EdupassConfig struct {
 	ClientID    string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
 	RedirectURL *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
 
-	GroupSuffix EdupassGroupSuffix `dotenv:"TW_EDUPASS_GROUP_SUFFIX"`
+	AppCode EdupassAppCode `dotenv:"TW_EDUPASS_APP_CODE"`
 
 	ClientAuthMethod      OAuth2ClientAuthMethod `dotenv:"TW_EDUPASS_CLIENT_AUTH_METHOD"`
 	ClientSecret          string                 `dotenv:"TW_EDUPASS_CLIENT_SECRET"`
@@ -332,9 +333,9 @@ func (cfg *EdupassConfig) validate() error {
 		}
 	}
 
-	if cfg.GroupSuffix != EdupassGroupSuffixTW && cfg.GroupSuffix != EdupassGroupSuffixTWSTG {
-		errs = append(errs, fmt.Errorf("TW_EDUPASS_GROUP_SUFFIX must be %q or %q; got %q",
-			EdupassGroupSuffixTW, EdupassGroupSuffixTWSTG, cfg.GroupSuffix))
+	if cfg.AppCode != EdupassAppCodeTW && cfg.AppCode != EdupassAppCodeTWSTG {
+		errs = append(errs, fmt.Errorf("TW_EDUPASS_APP_CODE must be %q or %q; got %q",
+			EdupassAppCodeTW, EdupassAppCodeTWSTG, cfg.AppCode))
 	}
 
 	switch cfg.ClientAuthMethod {

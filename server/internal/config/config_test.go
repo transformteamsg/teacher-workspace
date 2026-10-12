@@ -73,7 +73,7 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 
-		if want, got := EdupassGroupSuffixTW, cfg.Edupass.GroupSuffix; want != got {
+		if want, got := EdupassAppCodeTW, cfg.Edupass.AppCode; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 
@@ -162,7 +162,7 @@ func validConfig() Config {
 		ClientID:    "teacher-workspace",
 		RedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
 
-		GroupSuffix: EdupassGroupSuffixTW,
+		AppCode: EdupassAppCodeTW,
 
 		ClientAuthMethod: OAuth2ClientAuthMethodClientSecretPost,
 		ClientSecret:     "teacher-workspace-secret",
@@ -671,11 +671,11 @@ func TestEdupassConfig_validate(t *testing.T) {
 		}
 	})
 
-	t.Run("accepts the production and pre-prod group suffixes", func(t *testing.T) {
-		for _, suffix := range []EdupassGroupSuffix{EdupassGroupSuffixTW, EdupassGroupSuffixTWSTG} {
-			t.Run(string(suffix), func(t *testing.T) {
+	t.Run("accepts the production and pre-prod app codes", func(t *testing.T) {
+		for _, appCode := range []EdupassAppCode{EdupassAppCodeTW, EdupassAppCodeTWSTG} {
+			t.Run(string(appCode), func(t *testing.T) {
 				cfg := validConfig().Edupass
-				cfg.GroupSuffix = suffix
+				cfg.AppCode = appCode
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -801,16 +801,16 @@ func TestEdupassConfig_validate(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects an unknown group suffix", func(t *testing.T) {
+	t.Run("rejects an unknown app code", func(t *testing.T) {
 		cfg := validConfig().Edupass
-		cfg.GroupSuffix = "TWUAT"
+		cfg.AppCode = "TWUAT"
 
 		err := cfg.validate()
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		if want := `TW_EDUPASS_GROUP_SUFFIX must be "TW" or "TWSTG"; got "TWUAT"`; !strings.Contains(err.Error(), want) {
+		if want := `TW_EDUPASS_APP_CODE must be "TW" or "TWSTG"; got "TWUAT"`; !strings.Contains(err.Error(), want) {
 			t.Errorf("want err: containing %q; got: %q", want, err)
 		}
 	})

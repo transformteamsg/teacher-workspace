@@ -1422,9 +1422,9 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("logs the user in with a base role carrying the configured group suffix", func(t *testing.T) {
+	t.Run("logs the user in with a base role carrying the configured app code", func(t *testing.T) {
 		cfg := newEdupassConfig()
-		cfg.Edupass.GroupSuffix = config.EdupassGroupSuffixTWSTG
+		cfg.Edupass.AppCode = config.EdupassAppCodeTWSTG
 		h := newHandlerIssuingIDToken(t, cfg, jwt.MapClaims{
 			"email":  "john.smith@example.com",
 			"groups": []string{"1234_TWSTG_ROLE_TEACHER"},
@@ -1826,7 +1826,7 @@ func TestSafeReturnTo(t *testing.T) {
 
 func TestResolveEdupassGroups(t *testing.T) {
 	t.Run("resolves a single base role to itself", func(t *testing.T) {
-		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER"}, config.EdupassGroupSuffixTW)
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER"}, config.EdupassAppCodeTW)
 
 		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.roles: %q; got: %q", want, got)
@@ -1837,7 +1837,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 	})
 
 	t.Run("splits and strips roles and attributes", func(t *testing.T) {
-		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_PG_ADMIN", "1234_TW_ATTR_CCE"}, config.EdupassGroupSuffixTW)
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_PG_ADMIN", "1234_TW_ATTR_CCE"}, config.EdupassAppCodeTW)
 
 		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.roles: %q; got: %q", want, got)
@@ -1847,9 +1847,9 @@ func TestResolveEdupassGroups(t *testing.T) {
 		}
 	})
 
-	t.Run("resolves pre-prod codes with the pre-prod suffix the same as production codes with the production suffix", func(t *testing.T) {
-		prod := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE"}, config.EdupassGroupSuffixTW)
-		stg := resolveEdupassGroups([]string{"1234_TWSTG_ROLE_TEACHER", "1234_TWSTG_ATTR_CCE"}, config.EdupassGroupSuffixTWSTG)
+	t.Run("resolves pre-prod codes with the pre-prod app code the same as production codes with the production app code", func(t *testing.T) {
+		prod := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE"}, config.EdupassAppCodeTW)
+		stg := resolveEdupassGroups([]string{"1234_TWSTG_ROLE_TEACHER", "1234_TWSTG_ATTR_CCE"}, config.EdupassAppCodeTWSTG)
 
 		if !reflect.DeepEqual(prod, stg) {
 			t.Errorf("want stg: %+v; got: %+v", prod, stg)
@@ -1857,7 +1857,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 	})
 
 	t.Run("resolves no base role when none is recognized", func(t *testing.T) {
-		resolved := resolveEdupassGroups([]string{"1234_TW_ATTR_CCE"}, config.EdupassGroupSuffixTW)
+		resolved := resolveEdupassGroups([]string{"1234_TW_ATTR_CCE"}, config.EdupassAppCodeTW)
 
 		if want, got := []string{}, resolved.roles; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.roles: %q; got: %q", want, got)
@@ -1885,7 +1885,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
-				resolved := resolveEdupassGroups(test.raw, config.EdupassGroupSuffixTW)
+				resolved := resolveEdupassGroups(test.raw, config.EdupassAppCodeTW)
 
 				if want, got := test.want, resolved.roles; !reflect.DeepEqual(want, got) {
 					t.Errorf("want resolved.roles: %q; got: %q", want, got)
@@ -1895,7 +1895,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 	})
 
 	t.Run("drops and reports an unrecognized code without affecting the rest", func(t *testing.T) {
-		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_SUPERINTENDENT"}, config.EdupassGroupSuffixTW)
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_SUPERINTENDENT"}, config.EdupassAppCodeTW)
 
 		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.roles: %q; got: %q", want, got)
@@ -1906,7 +1906,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 	})
 
 	t.Run("reports an entry matching neither infix as unrecognized", func(t *testing.T) {
-		resolved := resolveEdupassGroups([]string{"1234_TW_SOMETHING_ELSE"}, config.EdupassGroupSuffixTW)
+		resolved := resolveEdupassGroups([]string{"1234_TW_SOMETHING_ELSE"}, config.EdupassAppCodeTW)
 
 		if want, got := []string{"1234_TW_SOMETHING_ELSE"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
@@ -1928,7 +1928,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
-				resolved := resolveEdupassGroups(test.raw, config.EdupassGroupSuffixTW)
+				resolved := resolveEdupassGroups(test.raw, config.EdupassAppCodeTW)
 
 				want := edupassGroups{
 					roles:        []string{},
@@ -1961,7 +1961,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
-				resolved := resolveEdupassGroups([]string{test.entry}, config.EdupassGroupSuffixTW)
+				resolved := resolveEdupassGroups([]string{test.entry}, config.EdupassAppCodeTW)
 
 				want := edupassGroups{
 					roles:        []string{},
@@ -1977,23 +1977,23 @@ func TestResolveEdupassGroups(t *testing.T) {
 
 	t.Run("rejects an entry from the other Edupass environment", func(t *testing.T) {
 		for _, test := range []struct {
-			name   string
-			suffix config.EdupassGroupSuffix
-			entry  string
+			name    string
+			appCode config.EdupassAppCode
+			entry   string
 		}{
 			{
-				name:   "when the suffix is the production one",
-				suffix: config.EdupassGroupSuffixTW,
-				entry:  "1234_TWSTG_ROLE_TEACHER",
+				name:    "when the app code is the production one",
+				appCode: config.EdupassAppCodeTW,
+				entry:   "1234_TWSTG_ROLE_TEACHER",
 			},
 			{
-				name:   "when the suffix is the pre-prod one",
-				suffix: config.EdupassGroupSuffixTWSTG,
-				entry:  "1234_TW_ROLE_TEACHER",
+				name:    "when the app code is the pre-prod one",
+				appCode: config.EdupassAppCodeTWSTG,
+				entry:   "1234_TW_ROLE_TEACHER",
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
-				resolved := resolveEdupassGroups([]string{test.entry}, test.suffix)
+				resolved := resolveEdupassGroups([]string{test.entry}, test.appCode)
 
 				want := edupassGroups{
 					roles:        []string{},
@@ -2043,7 +2043,7 @@ func newEdupassConfig() *config.Config {
 				Host:   "tw.example.com",
 				Path:   "/auth/edupass/callback",
 			},
-			GroupSuffix:       config.EdupassGroupSuffixTW,
+			AppCode:           config.EdupassAppCodeTW,
 			ClientAuthMethod:  config.OAuth2ClientAuthMethodClientSecretPost,
 			ClientCredentials: config.EdupassClientCredentials{Secret: "teacher-workspace-secret"},
 		},

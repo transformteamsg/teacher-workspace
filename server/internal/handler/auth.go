@@ -250,7 +250,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolved := resolveEdupassGroups(claims.Groups, h.cfg.Edupass.GroupSuffix)
+	resolved := resolveEdupassGroups(claims.Groups, h.cfg.Edupass.AppCode)
 	if len(resolved.unrecognized) > 0 {
 		logger.Warn(
 			"discarded unrecognized Edupass role/attribute codes",
@@ -399,21 +399,21 @@ type edupassGroups struct {
 // each. Every slice in the result is non-nil, even when empty.
 //
 // Each entry is an Edupass app role, named
-// `<location_code>_<app_code>_<tw_role_code>`, where app_code is suffix (TW in
+// `<location_code>_<app_code>_<tw_role_code>`, where app_code is appCode (TW in
 // production, TWSTG in pre-prod). Teacher Workspace registers both its base
 // roles and its attributes as app roles, so tw_role_code is
 // `<ROLE|ATTR>_<role_code>`: `1234_TW_ROLE_TEACHER` is the base role
 // ROLE_TEACHER and `1234_TW_ATTR_CCE` the attribute ATTR_CCE, both at location
-// 1234. resolveEdupassGroups requires suffix to sit immediately ahead of the
+// 1234. resolveEdupassGroups requires appCode to sit immediately ahead of the
 // `_ROLE_`/`_ATTR_` infix, rejecting a lookalike entry meant for a different
 // application or Edupass environment; the location code is never checked.
 //
 // A code absent from both reference lists, or not immediately preceded by
-// suffix, is reported in unrecognized rather than blocking resolution: Edupass
+// appCode, is reported in unrecognized rather than blocking resolution: Edupass
 // can add codes between Teacher Workspace releases. resolveEdupassGroups
 // doesn't decide whether sign-in proceeds; the caller refuses unless roles
 // holds exactly one entry.
-func resolveEdupassGroups(raw []string, suffix config.EdupassGroupSuffix) edupassGroups {
+func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
 	roles := []string{}
 	attributes := []string{}
 	unrecognized := []string{}
@@ -422,7 +422,7 @@ func resolveEdupassGroups(raw []string, suffix config.EdupassGroupSuffix) edupas
 		switch {
 		case strings.Contains(entry, edupassRoleInfix):
 			code := codeAfterInfix(entry, edupassRoleInfix)
-			if !hasEdupassGroupSuffix(entry, edupassRoleInfix, suffix) {
+			if !hasEdupassAppCode(entry, edupassRoleInfix, appCode) {
 				unrecognized = append(unrecognized, entry)
 			} else if isRecognizedEdupassRole(code) {
 				roles = append(roles, code)
@@ -431,7 +431,7 @@ func resolveEdupassGroups(raw []string, suffix config.EdupassGroupSuffix) edupas
 			}
 		case strings.Contains(entry, edupassAttrInfix):
 			code := codeAfterInfix(entry, edupassAttrInfix)
-			if !hasEdupassGroupSuffix(entry, edupassAttrInfix, suffix) {
+			if !hasEdupassAppCode(entry, edupassAttrInfix, appCode) {
 				unrecognized = append(unrecognized, entry)
 			} else if isRecognizedEdupassAttribute(code) {
 				attributes = append(attributes, code)
@@ -458,12 +458,12 @@ func codeAfterInfix(entry, infix string) string {
 	return entry[idx+1:]
 }
 
-// hasEdupassGroupSuffix reports whether entry's prefix, everything ahead of
-// infix, ends with suffix as its own underscore-separated part. It rejects a
-// lookalike entry meant for a different application or Edupass environment
-// that happens to share the ROLE_/ATTR_ infix shape, without caring what the
-// location code ahead of the suffix says.
-func hasEdupassGroupSuffix(entry, infix string, suffix config.EdupassGroupSuffix) bool {
+// hasEdupassAppCode reports whether entry's app code, the underscore-separated
+// part just ahead of infix, is appCode. It rejects a lookalike entry meant for
+// a different application or Edupass environment that happens to share the
+// ROLE_/ATTR_ infix shape, without caring what the location code ahead of the
+// app code says.
+func hasEdupassAppCode(entry, infix string, appCode config.EdupassAppCode) bool {
 	prefix := entry[:strings.Index(entry, infix)]
-	return strings.HasSuffix(prefix, "_"+string(suffix))
+	return strings.HasSuffix(prefix, "_"+string(appCode))
 }
