@@ -400,6 +400,22 @@ func isRecognizedEdupassAttribute(code string) bool {
 	}
 }
 
+// isMKSchoolCode reports whether code is the location code of a MOE
+// Kindergarten (MK) school. Add new codes here as they're recognized.
+func isMKSchoolCode(code string) bool {
+	switch code {
+	case "6100", "6101", "6102", "6103", "6104", "6105", "6106", "6107", "6108", "6109",
+		"6110", "6111", "6112", "6113", "6114", "6115", "6116", "6117", "6118", "6119",
+		"6120", "6121", "6122", "6123", "6124", "6126", "6127", "6128", "6129",
+		"6130", "6131", "6132", "6133", "6134", "6135", "6136", "6137", "6138", "6139",
+		"6140", "6141", "6142", "6143", "6144", "6145", "6146", "6147", "6148", "6149",
+		"6150", "6151", "6152", "6153", "6154", "6155", "6156", "6157", "6158", "6159":
+		return true
+	default:
+		return false
+	}
+}
+
 // edupassGroups is the outcome of resolving one staff member's Edupass
 // `groups` claim.
 type edupassGroups struct {
@@ -428,12 +444,13 @@ type edupassGroups struct {
 // `1234_TW_ROLE_TEACHER` is the base role ROLE_TEACHER and `1234_TW_ATTR_CCE`
 // the attribute ATTR_CCE, both at location 1234. resolveEdupassGroups requires
 // an entry's app_code to be appCode, rejecting a lookalike entry meant for a
-// different application or Edupass environment; the location code is never
-// checked.
+// different application or Edupass environment.
 //
 // A code absent from both reference lists, or in an entry whose app_code is
 // not appCode, is reported in unrecognized rather than blocking resolution:
-// Edupass can add codes between Teacher Workspace releases.
+// Edupass can add codes between Teacher Workspace releases. A base role at a
+// MOE Kindergarten (MK) school is reported in unrecognized too, since Teacher
+// Workspace doesn't support MK staff; an attribute at one is kept.
 // resolveEdupassGroups doesn't decide whether sign-in proceeds; the caller
 // refuses unless roles holds exactly one entry.
 func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
@@ -445,7 +462,8 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 		switch {
 		case strings.Contains(entry, edupassRoleInfix):
 			code := codeAfterInfix(entry, edupassRoleInfix)
-			if !hasEdupassAppCode(entry, edupassRoleInfix, appCode) {
+			location, _, _ := strings.Cut(entry, "_")
+			if !hasEdupassAppCode(entry, edupassRoleInfix, appCode) || isMKSchoolCode(location) {
 				unrecognized = append(unrecognized, entry)
 			} else if isRecognizedEdupassRole(code) {
 				roles = append(roles, code)
