@@ -40,6 +40,13 @@ func TestRequireAuth(t *testing.T) {
 			wantNext: true,
 		},
 		{
+			name:     "passes through to /auth/logout without authentication",
+			method:   http.MethodPost,
+			target:   "/auth/logout",
+			sess:     session.New(),
+			wantNext: true,
+		},
+		{
 			name:     "passes through to /auth/edupass with authentication",
 			method:   http.MethodGet,
 			target:   "/auth/edupass",

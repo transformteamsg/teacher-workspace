@@ -9,7 +9,8 @@ import (
 )
 
 // RequireAuth returns a Middleware that enforces authentication on all routes
-// except /login, /auth/edupass, and /auth/edupass/callback. Outcomes:
+// except /login, /auth/edupass, /auth/edupass/callback, and /auth/logout.
+// Outcomes:
 //
 //  1. Authenticated request: passes through to the handler.
 //  2. Unauthenticated browser request: redirect to /login with return_to.
@@ -21,7 +22,7 @@ func RequireAuth() Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 
-			if path == "/auth/edupass" || path == "/auth/edupass/callback" {
+			if path == "/auth/edupass" || path == "/auth/edupass/callback" || path == "/auth/logout" {
 				next.ServeHTTP(w, r)
 				return
 			}

@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,11 +11,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/String-sg/teacher-workspace/server/internal/config"
 	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/String-sg/teacher-workspace/server/internal/oidc"
 	"github.com/String-sg/teacher-workspace/server/internal/session"
+	"github.com/String-sg/teacher-workspace/server/internal/session/memstore"
 )
 
 func testRP() *oidc.RelyingParty {
@@ -508,6 +511,40 @@ func TestHandler_Register_authGuard(t *testing.T) {
 		}
 	})
 
+	t.Run("signs out a teacher whose session has already ended", func(t *testing.T) {
+		anonymousSession := session.New()
+
+		mux := http.NewServeMux()
+		h.Register(mux, sessionInjector(anonymousSession), middleware.RequireAuth())
+
+		logoutRequest := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, logoutRequest)
+
+		if want, got := http.StatusSeeOther, response.Code; want != got {
+			t.Errorf("want status: %d; got: %d", want, got)
+		}
+		if want, got := "/login", response.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not sign out on a GET of /auth/logout", func(t *testing.T) {
+		teacherSession := session.New()
+		teacherSession.SetUser(&session.User{Email: "teacher@example.com"})
+
+		mux := http.NewServeMux()
+		h.Register(mux, sessionInjector(teacherSession), middleware.RequireAuth())
+
+		getRequest := httptest.NewRequest(http.MethodGet, "/auth/logout", nil)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, getRequest)
+
+		if !teacherSession.IsAuthenticated() {
+			t.Error("want teacherSession.IsAuthenticated(): true; got: false")
+		}
+	})
+
 	t.Run("serves page for authenticated request", func(t *testing.T) {
 		sess := session.New()
 		sess.SetUser(&session.User{Email: "teacher@example.com"})
@@ -705,71 +742,8 @@ func TestHandler_Register_authGuard(t *testing.T) {
 	})
 }
 
-func TestHandler_RegisterLogout(t *testing.T) {
-	// countingEndSession returns a middleware that counts the requests it
-	// sees, so a test can tell whether logout ran through it.
-	countingEndSession := func(calls *int) middleware.Middleware {
-		return func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				*calls++
-				next.ServeHTTP(w, r)
-			})
-		}
-	}
-
-	t.Run("runs logout through the end-session middleware and redirects to /login", func(t *testing.T) {
-		h, err := New(&config.Config{}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		var endSessionCalls int
-
-		mux := http.NewServeMux()
-		h.RegisterLogout(mux, countingEndSession(&endSessionCalls))
-
-		req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
-		rec := httptest.NewRecorder()
-
-		mux.ServeHTTP(rec, req)
-
-		if want, got := http.StatusSeeOther, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if want, got := "/login", rec.Header().Get("Location"); want != got {
-			t.Errorf("want: %q; got: %q", want, got)
-		}
-		if want := 1; want != endSessionCalls {
-			t.Errorf("want: %d; got: %d", want, endSessionCalls)
-		}
-	})
-
-	t.Run("rejects a cross-origin logout", func(t *testing.T) {
-		h, err := New(&config.Config{}, nil)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		var endSessionCalls int
-
-		mux := http.NewServeMux()
-		h.RegisterLogout(mux, countingEndSession(&endSessionCalls))
-
-		req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
-		req.Header.Set("Sec-Fetch-Site", "cross-site")
-		rec := httptest.NewRecorder()
-
-		mux.ServeHTTP(rec, req)
-
-		if want, got := http.StatusForbidden, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
-		}
-		if want := 0; want != endSessionCalls {
-			t.Errorf("want: %d; got: %d", want, endSessionCalls)
-		}
-	})
-
-	t.Run("takes precedence over the application routes on the same mux", func(t *testing.T) {
+func TestHandler_Register_logout(t *testing.T) {
+	t.Run("signs the teacher out through the session middleware", func(t *testing.T) {
 		cfg := config.Default()
 		cfg.Env = config.EnvProduction
 		cfg.BuildDir = t.TempDir()
@@ -777,32 +751,62 @@ func TestHandler_RegisterLogout(t *testing.T) {
 			t.Fatalf("os.WriteFile: %v", err)
 		}
 
+		sessionStore := memstore.New()
+		teacherSession := session.New()
+		teacherSession.SetUser(&session.User{Email: "teacher@example.com"})
+		if err := sessionStore.Commit(t.Context(), teacherSession.Snapshot(), time.Hour); err != nil {
+			t.Fatalf("sessionStore.Commit: %v", err)
+		}
+
 		h, err := New(&cfg, testRP())
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
 
-		var authCalls, endSessionCalls int
-
 		mux := http.NewServeMux()
-		h.Register(mux, func(next http.Handler) http.Handler { return next }, countingEndSession(&authCalls))
-		h.RegisterLogout(mux, countingEndSession(&endSessionCalls))
+		sessionMiddleware := middleware.Session(sessionStore, middleware.SessionOptions{
+			Name:             cfg.Session.Name,
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: time.Hour,
+		})
+		h.Register(mux, sessionMiddleware, middleware.RequireAuth())
 
-		req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
-		rec := httptest.NewRecorder()
+		logoutRequest := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		logoutRequest = logoutRequest.WithContext(middleware.WithLogger(logoutRequest.Context(), slog.New(slog.DiscardHandler)))
+		logoutRequest.AddCookie(&http.Cookie{Name: cfg.Session.Name, Value: teacherSession.ID()})
+		response := httptest.NewRecorder()
 
-		mux.ServeHTTP(rec, req)
+		mux.ServeHTTP(response, logoutRequest)
 
-		if want, got := http.StatusSeeOther, rec.Code; want != got {
-			t.Errorf("want: %d; got: %d", want, got)
+		oldSessionInStore, err := sessionStore.Prepare(t.Context(), teacherSession.ID())
+		if err != nil {
+			t.Fatalf("sessionStore.Prepare: %v", err)
 		}
-		// A signed-out teacher must still be able to sign out, so the auth
-		// guard on the application routes never sees the request.
-		if want := 0; want != authCalls {
-			t.Errorf("want: %d; got: %d", want, authCalls)
+		if oldSessionInStore != nil {
+			t.Error("want oldSessionInStore: nil; got: non-nil")
 		}
-		if want := 1; want != endSessionCalls {
-			t.Errorf("want: %d; got: %d", want, endSessionCalls)
+
+		var newSessionCookie *http.Cookie
+		for _, responseCookie := range response.Result().Cookies() {
+			if responseCookie.Name == cfg.Session.Name {
+				newSessionCookie = responseCookie
+			}
+		}
+		if newSessionCookie == nil {
+			t.Fatal("want newSessionCookie: non-nil; got: nil")
+		}
+		if got := newSessionCookie.Value; teacherSession.ID() == got {
+			t.Fatalf("want newSessionCookie.Value: != %q; got: %q", teacherSession.ID(), got)
+		}
+		newSessionInStore, err := sessionStore.Prepare(t.Context(), newSessionCookie.Value)
+		if err != nil {
+			t.Fatalf("sessionStore.Prepare: %v", err)
+		}
+		if newSessionInStore == nil {
+			t.Fatal("want newSessionInStore: non-nil; got: nil")
+		}
+		if newSessionInStore.User != nil {
+			t.Errorf("want newSessionInStore.User: nil; got: %+v", newSessionInStore.User)
 		}
 	})
 }

@@ -178,8 +178,20 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, returnTo, http.StatusSeeOther)
 }
 
-// authLogout signs the teacher out. The session is ended by the middleware
-// wrapping this route, so all that is left is to send them to the login page.
+// authLogout signs the teacher out with a new, empty session and sends them to
+// the login page.
 func (h *Handler) authLogout(w http.ResponseWriter, r *http.Request) {
+	sess, ok := middleware.SessionFromContext(r.Context())
+	if !ok || !sess.IsAuthenticated() {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	sess.SetUser(nil)
+	sess.Delete(sessionKeyOIDCState)
+	sess.Delete(sessionKeyOIDCNonce)
+	sess.Delete(sessionKeyOIDCCodeVerifier)
+	sess.Delete(sessionKeyReturnTo)
+	sess.Rotate()
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

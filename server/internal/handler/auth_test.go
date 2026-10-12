@@ -976,3 +976,110 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		assertRedirect(t, rec, http.StatusSeeOther, "/")
 	})
 }
+
+func TestHandler_authLogout(t *testing.T) {
+	t.Run("signs the teacher out", func(t *testing.T) {
+		h, err := New(&config.Config{}, nil)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		teacherSession := session.New()
+		teacherSession.SetUser(&session.User{Email: "teacher@example.com"})
+		logoutRequest := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		logoutRequest = logoutRequest.WithContext(middleware.WithSession(middleware.WithLogger(logoutRequest.Context(), slog.New(slog.DiscardHandler)), teacherSession))
+
+		h.authLogout(httptest.NewRecorder(), logoutRequest)
+
+		if teacherSession.IsAuthenticated() {
+			t.Error("want teacherSession.IsAuthenticated(): false; got: true")
+		}
+	})
+
+	t.Run("gives the session a new ID", func(t *testing.T) {
+		h, err := New(&config.Config{}, nil)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		teacherSession := session.New()
+		teacherSession.SetUser(&session.User{Email: "teacher@example.com"})
+		signedInID := teacherSession.ID()
+		logoutRequest := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		logoutRequest = logoutRequest.WithContext(middleware.WithSession(middleware.WithLogger(logoutRequest.Context(), slog.New(slog.DiscardHandler)), teacherSession))
+
+		h.authLogout(httptest.NewRecorder(), logoutRequest)
+
+		if got := teacherSession.ID(); signedInID == got {
+			t.Errorf("want teacherSession.ID(): != %q; got: %q", signedInID, got)
+		}
+	})
+
+	t.Run("redirects to /login", func(t *testing.T) {
+		h, err := New(&config.Config{}, nil)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		teacherSession := session.New()
+		teacherSession.SetUser(&session.User{Email: "teacher@example.com"})
+		logoutRequest := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		logoutRequest = logoutRequest.WithContext(middleware.WithSession(middleware.WithLogger(logoutRequest.Context(), slog.New(slog.DiscardHandler)), teacherSession))
+		response := httptest.NewRecorder()
+
+		h.authLogout(response, logoutRequest)
+
+		if want, got := http.StatusSeeOther, response.Code; want != got {
+			t.Fatalf("want response.Code: %d; got: %d", want, got)
+		}
+		if want, got := "/login", response.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("redirects a teacher who is not signed in to /login without changing the session", func(t *testing.T) {
+		h, err := New(&config.Config{}, nil)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		anonymousSession := session.New()
+		anonymousID := anonymousSession.ID()
+		logoutRequest := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		logoutRequest = logoutRequest.WithContext(middleware.WithSession(middleware.WithLogger(logoutRequest.Context(), slog.New(slog.DiscardHandler)), anonymousSession))
+		response := httptest.NewRecorder()
+
+		h.authLogout(response, logoutRequest)
+
+		if want, got := http.StatusSeeOther, response.Code; want != got {
+			t.Fatalf("want response.Code: %d; got: %d", want, got)
+		}
+		if want, got := "/login", response.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+		if got := anonymousSession.ID(); anonymousID != got {
+			t.Errorf("want anonymousSession.ID(): %q; got: %q", anonymousID, got)
+		}
+	})
+
+	t.Run("redirects to /login when the request carries no session", func(t *testing.T) {
+		h, err := New(&config.Config{}, nil)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		logoutRequest := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		logoutRequest = logoutRequest.WithContext(middleware.WithLogger(logoutRequest.Context(), slog.New(slog.DiscardHandler)))
+		response := httptest.NewRecorder()
+
+		h.authLogout(response, logoutRequest)
+
+		if want, got := http.StatusSeeOther, response.Code; want != got {
+			t.Fatalf("want response.Code: %d; got: %d", want, got)
+		}
+		if want, got := "/login", response.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+	})
+
+}
