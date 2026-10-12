@@ -1477,11 +1477,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := "discarded unrecognized Edupass role/attribute codes", records[0].Msg; want != got {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
-		if want, got := "edupass", records[0].Provider; want != got {
-			t.Errorf("want records[0].Provider: %q; got: %q", want, got)
-		}
-		if want, got := "test-sub", records[0].Subject; want != got {
-			t.Errorf("want records[0].Subject: %q; got: %q", want, got)
+		if want, got := "test-id", records[0].EdupassID; want != got {
+			t.Errorf("want records[0].EdupassID: %q; got: %q", want, got)
 		}
 		if want, got := []string{"1234_TW_ROLE_SUPERINTENDENT"}, records[0].Codes; !reflect.DeepEqual(want, got) {
 			t.Errorf("want records[0].Codes: %q; got: %q", want, got)
@@ -1567,11 +1564,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := "staff does not have exactly one recognized base role", records[0].Msg; want != got {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
-		if want, got := "edupass", records[0].Provider; want != got {
-			t.Errorf("want records[0].Provider: %q; got: %q", want, got)
-		}
-		if want, got := "test-sub", records[0].Subject; want != got {
-			t.Errorf("want records[0].Subject: %q; got: %q", want, got)
+		if want, got := "test-id", records[0].EdupassID; want != got {
+			t.Errorf("want records[0].EdupassID: %q; got: %q", want, got)
 		}
 		if want, got := []string{"ROLE_PRINCIPAL", "ROLE_TEACHER"}, records[0].Roles; !reflect.DeepEqual(want, got) {
 			t.Errorf("want records[0].Roles: %q; got: %q", want, got)
@@ -2001,13 +1995,13 @@ func newEdupassConfig() *config.Config {
 
 // logRecord is one record written by a [slog.JSONHandler].
 type logRecord struct {
-	Level    string   `json:"level"`
-	Msg      string   `json:"msg"`
-	Err      string   `json:"err"`
-	Provider string   `json:"provider"`
-	Subject  string   `json:"subject"`
-	Codes    []string `json:"codes"`
-	Roles    []string `json:"roles"`
+	Level     string   `json:"level"`
+	Msg       string   `json:"msg"`
+	Err       string   `json:"err"`
+	Provider  string   `json:"provider"`
+	EdupassID string   `json:"edupass_id"`
+	Codes     []string `json:"codes"`
+	Roles     []string `json:"roles"`
 }
 
 // decodeLogRecords returns the records in logs, the output of a
@@ -2028,8 +2022,8 @@ func decodeLogRecords(t *testing.T, logs *bytes.Buffer) []logRecord {
 }
 
 // newHandlerIssuingIDToken returns a handler built from [newEdupassConfig]
-// whose Edupass token endpoint issues a valid ID token for subject "test-sub"
-// and nonce "test-nonce", carrying claims on top of those.
+// whose Edupass token endpoint issues a valid ID token for subject "test-sub",
+// Edupass ID "test-id" and nonce "test-nonce", carrying claims on top of those.
 func newHandlerIssuingIDToken(t *testing.T, claims jwt.MapClaims) *Handler {
 	t.Helper()
 
@@ -2046,6 +2040,7 @@ func newHandlerIssuingIDToken(t *testing.T, claims jwt.MapClaims) *Handler {
 			"iss":   cfg.Edupass.IssuerURL.String(),
 			"aud":   cfg.Edupass.ClientID,
 			"sub":   "test-sub",
+			"id":    "test-id",
 			"iat":   now.Unix(),
 			"exp":   now.Add(time.Hour).Unix(),
 			"nonce": "test-nonce",

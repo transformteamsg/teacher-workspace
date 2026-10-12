@@ -235,6 +235,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
+		ID     string   `json:"id"`
 		Email  string   `json:"email"`
 		Groups []string `json:"groups"`
 	}
@@ -253,16 +254,14 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	if len(resolved.unrecognized) > 0 {
 		logger.Warn(
 			"discarded unrecognized Edupass role/attribute codes",
-			"provider", "edupass",
-			"subject", idToken.Subject,
+			"edupass_id", claims.ID,
 			"codes", resolved.unrecognized,
 		)
 	}
 	if len(resolved.roles) != 1 {
 		logger.Warn(
 			"staff does not have exactly one recognized base role",
-			"provider", "edupass",
-			"subject", idToken.Subject,
+			"edupass_id", claims.ID,
 			"roles", resolved.roles,
 		)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
