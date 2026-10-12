@@ -59,7 +59,7 @@ func TestLoad(t *testing.T) {
 	t.Run("returns session stored under ID with a user", func(t *testing.T) {
 		store := &fakeStore{}
 		saved := New()
-		saved.SetUser(User{Email: "a@example.com"})
+		saved.SetUser(User{CESEmail: "a@example.com"})
 		saved.Set("key", "value")
 		token := saved.CSRFToken()
 		if err := Save(t.Context(), store, saved, time.Hour); err != nil {
@@ -81,7 +81,7 @@ func TestLoad(t *testing.T) {
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if want := (User{Email: "a@example.com"}); !reflect.DeepEqual(want, user) {
+		if want := (User{CESEmail: "a@example.com"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
 		val, ok := sess.Get[string]("key")
@@ -187,7 +187,7 @@ func TestSave(t *testing.T) {
 	t.Run("writes session under its ID with TTL", func(t *testing.T) {
 		store := &fakeStore{}
 		sess := New()
-		sess.SetUser(User{Email: "a@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
+		sess.SetUser(User{CESEmail: "a@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
 		sess.Set("key", "value")
 
 		err := Save(t.Context(), store, sess, time.Hour)
@@ -321,14 +321,14 @@ func TestSession_VerifyCSRFToken(t *testing.T) {
 func TestSession_User(t *testing.T) {
 	t.Run("returns the user when a user is attached", func(t *testing.T) {
 		sess := New()
-		sess.SetUser(User{Email: "a@example.com"})
+		sess.SetUser(User{CESEmail: "a@example.com"})
 
 		user, ok := sess.User()
 
 		if !ok {
 			t.Fatal("want ok: true; got: false")
 		}
-		if want := (User{Email: "a@example.com"}); !reflect.DeepEqual(want, user) {
+		if want := (User{CESEmail: "a@example.com"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
 	})
@@ -347,7 +347,7 @@ func TestSession_User(t *testing.T) {
 func TestSession_IsAuthenticated(t *testing.T) {
 	t.Run("reports true when a user is attached", func(t *testing.T) {
 		sess := New()
-		sess.SetUser(User{Email: "a@example.com"})
+		sess.SetUser(User{CESEmail: "a@example.com"})
 
 		authenticated := sess.IsAuthenticated()
 
@@ -502,28 +502,28 @@ func TestSession_SetUser(t *testing.T) {
 	t.Run("attaches user", func(t *testing.T) {
 		sess := New()
 
-		sess.SetUser(User{Email: "a@example.com"})
+		sess.SetUser(User{CESEmail: "a@example.com"})
 
 		user, ok := sess.User()
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if want := (User{Email: "a@example.com"}); !reflect.DeepEqual(want, user) {
+		if want := (User{CESEmail: "a@example.com"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
 	})
 
 	t.Run("replaces existing user", func(t *testing.T) {
 		sess := New()
-		sess.SetUser(User{Email: "a@example.com"})
+		sess.SetUser(User{CESEmail: "a@example.com"})
 
-		sess.SetUser(User{Email: "b@example.com"})
+		sess.SetUser(User{CESEmail: "b@example.com"})
 
 		user, ok := sess.User()
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if want := (User{Email: "b@example.com"}); !reflect.DeepEqual(want, user) {
+		if want := (User{CESEmail: "b@example.com"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
 	})
@@ -532,7 +532,7 @@ func TestSession_SetUser(t *testing.T) {
 		sess := New()
 		oldID := sess.ID()
 
-		sess.SetUser(User{Email: "a@example.com"})
+		sess.SetUser(User{CESEmail: "a@example.com"})
 
 		if got := sess.ID(); oldID == got {
 			t.Errorf("want sess.ID(): != %q; got: %q", oldID, got)
@@ -543,7 +543,7 @@ func TestSession_SetUser(t *testing.T) {
 		sess := New()
 		token := sess.CSRFToken()
 
-		sess.SetUser(User{Email: "a@example.com"})
+		sess.SetUser(User{CESEmail: "a@example.com"})
 
 		if sess.VerifyCSRFToken(token) {
 			t.Error("want sess.VerifyCSRFToken(token): false; got: true")
@@ -553,7 +553,7 @@ func TestSession_SetUser(t *testing.T) {
 	t.Run("issues new CSRF tokens that VerifyCSRFToken accepts", func(t *testing.T) {
 		sess := New()
 
-		sess.SetUser(User{Email: "a@example.com"})
+		sess.SetUser(User{CESEmail: "a@example.com"})
 
 		if !sess.VerifyCSRFToken(sess.CSRFToken()) {
 			t.Error("want sess.VerifyCSRFToken(sess.CSRFToken()): true; got: false")
@@ -564,7 +564,7 @@ func TestSession_SetUser(t *testing.T) {
 		sess := New()
 		sess.Set("key", "value")
 
-		sess.SetUser(User{Email: "a@example.com"})
+		sess.SetUser(User{CESEmail: "a@example.com"})
 
 		if _, ok := sess.Get[any]("key"); ok {
 			t.Error("want sess.Get[any](\"key\") ok: false; got: true")

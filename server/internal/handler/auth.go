@@ -235,17 +235,17 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
-		ID     string   `json:"id"`
-		Email  string   `json:"email"`
-		Groups []string `json:"groups"`
+		ID       string   `json:"id"`
+		CESEmail string   `json:"cesEmail"`
+		Groups   []string `json:"groups"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		logger.Error("failed to unmarshal claims", "provider", "edupass", "err", err)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
-	if claims.Email == "" {
-		logger.Error("no email found in claims", "provider", "edupass")
+	if claims.CESEmail == "" {
+		logger.Error("no cesEmail found in claims")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
@@ -269,7 +269,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess.SetUser(session.User{
-		Email:      claims.Email,
+		CESEmail:   claims.CESEmail,
 		Role:       resolved.roles[0],
 		Attributes: resolved.attributes,
 	})

@@ -23,7 +23,7 @@ func TestSession(t *testing.T) {
 	t.Run("loads the session identified by the session cookie", func(t *testing.T) {
 		store := newFakeStore(t)
 		seeded := session.New()
-		seeded.SetUser(session.User{Email: "teacher@example.com"})
+		seeded.SetUser(session.User{CESEmail: "teacher@example.com"})
 		if err := session.Save(t.Context(), store.Store, seeded, time.Hour); err != nil {
 			t.Fatalf("session.Save: %v", err)
 		}
@@ -60,8 +60,8 @@ func TestSession(t *testing.T) {
 		if !ok {
 			t.Fatal("want loaded.User() ok: true; got: false")
 		}
-		if want, got := "teacher@example.com", user.Email; want != got {
-			t.Errorf("want user.Email: %q; got: %q", want, got)
+		if want, got := "teacher@example.com", user.CESEmail; want != got {
+			t.Errorf("want user.CESEmail: %q; got: %q", want, got)
 		}
 	})
 
@@ -383,7 +383,7 @@ func TestSession(t *testing.T) {
 	t.Run("sets the session to expire after the authenticated TTL when the loaded session is authenticated", func(t *testing.T) {
 		store := newFakeStore(t)
 		seeded := session.New()
-		seeded.SetUser(session.User{Email: "teacher@example.com"})
+		seeded.SetUser(session.User{CESEmail: "teacher@example.com"})
 		if err := session.Save(t.Context(), store.Store, seeded, time.Hour); err != nil {
 			t.Fatalf("session.Save: %v", err)
 		}
@@ -448,7 +448,7 @@ func TestSession(t *testing.T) {
 			if !ok {
 				t.Fatal("want SessionFromContext(r.Context()) ok: true; got: false")
 			}
-			loaded.SetUser(session.User{Email: "teacher@example.com"})
+			loaded.SetUser(session.User{CESEmail: "teacher@example.com"})
 			_, _ = w.Write([]byte("ok"))
 		})
 
@@ -955,7 +955,7 @@ func TestSession(t *testing.T) {
 			if !ok {
 				t.Fatal("want SessionFromContext(r.Context()) ok: true; got: false")
 			}
-			loaded.SetUser(session.User{Email: "teacher@example.com"})
+			loaded.SetUser(session.User{CESEmail: "teacher@example.com"})
 			_, _ = w.Write([]byte("ok"))
 		})
 
@@ -1078,7 +1078,7 @@ func TestSession(t *testing.T) {
 			if !ok {
 				t.Fatal("want SessionFromContext(r.Context()) ok: true; got: false")
 			}
-			loaded.SetUser(session.User{Email: "teacher@example.com"})
+			loaded.SetUser(session.User{CESEmail: "teacher@example.com"})
 			w.WriteHeader(http.StatusNoContent)
 		})
 
@@ -1132,7 +1132,7 @@ func TestSession(t *testing.T) {
 			if !ok {
 				t.Fatal("want SessionFromContext(r.Context()) ok: true; got: false")
 			}
-			loaded.SetUser(session.User{Email: "teacher@example.com"})
+			loaded.SetUser(session.User{CESEmail: "teacher@example.com"})
 			w.WriteHeader(http.StatusNoContent)
 		})
 
