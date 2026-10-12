@@ -381,13 +381,13 @@ func isRecognizedEdupassAttribute(code string) bool {
 // edupassGroups is the outcome of resolving one staff member's Edupass
 // `groups` claim.
 type edupassGroups struct {
-	// roles contains every recognized base role, stripped of location and
-	// environment prefix, in arrival order. More than one entry means
+	// roles contains every recognized base role, stripped of its location
+	// code and app code, in arrival order. More than one entry means
 	// Edupass returned conflicting base roles, whether for one location or
 	// spread across several.
 	roles []string
-	// attributes contains every recognized attribute, stripped of location
-	// and environment prefix, unranked and in arrival order.
+	// attributes contains every recognized attribute, stripped of its
+	// location code and app code, unranked and in arrival order.
 	attributes []string
 	// unrecognized contains every raw entry that didn't split into a
 	// recognized base role or attribute, verbatim, for logging.
@@ -395,16 +395,18 @@ type edupassGroups struct {
 }
 
 // resolveEdupassGroups splits raw (an Edupass `groups` claim) into recognized
-// base roles and attributes, stripping the location and environment prefix
-// from each. Every slice in the result is non-nil, even when empty.
+// base roles and attributes, stripping the location code and app code from
+// each. Every slice in the result is non-nil, even when empty.
 //
-// Edupass mixes two kinds of entries into one array, each prefixed with a
-// location code and a group suffix: `<location>_TW_ROLE_<CODE>` for a base
-// role and `<location>_TW_ATTR_<CODE>` for an attribute (pre-prod Edupass
-// issues `_TWSTG_` instead of `_TW_`). resolveEdupassGroups requires suffix to
-// sit immediately ahead of the `_ROLE_`/`_ATTR_` infix, rejecting a lookalike
-// entry meant for a different application or Edupass environment; the
-// location code ahead of the suffix is never checked.
+// Each entry is an Edupass app role, named
+// `<location_code>_<app_code>_<tw_role_code>`, where app_code is suffix (TW in
+// production, TWSTG in pre-prod). Teacher Workspace registers both its base
+// roles and its attributes as app roles, so tw_role_code is
+// `<ROLE|ATTR>_<role_code>`: `1234_TW_ROLE_TEACHER` is the base role
+// ROLE_TEACHER and `1234_TW_ATTR_CCE` the attribute ATTR_CCE, both at location
+// 1234. resolveEdupassGroups requires suffix to sit immediately ahead of the
+// `_ROLE_`/`_ATTR_` infix, rejecting a lookalike entry meant for a different
+// application or Edupass environment; the location code is never checked.
 //
 // A code absent from both reference lists, or not immediately preceded by
 // suffix, is reported in unrecognized rather than blocking resolution: Edupass
