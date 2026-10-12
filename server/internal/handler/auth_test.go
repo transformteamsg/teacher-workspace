@@ -719,9 +719,6 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := "logged in", records[0].Msg; want != got {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
-		if want, got := "edupass", records[0].Provider; want != got {
-			t.Errorf("want records[0].Provider: %q; got: %q", want, got)
-		}
 		if got := logs.String(); strings.Contains(got, "john.smith@example.com") {
 			t.Errorf("want logs: without the email; got: %s", got)
 		}

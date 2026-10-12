@@ -274,7 +274,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		Attributes: resolved.attributes,
 	})
 
-	logger.Info("logged in", "provider", "edupass")
+	logger.Info("logged in")
 	httputil.Redirect(w, logger, http.StatusFound, returnTo)
 }
 
