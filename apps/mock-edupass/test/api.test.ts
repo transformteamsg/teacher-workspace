@@ -544,6 +544,44 @@ describe('POST /token', () => {
       assert.equal(claims.iss, 'http://localhost:9876');
     });
 
+    it('When the ID token is issued, then it is valid from its issue time', async () => {
+      const codeVerifier = generateCodeVerifier();
+      const authorizeRes = await new OidcClient('http://localhost:9876').followRedirects(
+        `http://localhost:9876/authorize?${new URLSearchParams({
+          client_id: 'teacher-workspace',
+          redirect_uri: 'http://localhost:3000/auth/edupass/callback',
+          response_type: 'code',
+          scope: 'openid',
+          code_challenge: generateCodeChallenge(codeVerifier),
+          code_challenge_method: 'S256',
+          state: 'test-state',
+          nonce: 'test-nonce',
+        }).toString()}`,
+      );
+      const code = new URL(authorizeRes.headers.get('location') ?? '').searchParams.get('code');
+      assert.ok(code, 'Expected an authorization code in the redirect');
+
+      const tokenRes = await globalThis.fetch(`http://localhost:9876/token`, {
+        method: 'POST',
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: 'http://localhost:3000/auth/edupass/callback',
+          client_id: 'teacher-workspace',
+          code_verifier: codeVerifier,
+          client_secret: 'teacher-workspace-secret',
+        }),
+      });
+
+      assert.equal(tokenRes.status, 200);
+      const { id_token: idToken } = (await tokenRes.json()) as { id_token: string };
+      const claims: JWTPayload = JSON.parse(
+        Buffer.from(idToken.split('.')[1], 'base64url').toString(),
+      );
+      assert.equal(typeof claims.nbf, 'number', 'nbf claim should be present');
+      assert.equal(claims.nbf, claims.iat, 'nbf should equal iat');
+    });
+
     it('When the ID token is issued, then it carries the nonce from the request', async () => {
       const codeVerifier = generateCodeVerifier();
       const authorizeRes = await new OidcClient('http://localhost:9876').followRedirects(

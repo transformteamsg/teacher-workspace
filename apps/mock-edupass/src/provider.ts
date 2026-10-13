@@ -112,7 +112,7 @@ export function createProvider(config: Config): Provider {
     },
 
     claims: {
-      openid: ['sub', 'id', 'name', 'cesEmail', 'groups'],
+      openid: ['sub', 'iat', 'nbf', 'id', 'name', 'cesEmail', 'groups'],
     },
 
     extraParams: ['account'],
@@ -146,14 +146,19 @@ export function createProvider(config: Config): Provider {
       }
       return {
         accountId: id,
-        claims: async () => ({
-          sub: account.id,
-          id: account.id,
-          name: account.name,
-          // cesEmail is the only claim here that Edupass omits when null.
-          ...(account.cesEmail ? { cesEmail: account.cesEmail } : {}),
-          groups: account.groups,
-        }),
+        claims: async () => {
+          const now = Math.floor(Date.now() / 1000);
+          return {
+            sub: account.id,
+            iat: now,
+            nbf: now,
+            id: account.id,
+            name: account.name,
+            // cesEmail is the only claim here that Edupass omits when null.
+            ...(account.cesEmail ? { cesEmail: account.cesEmail } : {}),
+            groups: account.groups,
+          };
+        },
       };
     },
   });
