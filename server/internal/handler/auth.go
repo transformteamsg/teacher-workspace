@@ -245,6 +245,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 
 	var claims struct {
 		ID       string   `json:"id"`
+		Name     string   `json:"name"`
 		CESEmail string   `json:"cesEmail"`
 		Groups   []string `json:"groups"`
 	}
@@ -284,6 +285,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 
 	sess.SetUser(session.User{
 		ID:         claims.ID,
+		Name:       claims.Name,
 		Email:      claims.CESEmail,
 		Role:       resolved.roles[0],
 		Attributes: resolved.attributes,

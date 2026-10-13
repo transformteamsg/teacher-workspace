@@ -592,6 +592,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"name":     "John Smith",
 				"id":       "test-id",
 				"nonce":    "test-nonce",
 				"nbf":      now.Add(time.Hour).Unix(),
@@ -664,6 +665,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"name":     "John Smith",
 				"id":       "test-id",
 				"nonce":    "test-nonce",
 				"exp":      now.Add(time.Hour).Unix(),
@@ -734,6 +736,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"name":     "John Smith",
 				"id":       "test-id",
 				"nonce":    "test-nonce",
 				"iat":      now.Add(time.Hour).Unix(),
@@ -805,6 +808,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"name":     "John Smith",
 				"id":       "test-id",
 				"nonce":    "test-nonce",
 				"iat":      now.Add(4 * time.Minute).Unix(),
@@ -873,6 +877,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"name":     "John Smith",
 				"cesEmail": "john.smith@example.com",
 				"nonce":    "test-nonce",
 				"iat":      now.Unix(),
@@ -943,6 +948,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":    cfg.Edupass.IssuerURL.String(),
 				"aud":    cfg.Edupass.ClientID,
 				"sub":    "test-sub",
+				"name":   "John Smith",
 				"id":     "test-id",
 				"nonce":  "test-nonce",
 				"iat":    now.Unix(),
@@ -1013,6 +1019,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"name":     "John Smith",
 				"id":       "test-id",
 				"iat":      now.Unix(),
 				"exp":      now.Add(time.Hour).Unix(),
@@ -1081,6 +1088,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"name":     "John Smith",
 				"id":       "test-id",
 				"iat":      now.Unix(),
 				"exp":      now.Add(time.Hour).Unix(),
@@ -1155,6 +1163,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"name":     "John Smith",
 				"id":       "test-id",
 				"iat":      now.Unix(),
 				"exp":      now.Add(time.Hour).Unix(),
@@ -1822,6 +1831,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 					"iss":      cfg.Edupass.IssuerURL.String(),
 					"aud":      cfg.Edupass.ClientID,
 					"sub":      "test-sub",
+					"name":     "John Smith",
 					"id":       "test-id",
 					"iat":      now.Unix(),
 					"exp":      now.Add(time.Hour).Unix(),
@@ -1877,7 +1887,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		})
 	})
 
-	t.Run("logs the user in with the ID, email, base role and attributes from their ID token", func(t *testing.T) {
+	t.Run("logs the user in with the ID, name, email, base role and attributes from their ID token", func(t *testing.T) {
 		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
 			"cesEmail": "john.smith@example.com",
 			"groups":   []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_PG_ADMIN", "1234_TW_ATTR_CCE"},
@@ -1899,6 +1909,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 		want := session.User{
 			ID:         "test-id",
+			Name:       "John Smith",
 			Email:      "john.smith@example.com",
 			Role:       "ROLE_TEACHER",
 			Attributes: []string{"ATTR_PG_ADMIN", "ATTR_CCE"},
@@ -2123,6 +2134,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 		want := session.User{
 			ID:         "test-id",
+			Name:       "John Smith",
 			Email:      "john.smith@example.com",
 			Role:       "ROLE_HOD",
 			Attributes: []string{},
@@ -2582,6 +2594,7 @@ func newHandlerIssuingIDToken(t *testing.T, cfg *config.Config, claims jwt.MapCl
 			"iss":   cfg.Edupass.IssuerURL.String(),
 			"aud":   cfg.Edupass.ClientID,
 			"sub":   "test-sub",
+			"name":  "John Smith",
 			"id":    "test-id",
 			"iat":   now.Unix(),
 			"exp":   now.Add(time.Hour).Unix(),
