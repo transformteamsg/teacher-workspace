@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/String-sg/teacher-workspace/server/internal/config"
-	"github.com/String-sg/teacher-workspace/server/internal/middleware"
-	"github.com/String-sg/teacher-workspace/server/internal/session"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/transformteamsg/teacher-workspace/server/internal/config"
+	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 	"golang.org/x/oauth2"
 )
 

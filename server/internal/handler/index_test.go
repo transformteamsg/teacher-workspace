@@ -17,9 +17,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/String-sg/teacher-workspace/server/internal/config"
-	"github.com/String-sg/teacher-workspace/server/internal/middleware"
-	"github.com/String-sg/teacher-workspace/server/internal/session"
+	"github.com/transformteamsg/teacher-workspace/server/internal/config"
+	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 )
 
 // stubTemplate renders a fixed page, for tests that only need to know whether

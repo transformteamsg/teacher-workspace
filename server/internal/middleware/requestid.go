@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/String-sg/teacher-workspace/server/pkg/random"
+	"github.com/transformteamsg/teacher-workspace/server/pkg/random"
 )
 
 type ctxKeyRequestID struct{}

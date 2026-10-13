@@ -13,7 +13,7 @@ import (
 	glideconfig "github.com/valkey-io/valkey-glide/go/v2/config"
 	glideopts "github.com/valkey-io/valkey-glide/go/v2/options"
 
-	"github.com/String-sg/teacher-workspace/server/internal/session"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 )
 
 // Asserts at compile time that *Store satisfies session.Store.

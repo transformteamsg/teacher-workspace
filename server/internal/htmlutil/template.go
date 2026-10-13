@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/String-sg/teacher-workspace/server/internal/httputil"
+	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 )
 
 // fetchTimeout bounds a template fetch, so a stalled server fails Execute

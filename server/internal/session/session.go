@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/String-sg/teacher-workspace/server/pkg/random"
+	"github.com/transformteamsg/teacher-workspace/server/pkg/random"
 )
 
 // Store persists encoded sessions by ID until their TTL elapses.

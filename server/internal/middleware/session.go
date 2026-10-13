@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/String-sg/teacher-workspace/server/internal/httputil"
-	"github.com/String-sg/teacher-workspace/server/internal/session"
+	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 )
 
 type ctxKeySession struct{}
