@@ -1132,8 +1132,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if want, got := "john_tan@schools.gov.sg", user.CESEmail; want != got {
-			t.Errorf("want user.CESEmail: %q; got: %q", want, got)
+		if want, got := "john_tan@schools.gov.sg", user.Email; want != got {
+			t.Errorf("want user.Email: %q; got: %q", want, got)
 		}
 	})
 
@@ -1826,7 +1826,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
 		want := session.User{
-			CESEmail:   "john.smith@example.com",
+			Email:      "john.smith@example.com",
 			Role:       "ROLE_TEACHER",
 			Attributes: []string{"ATTR_PG_ADMIN", "ATTR_CCE"},
 		}
@@ -2049,7 +2049,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
 		want := session.User{
-			CESEmail:   "john.smith@example.com",
+			Email:      "john.smith@example.com",
 			Role:       "ROLE_HOD",
 			Attributes: []string{},
 		}
