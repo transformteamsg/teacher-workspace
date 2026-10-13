@@ -592,6 +592,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"id":       "test-id",
 				"nonce":    "test-nonce",
 				"nbf":      now.Add(time.Hour).Unix(),
 				"iat":      now.Unix(),
@@ -663,6 +664,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"id":       "test-id",
 				"nonce":    "test-nonce",
 				"exp":      now.Add(time.Hour).Unix(),
 				"cesEmail": "john_tan@schools.gov.sg",
@@ -732,6 +734,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"id":       "test-id",
 				"nonce":    "test-nonce",
 				"iat":      now.Add(time.Hour).Unix(),
 				"exp":      now.Add(2 * time.Hour).Unix(),
@@ -802,6 +805,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"id":       "test-id",
 				"nonce":    "test-nonce",
 				"iat":      now.Add(4 * time.Minute).Unix(),
 				"exp":      now.Add(time.Hour).Unix(),
@@ -855,6 +859,76 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("redirects to the login page without logging in when the ID token has no id", func(t *testing.T) {
+		signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatalf("rsa.GenerateKey: %v", err)
+		}
+
+		cfg := newEdupassConfig()
+
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
+			idToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+				"iss":      cfg.Edupass.IssuerURL.String(),
+				"aud":      cfg.Edupass.ClientID,
+				"sub":      "test-sub",
+				"cesEmail": "john.smith@example.com",
+				"nonce":    "test-nonce",
+				"iat":      now.Unix(),
+				"exp":      now.Add(time.Hour).Unix(),
+				"groups":   []string{"1234_TW_ROLE_TEACHER"},
+			})
+			signedIDToken, err := idToken.SignedString(signingKey)
+			if err != nil {
+				t.Errorf("SignedString: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-access-token",
+				"token_type":   "Bearer",
+				"expires_in":   3599,
+				"id_token":     signedIDToken,
+			}); err != nil {
+				t.Errorf("Encode: %v", err)
+			}
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		h.edupassIDTokenVerifier = oidc.NewVerifier(
+			cfg.Edupass.IssuerURL.String(),
+			&oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{&signingKey.PublicKey}},
+			&oidc.Config{ClientID: cfg.Edupass.ClientID},
+		)
+
+		sess := session.New()
+		sess.Set(sessionKeyEdupassReturnTo, "/posts")
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupassCallback(rec, req)
+
+		if want, got := http.StatusFound, rec.Code; want != got {
+			t.Fatalf("want status: %d; got: %d", want, got)
+		}
+		if want, got := loginFailedURL("/posts"), rec.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+		if sess.IsAuthenticated() {
+			t.Error("want sess.IsAuthenticated(): false; got: true")
+		}
+	})
+
 	t.Run("redirects to the login page without logging in when the ID token has no cesEmail", func(t *testing.T) {
 		signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
 		if err != nil {
@@ -869,6 +943,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":    cfg.Edupass.IssuerURL.String(),
 				"aud":    cfg.Edupass.ClientID,
 				"sub":    "test-sub",
+				"id":     "test-id",
 				"nonce":  "test-nonce",
 				"iat":    now.Unix(),
 				"exp":    now.Add(time.Hour).Unix(),
@@ -938,6 +1013,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"id":       "test-id",
 				"iat":      now.Unix(),
 				"exp":      now.Add(time.Hour).Unix(),
 				"nonce":    "test-nonce",
@@ -1005,6 +1081,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"id":       "test-id",
 				"iat":      now.Unix(),
 				"exp":      now.Add(time.Hour).Unix(),
 				"nonce":    "test-nonce",
@@ -1078,6 +1155,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				"iss":      cfg.Edupass.IssuerURL.String(),
 				"aud":      cfg.Edupass.ClientID,
 				"sub":      "test-sub",
+				"id":       "test-id",
 				"iat":      now.Unix(),
 				"exp":      now.Add(time.Hour).Unix(),
 				"nonce":    "test-nonce",
@@ -1744,6 +1822,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 					"iss":      cfg.Edupass.IssuerURL.String(),
 					"aud":      cfg.Edupass.ClientID,
 					"sub":      "test-sub",
+					"id":       "test-id",
 					"iat":      now.Unix(),
 					"exp":      now.Add(time.Hour).Unix(),
 					"nonce":    "test-nonce",
