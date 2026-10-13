@@ -1805,7 +1805,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		})
 	})
 
-	t.Run("logs the user in with the email, base role and attributes from their ID token", func(t *testing.T) {
+	t.Run("logs the user in with the ID, email, base role and attributes from their ID token", func(t *testing.T) {
 		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
 			"cesEmail": "john.smith@example.com",
 			"groups":   []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_PG_ADMIN", "1234_TW_ATTR_CCE"},
@@ -1826,6 +1826,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
 		want := session.User{
+			ID:         "test-id",
 			Email:      "john.smith@example.com",
 			Role:       "ROLE_TEACHER",
 			Attributes: []string{"ATTR_PG_ADMIN", "ATTR_CCE"},
@@ -2049,6 +2050,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
 		want := session.User{
+			ID:         "test-id",
 			Email:      "john.smith@example.com",
 			Role:       "ROLE_HOD",
 			Attributes: []string{},
