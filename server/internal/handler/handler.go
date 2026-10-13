@@ -94,8 +94,8 @@ func (h *Handler) Routes(session middleware.Middleware) http.Handler {
 	app := http.NewServeMux()
 	app.HandleFunc("GET /auth/edupass", h.authEdupass)
 	app.HandleFunc("GET /auth/edupass/callback", h.authEdupassCallback)
-	app.HandleFunc("/api/", h.proxy())
-	app.HandleFunc("/", h.index())
+	app.Handle("/api/", h.proxy())
+	app.Handle("/", h.index())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/static/", h.static)

@@ -22,7 +22,7 @@ type remoteBackend struct {
 	audience   string
 }
 
-func (h *Handler) proxy() http.HandlerFunc {
+func (h *Handler) proxy() http.Handler {
 	remoteBackends := map[string]remoteBackend{}
 
 	if h.cfg.RemoteApps.IsPostsRegistered() {
@@ -45,7 +45,7 @@ func (h *Handler) proxy() http.HandlerFunc {
 		now = time.Now
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := middleware.LoggerFromContext(r.Context())
 
 		name, _, found := strings.Cut(strings.TrimPrefix(r.URL.Path, "/api/"), "/")
@@ -75,7 +75,7 @@ func (h *Handler) proxy() http.HandlerFunc {
 
 		ctx := context.WithValue(r.Context(), ctxKeySignedToken{}, signedToken)
 		http.StripPrefix("/api/"+name, b.proxy).ServeHTTP(w, r.WithContext(ctx))
-	}
+	})
 }
 
 func newRemoteBackendProxy(target *url.URL) *stdhttputil.ReverseProxy {

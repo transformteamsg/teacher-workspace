@@ -21,7 +21,7 @@ type Remote struct {
 	Entry string `json:"entry"`
 }
 
-func (h *Handler) index() http.HandlerFunc {
+func (h *Handler) index() http.Handler {
 	remotes := []Remote{}
 
 	if h.cfg.RemoteApps.IsPostsRegistered() {
@@ -31,7 +31,7 @@ func (h *Handler) index() http.HandlerFunc {
 		remotes = append(remotes, Remote{Name: "si", Entry: h.cfg.RemoteApps.StudentInsightsManifestURL.String()})
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := middleware.LoggerFromContext(r.Context())
 		sess, ok := middleware.SessionFromContext(r.Context())
 		if !ok {
@@ -53,7 +53,7 @@ func (h *Handler) index() http.HandlerFunc {
 		}
 
 		httputil.RenderHTML(w, logger, http.StatusOK, buf.Bytes())
-	}
+	})
 }
 
 func (h *Handler) static(w http.ResponseWriter, r *http.Request) {
