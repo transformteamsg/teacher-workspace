@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -10,16 +9,6 @@ import (
 	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
 )
-
-type PreloadedState struct {
-	CSRFToken string   `json:"csrfToken"`
-	Remotes   []Remote `json:"remotes"`
-}
-
-type Remote struct {
-	Name  string `json:"name"`
-	Entry string `json:"entry"`
-}
 
 func (h *Handler) index() http.Handler {
 	remotes := []Remote{}
@@ -40,19 +29,10 @@ func (h *Handler) index() http.Handler {
 			return
 		}
 
-		preloadedState := &PreloadedState{
+		h.renderIndexTemplate(w, r, &PreloadedState{
 			CSRFToken: sess.CSRFToken(),
 			Remotes:   remotes,
-		}
-
-		var buf bytes.Buffer
-		if err := h.indexTemplate.Execute(r.Context(), &buf, preloadedState); err != nil {
-			logger.Error("failed to execute index template", "err", err)
-			httputil.RenderPlain(w, logger, http.StatusInternalServerError)
-			return
-		}
-
-		httputil.RenderHTML(w, logger, http.StatusOK, buf.Bytes())
+		})
 	})
 }
 

@@ -19,10 +19,141 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/transformteamsg/teacher-workspace/server/internal/config"
+	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
 	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 	"golang.org/x/oauth2"
 )
+
+func TestHandler_login(t *testing.T) {
+	t.Run("responds with 500 when the request has no session", func(t *testing.T) {
+		h := &Handler{indexTemplate: stubTemplate{}}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/login", nil)
+		rec := httptest.NewRecorder()
+
+		h.login(rec, req)
+
+		if want, got := http.StatusInternalServerError, rec.Code; want != got {
+			t.Errorf("want status: %d; got: %d", want, got)
+		}
+		if got := rec.Header().Get("Location"); got != "" {
+			t.Errorf("want Location: empty; got: %q", got)
+		}
+	})
+
+	t.Run("logs an error when the request has no session", func(t *testing.T) {
+		h := &Handler{indexTemplate: stubTemplate{}}
+
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		ctx := middleware.WithLogger(t.Context(), logger)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/login", nil)
+		rec := httptest.NewRecorder()
+
+		h.login(rec, req)
+
+		records := decodeLogRecords(t, &logs)
+		if want, got := 1, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := slog.LevelError.String(), records[0].Level; want != got {
+			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		}
+		if want, got := "no session found in context", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("serves the login page to a user who is not logged in", func(t *testing.T) {
+		h := &Handler{indexTemplate: stubTemplate{}}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/login?return_to="+url.QueryEscape("/announcements?id=1"), nil)
+		rec := httptest.NewRecorder()
+
+		h.login(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want status: %d; got: %d", want, got)
+		}
+		if want, got := httputil.MIMETextHTMLCharsetUTF8, rec.Header().Get("Content-Type"); want != got {
+			t.Errorf("want Content-Type: %q; got: %q", want, got)
+		}
+		if want, got := "<html>Hello world!</html>", rec.Body.String(); want != got {
+			t.Errorf("want body: %q; got: %q", want, got)
+		}
+		if got := rec.Header().Get("Location"); got != "" {
+			t.Errorf("want Location: empty; got: %q", got)
+		}
+	})
+
+	t.Run("serves the login page with an empty list of remotes", func(t *testing.T) {
+		h := &Handler{indexTemplate: newPreloadedStateTemplate()}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/login", nil)
+		rec := httptest.NewRecorder()
+
+		h.login(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Fatalf("want status: %d; got: %d", want, got)
+		}
+
+		state := decodePreloadedState(t, rec.Body.String())
+		if want, got := `[]`, string(state.Remotes); want != got {
+			t.Errorf("want state.Remotes: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("redirects a user who is already logged in", func(t *testing.T) {
+		for _, test := range []struct {
+			name   string
+			target string
+			want   string
+		}{
+			{
+				name:   "to the given return_to when it is safe",
+				target: "/login?return_to=" + url.QueryEscape("/announcements?id=1"),
+				want:   "/announcements?id=1",
+			},
+			{
+				name:   `to "/" when return_to is unsafe`,
+				target: "/login?return_to=" + url.QueryEscape("//evil.example"),
+				want:   "/",
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				h := &Handler{indexTemplate: stubTemplate{}}
+
+				sess := session.New()
+				sess.SetUser(session.User{Email: "teacher@example.com"})
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
+				rec := httptest.NewRecorder()
+
+				h.login(rec, req)
+
+				if want, got := http.StatusFound, rec.Code; want != got {
+					t.Errorf("want status: %d; got: %d", want, got)
+				}
+				if want, got := test.want, rec.Header().Get("Location"); want != got {
+					t.Errorf("want Location: %q; got: %q", want, got)
+				}
+			})
+		}
+	})
+}
 
 func TestHandler_authEdupass(t *testing.T) {
 	t.Run("responds with 500 when the request has no session", func(t *testing.T) {
@@ -1642,6 +1773,60 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 		if !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
+		}
+	})
+}
+
+func TestRedirectToLogin(t *testing.T) {
+	t.Run("redirects with 303 to the login page carrying the requested URL", func(t *testing.T) {
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/announcements?id=1&tab=students", nil)
+		rec := httptest.NewRecorder()
+
+		redirectToLogin(rec, req)
+
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Errorf("want status: %d; got: %d", want, got)
+		}
+
+		location, err := rec.Result().Location()
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if want, got := "/login", location.Path; want != got {
+			t.Errorf("want location.Path: %q; got: %q", want, got)
+		}
+		if want, got := "/announcements?id=1&tab=students", location.Query().Get("return_to"); want != got {
+			t.Errorf("want return_to: %q; got: %q", want, got)
+		}
+	})
+}
+
+func TestRenderUnauthorized(t *testing.T) {
+	t.Run("writes a 401 JSON error response", func(t *testing.T) {
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		renderUnauthorized(rec, req)
+
+		if want, got := http.StatusUnauthorized, rec.Code; want != got {
+			t.Errorf("want status: %d; got: %d", want, got)
+		}
+		if want, got := httputil.MIMEApplicationJSONCharsetUTF8, rec.Header().Get("Content-Type"); want != got {
+			t.Errorf("want Content-Type: %q; got: %q", want, got)
+		}
+
+		var body struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := http.StatusText(http.StatusUnauthorized), body.Message; want != got {
+			t.Errorf("want body.Message: %q; got: %q", want, got)
 		}
 	})
 }

@@ -94,18 +94,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	session := middleware.Session(store, middleware.SessionOptions{
-		Name:             cfg.Session.Name,
-		DefaultTTL:       cfg.Session.DefaultTTL,
-		AuthenticatedTTL: cfg.Session.AuthenticatedTTL,
-		Secure:           cfg.Session.Secure,
-	})
-
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	srv := &http.Server{
 		Addr: addr,
 		Handler: middleware.Chain(
-			h.Routes(session),
+			h.Routes(store),
 			middleware.RequestID,
 			middleware.RequestLog,
 		),

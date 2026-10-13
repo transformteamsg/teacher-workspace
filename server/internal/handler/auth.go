@@ -19,6 +19,33 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// login serves the login page to a user who is not logged in. A user who is
+// already logged in is redirected to the return_to query parameter instead,
+// or to "/" if it is missing or unsafe (see [safeReturnTo]).
+//
+// It responds with 500 if the request has no session.
+func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.LoggerFromContext(r.Context())
+
+	sess, ok := middleware.SessionFromContext(r.Context())
+	if !ok {
+		logger.Error("no session found in context")
+		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		return
+	}
+
+	if sess.IsAuthenticated() {
+		returnTo := safeReturnTo(r.URL.Query().Get("return_to"), "/")
+		httputil.Redirect(w, logger, http.StatusFound, returnTo)
+		return
+	}
+
+	h.renderIndexTemplate(w, r, &PreloadedState{
+		CSRFToken: sess.CSRFToken(),
+		Remotes:   []Remote{},
+	})
+}
+
 const (
 	sessionKeyEdupassReturnTo     = "edupass_return_to"
 	sessionKeyEdupassState        = "edupass_state"
@@ -275,6 +302,21 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	httputil.Redirect(w, logger, http.StatusFound, returnTo)
 }
 
+// redirectToLogin redirects the user with 303 to the login page, carrying the
+// requested URL to return to.
+func redirectToLogin(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.LoggerFromContext(r.Context())
+	httputil.Redirect(w, logger, http.StatusSeeOther, loginURL(r.URL.RequestURI()))
+}
+
+// renderUnauthorized writes a 401 JSON error response.
+func renderUnauthorized(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.LoggerFromContext(r.Context())
+	httputil.RenderJSON(w, logger, http.StatusUnauthorized, &httputil.ErrorResponse{
+		Message: http.StatusText(http.StatusUnauthorized),
+	})
+}
+
 // safeReturnTo returns candidate if it is safe to redirect to, and fallback
 // otherwise. A safe candidate is at most 1024 bytes long, and a redirect to it
 // lands on exactly that path on this site.
@@ -307,13 +349,17 @@ func safeReturnTo(candidate, fallback string) string {
 	return candidate
 }
 
+// loginURL returns the login page URL, carrying returnTo.
+func loginURL(returnTo string) string {
+	q := url.Values{}
+	q.Set("return_to", returnTo)
+	return "/login?" + q.Encode()
+}
+
 // loginFailedURL returns the login page URL for a failed login, carrying
 // returnTo.
 func loginFailedURL(returnTo string) string {
-	q := url.Values{}
-	q.Set("error", "oauth2_callback_failed")
-	q.Set("return_to", returnTo)
-	return "/login?" + q.Encode()
+	return loginURL(returnTo) + "&error=oauth2_callback_failed"
 }
 
 const (

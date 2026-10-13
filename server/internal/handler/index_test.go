@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"html/template"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -22,15 +21,6 @@ import (
 	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 )
 
-// stubTemplate renders a fixed page, for tests that only need to know whether
-// index rendered the page rather than what it rendered.
-type stubTemplate struct{}
-
-func (stubTemplate) Execute(_ context.Context, w io.Writer, _ any) error {
-	_, err := io.WriteString(w, "<html>Hello world!</html>")
-	return err
-}
-
 // failingTemplate writes part of a page and then fails, as a template does
 // when it errors midway through rendering.
 type failingTemplate struct{}
@@ -40,27 +30,6 @@ func (failingTemplate) Execute(_ context.Context, w io.Writer, _ any) error {
 		return err
 	}
 	return errors.New("template failed")
-}
-
-const (
-	preloadedStateOpenTag  = `<script type="application/json" id="preloaded-state">`
-	preloadedStateCloseTag = `</script>`
-)
-
-// preloadedStateTemplate renders the preloaded state inside a JSON script tag,
-// matching where the frontend's page embeds it.
-type preloadedStateTemplate struct {
-	tmpl *template.Template
-}
-
-func newPreloadedStateTemplate() preloadedStateTemplate {
-	return preloadedStateTemplate{
-		tmpl: template.Must(template.New("preloaded-state").Parse(preloadedStateOpenTag + "{{.}}" + preloadedStateCloseTag)),
-	}
-}
-
-func (p preloadedStateTemplate) Execute(_ context.Context, w io.Writer, data any) error {
-	return p.tmpl.Execute(w, data)
 }
 
 // newBuildDirFS creates a build directory holding one asset and a symlink to a
@@ -112,13 +81,7 @@ func TestHandler_index(t *testing.T) {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
 
-		payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
-		var state struct {
-			CSRFToken string `json:"csrfToken"`
-		}
-		if err := json.Unmarshal([]byte(payload), &state); err != nil {
-			t.Fatalf("json.Unmarshal: %v", err)
-		}
+		state := decodePreloadedState(t, rec.Body.String())
 		if !sess.VerifyCSRFToken(state.CSRFToken) {
 			t.Errorf("want: a token the session accepts; got: %q", state.CSRFToken)
 		}
@@ -182,15 +145,9 @@ func TestHandler_index(t *testing.T) {
 
 				h.index().ServeHTTP(rec, req)
 
-				payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
-				var state struct {
-					Remotes json.RawMessage `json:"remotes"`
-				}
-				if err := json.Unmarshal([]byte(payload), &state); err != nil {
-					t.Fatalf("json.Unmarshal: %v", err)
-				}
+				state := decodePreloadedState(t, rec.Body.String())
 				if want, got := test.want, string(state.Remotes); want != got {
-					t.Errorf("want: %s; got: %s", want, got)
+					t.Errorf("want: %q; got: %q", want, got)
 				}
 			})
 		}
