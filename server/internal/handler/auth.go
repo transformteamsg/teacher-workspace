@@ -36,11 +36,11 @@ const (
 //
 // It responds with 500 if the request has no session.
 func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
-	logger := middleware.LoggerFromContext(r.Context())
+	logger := middleware.LoggerFromContext(r.Context()).With("provider", "edupass")
 
 	sess, ok := middleware.SessionFromContext(r.Context())
 	if !ok {
-		logger.Error("no session found in context", "provider", "edupass")
+		logger.Error("no session found in context")
 		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
 		return
 	}
@@ -90,11 +90,11 @@ type edupassTokenErrorExtensions struct {
 //
 // It responds with 500 if the request has no session.
 func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
-	logger := middleware.LoggerFromContext(r.Context())
+	logger := middleware.LoggerFromContext(r.Context()).With("provider", "edupass")
 
 	sess, ok := middleware.SessionFromContext(r.Context())
 	if !ok {
-		logger.Error("no session found in context", "provider", "edupass")
+		logger.Error("no session found in context")
 		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
 		return
 	}
@@ -111,7 +111,6 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	if !stateOK || !nonceOK || !codeVerifierOK {
 		logger.Warn(
 			"no pending login in session",
-			"provider", "edupass",
 			"state", stateOK,
 			"nonce", nonceOK,
 			"code_verifier", codeVerifierOK,
@@ -123,7 +122,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
 	if query.Get("state") != state {
-		logger.Warn("state mismatch", "provider", "edupass")
+		logger.Warn("state mismatch")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
@@ -136,7 +135,6 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		}
 
 		attrs := []slog.Attr{
-			slog.String("provider", "edupass"),
 			slog.String("error_code", errCode),
 		}
 		if errDescription := query.Get("error_description"); errDescription != "" {
@@ -167,7 +165,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 
 		signedClientAssertion, signErr := clientAssertion.SignedString(h.cfg.Edupass.ClientCredentials.Key)
 		if signErr != nil {
-			logger.Error("failed to sign client assertion", "provider", "edupass", "err", signErr)
+			logger.Error("failed to sign client assertion", "err", signErr)
 			httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 			return
 		}
@@ -185,7 +183,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var retrieveErr *oauth2.RetrieveError
 		if !errors.As(err, &retrieveErr) {
-			logger.Error("failed to exchange code for token", "provider", "edupass", "err", err)
+			logger.Error("failed to exchange code for token", "err", err)
 			httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 			return
 		}
@@ -194,10 +192,9 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		case http.StatusBadRequest, http.StatusUnauthorized:
 			var edupassErrorExtensions edupassTokenErrorExtensions
 			if err := json.Unmarshal(retrieveErr.Body, &edupassErrorExtensions); err != nil {
-				logger.Error("failed to exchange code for token", "provider", "edupass", "status", retrieveErr.Response.StatusCode, "err", err)
+				logger.Error("failed to exchange code for token", "status", retrieveErr.Response.StatusCode, "err", err)
 			} else {
 				logger.Error("failed to exchange code for token",
-					"provider", "edupass",
 					"status", retrieveErr.Response.StatusCode,
 					"error", retrieveErr.ErrorCode,
 					"error_description", retrieveErr.ErrorDescription,
@@ -208,7 +205,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 				)
 			}
 		default:
-			logger.Error("failed to exchange code for token", "provider", "edupass", "status", retrieveErr.Response.StatusCode)
+			logger.Error("failed to exchange code for token", "status", retrieveErr.Response.StatusCode)
 		}
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
@@ -216,20 +213,20 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 
 	rawIDToken, ok := edupassTokenResponse.Extra("id_token").(string)
 	if !ok || rawIDToken == "" {
-		logger.Error("no ID token found in token", "provider", "edupass")
+		logger.Error("no ID token found in token")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 
 	idToken, err := h.edupassIDTokenVerifier.Verify(r.Context(), rawIDToken)
 	if err != nil {
-		logger.Error("failed to verify ID token", "provider", "edupass", "err", err)
+		logger.Error("failed to verify ID token", "err", err)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 
 	if idToken.Nonce != nonce {
-		logger.Error("nonce mismatch", "provider", "edupass")
+		logger.Error("nonce mismatch")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
@@ -240,12 +237,12 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		Groups []string `json:"groups"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
-		logger.Error("failed to unmarshal claims", "provider", "edupass", "err", err)
+		logger.Error("failed to unmarshal claims", "err", err)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 	if claims.Email == "" {
-		logger.Error("no email found in claims", "provider", "edupass")
+		logger.Error("no email found in claims")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
