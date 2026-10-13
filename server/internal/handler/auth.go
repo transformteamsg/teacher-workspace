@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/String-sg/teacher-workspace/server/internal/config"
-	"github.com/String-sg/teacher-workspace/server/internal/httputil"
-	"github.com/String-sg/teacher-workspace/server/internal/middleware"
-	"github.com/String-sg/teacher-workspace/server/internal/session"
-	"github.com/String-sg/teacher-workspace/server/pkg/random"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/transformteamsg/teacher-workspace/server/internal/config"
+	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
+	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
+	"github.com/transformteamsg/teacher-workspace/server/pkg/random"
 	"golang.org/x/oauth2"
 )
 

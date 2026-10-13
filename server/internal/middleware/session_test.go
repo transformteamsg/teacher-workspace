@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/String-sg/teacher-workspace/server/internal/session"
-	"github.com/String-sg/teacher-workspace/server/internal/session/memstore"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session/memstore"
 )
 
 func TestSession(t *testing.T) {

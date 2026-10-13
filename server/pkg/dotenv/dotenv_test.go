@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/String-sg/teacher-workspace/server/pkg/require"
+	"github.com/transformteamsg/teacher-workspace/server/pkg/require"
 )
 
 func TestLoad(t *testing.T) {

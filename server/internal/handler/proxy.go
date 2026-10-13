@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/String-sg/teacher-workspace/server/internal/httputil"
-	"github.com/String-sg/teacher-workspace/server/internal/middleware"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
+	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
 )
 
 type ctxKeySignedToken struct{}

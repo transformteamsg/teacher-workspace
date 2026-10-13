@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/String-sg/teacher-workspace/server/internal/httputil"
+	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 )
 
 func TestRenderPlain(t *testing.T) {

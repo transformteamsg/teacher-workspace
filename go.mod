@@ -1,4 +1,4 @@
-module github.com/String-sg/teacher-workspace
+module github.com/transformteamsg/teacher-workspace
 
 go 1.27.1
 

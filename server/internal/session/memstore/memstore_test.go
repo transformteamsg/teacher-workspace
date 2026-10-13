@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/String-sg/teacher-workspace/server/internal/session"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 )
 
 // Asserts at compile time that *Store satisfies session.Store.

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/String-sg/teacher-workspace/server/pkg/require"
+	"github.com/transformteamsg/teacher-workspace/server/pkg/require"
 )
 
 func TestRequestLog(t *testing.T) {
