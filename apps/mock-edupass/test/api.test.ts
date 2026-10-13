@@ -464,7 +464,8 @@ describe('POST /token', () => {
         Buffer.from(idToken.split('.')[1], 'base64url').toString(),
       );
       assert.equal(claims.sub, 'staff-1');
-      assert.equal(claims.email, 'john.smith@example.com');
+      assert.equal(claims.id, 'staff-1');
+      assert.equal(claims.cesEmail, 'john.smith@example.com');
       assert.equal(claims.name, 'John Smith');
     });
 
@@ -782,7 +783,7 @@ describe('POST /token', () => {
       assert.deepEqual(claims.groups, [], 'groups claim should be an empty array');
     });
 
-    it('When staff-8 signs in, then the name claim is absent', async () => {
+    it('When staff-8 signs in, then the cesEmail claim is absent', async () => {
       const codeVerifier = generateCodeVerifier();
       const authorizeRes = await new OidcClient('http://localhost:9876').followRedirects(
         `http://localhost:9876/authorize?${new URLSearchParams({
@@ -820,9 +821,9 @@ describe('POST /token', () => {
 
       assert.equal(claims.sub, 'staff-8');
       assert.equal(
-        Object.hasOwn(claims, 'name'),
+        Object.hasOwn(claims, 'cesEmail'),
         false,
-        'name claim should be absent, not null or empty',
+        'cesEmail claim should be absent, not null or empty',
       );
     });
 

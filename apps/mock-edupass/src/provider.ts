@@ -6,57 +6,57 @@ import type { Config } from './config.ts';
 
 export interface Account {
   id: string;
-  email?: string;
-  name?: string;
+  name: string;
+  cesEmail?: string;
   groups: string[];
 }
 
 export const accounts: Account[] = [
   {
     id: 'staff-1',
-    email: 'john.smith@example.com',
     name: 'John Smith',
+    cesEmail: 'john.smith@example.com',
     groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_ADMIN'],
   },
   {
     id: 'staff-2',
-    email: 'alice.tan@example.com',
     name: 'Alice Tan',
+    cesEmail: 'alice.tan@example.com',
     groups: ['1234_TW_ROLE_TEACHER'],
   },
   {
     id: 'staff-3',
-    email: 'bob.chen@example.com',
     name: 'Bob Chen',
+    cesEmail: 'bob.chen@example.com',
     groups: ['X_TW_ROLE_TEACHER', 'X_TW_ATTR_PG_ADMIN'],
   },
   {
     id: 'staff-4',
-    email: 'carol.lim@example.com',
     name: 'Carol Lim',
+    cesEmail: 'carol.lim@example.com',
     groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ROLE_HOD'],
   },
   {
     id: 'staff-5',
-    email: 'david.ng@example.com',
     name: 'David Ng',
+    cesEmail: 'david.ng@example.com',
     groups: ['0001_TWSTG_ROLE_TEACHER'],
   },
   {
     id: 'staff-6',
-    email: 'elena.foo@example.com',
     name: 'Elena Foo',
+    cesEmail: 'elena.foo@example.com',
     groups: ['0001_TW_ROLE_TEACHER', '1001_TW_ROLE_HOD'],
   },
   {
     id: 'staff-7',
-    email: 'jane.doe@example.com',
     name: 'Jane Doe',
+    cesEmail: 'jane.doe@example.com',
     groups: ['X_TW_ROLE_TEACHER', 'X_XX_ROLE_COUNSELLOR'],
   },
   {
     id: 'staff-8',
-    email: 'no-name@example.com',
+    name: 'Ivan Koh',
     groups: [],
   },
 ];
@@ -112,7 +112,7 @@ export function createProvider(config: Config): Provider {
     },
 
     claims: {
-      openid: ['sub', 'email', 'name', 'groups'],
+      openid: ['sub', 'id', 'name', 'cesEmail', 'groups'],
     },
 
     extraParams: ['account'],
@@ -146,14 +146,14 @@ export function createProvider(config: Config): Provider {
       }
       return {
         accountId: id,
-        claims: async () => {
-          const claims: { sub: string; [key: string]: string | string[] } = { sub: account.id };
-          if (account.email) claims.email = account.email;
-          if (account.name) claims.name = account.name;
-          // Always emit groups per Edupass spec: the claim is never absent, only empty.
-          claims.groups = account.groups;
-          return claims;
-        },
+        claims: async () => ({
+          sub: account.id,
+          id: account.id,
+          name: account.name,
+          // cesEmail is the only claim here that Edupass omits when null.
+          ...(account.cesEmail ? { cesEmail: account.cesEmail } : {}),
+          groups: account.groups,
+        }),
       };
     },
   });
