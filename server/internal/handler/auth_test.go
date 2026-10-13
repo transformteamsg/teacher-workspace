@@ -71,6 +71,9 @@ func TestHandler_authEdupass(t *testing.T) {
 		if want, got := "no session found in context", records[0].Msg; want != got {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
+		if want, got := "edupass", records[0].Provider; want != got {
+			t.Errorf("want records[0].Provider: %q; got: %q", want, got)
+		}
 	})
 
 	t.Run("redirects to the Edupass authorization endpoint", func(t *testing.T) {
@@ -419,6 +422,9 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 		if want, got := "no session found in context", records[0].Msg; want != got {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+		if want, got := "edupass", records[0].Provider; want != got {
+			t.Errorf("want records[0].Provider: %q; got: %q", want, got)
 		}
 	})
 
@@ -1331,6 +1337,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 		for field, want := range map[string]any{
 			"msg":               "failed to exchange code for token",
+			"provider":          "edupass",
 			"status":            float64(http.StatusUnauthorized),
 			"error":             "invalid_client",
 			"error_description": "client authentication failed",
@@ -2625,6 +2632,7 @@ type logRecord struct {
 	Level     string   `json:"level"`
 	Msg       string   `json:"msg"`
 	Err       string   `json:"err"`
+	Provider  string   `json:"provider"`
 	EdupassID string   `json:"edupass_id"`
 	Codes     []string `json:"codes"`
 	Roles     []string `json:"roles"`
