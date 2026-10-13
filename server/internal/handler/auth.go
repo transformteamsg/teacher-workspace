@@ -234,7 +234,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The verifier skips iat (issued at), so check it here, allowing 5 minutes for clock differences as it does for nbf.
+	// Check iat (issued at) here because the verifier skips it, allowing the same 5 minutes of clock skew it allows for nbf.
 	if idToken.IssuedAt.IsZero() {
 		logger.Error("no iat found in ID token")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
