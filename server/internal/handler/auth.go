@@ -259,6 +259,11 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
+	if claims.Name == "" {
+		logger.Error("no name found in claims")
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
 	if claims.CESEmail == "" {
 		logger.Error("no cesEmail found in claims")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
