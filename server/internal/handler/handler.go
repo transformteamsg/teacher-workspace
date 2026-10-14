@@ -130,6 +130,10 @@ type PreloadedState struct {
 	// Remotes contains those the page registers at startup. It must be
 	// non-nil, even when empty, since the page rejects a null list.
 	Remotes []Remote `json:"remotes"`
+
+	// User is the signed-in user, or nil when the page is served to a user who
+	// is not logged in.
+	User *User `json:"user,omitempty"`
 }
 
 // Remote is a reference to a Module Federation remote.
@@ -139,6 +143,16 @@ type Remote struct {
 
 	// Entry is the manifest URL.
 	Entry string `json:"entry"`
+}
+
+// User is the signed-in user as the page shows it.
+type User struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+
+	// Role is the resolved role's display label, such as "Teacher", not its
+	// Edupass code.
+	Role string `json:"role"`
 }
 
 // renderIndexTemplate writes a 200 HTML response whose body is the index
