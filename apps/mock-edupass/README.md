@@ -47,8 +47,8 @@ Configure your relying party with these values:
 | `staff-6` | Elena Foo | elena.foo@example.com | `0001_TW_ROLE_TEACHER`, `1001_TW_ROLE_HOD` | Different roles at different schools |
 | `staff-7` | Jane Doe | jane.doe@example.com | `X_TW_ROLE_TEACHER`, `X_XX_ROLE_COUNSELLOR` | Non-TW role present; for unknown-role rejection testing |
 | `staff-8` | Ivan Koh | _(absent)_ | `[]` | Empty groups and missing CES email |
-| `staff-9` | Mary Koh | mk.only@example.com | `6100_TW_ROLE_TEACHER` | Only role is at an MOE Kindergarten (MK) school (location `6100`); for MK-filter rejection testing |
-| `staff-10` | Meng Keat | mk.mixed@example.com | `6100_TW_ROLE_HOD`, `1234_TW_ROLE_TEACHER` | MK-anchored role alongside a role at a non-MK school; signs in as `ROLE_TEACHER` |
+| `staff-9` | Mary Koh | mk.only@example.com | `6101_TW_ROLE_TEACHER` | Only role is at an MOE Kindergarten (MK) school (location `6101`); for MK-filter rejection testing |
+| `staff-10` | Meng Keat | mk.mixed@example.com | `6101_TW_ROLE_HOD`, `1234_TW_ROLE_TEACHER` | MK-anchored role alongside a role at a non-MK school; signs in as `ROLE_TEACHER` |
 
 ## How It Works
 

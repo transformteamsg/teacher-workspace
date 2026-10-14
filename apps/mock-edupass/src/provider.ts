@@ -63,13 +63,13 @@ export const accounts: Account[] = [
     id: 'staff-9',
     name: 'Mary Koh',
     cesEmail: 'mk.only@example.com',
-    groups: ['6100_TW_ROLE_TEACHER'],
+    groups: ['6101_TW_ROLE_TEACHER'],
   },
   {
     id: 'staff-10',
     name: 'Meng Keat',
     cesEmail: 'mk.mixed@example.com',
-    groups: ['6100_TW_ROLE_HOD', '1234_TW_ROLE_TEACHER'],
+    groups: ['6101_TW_ROLE_HOD', '1234_TW_ROLE_TEACHER'],
   },
 ];
 
