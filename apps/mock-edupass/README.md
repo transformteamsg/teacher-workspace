@@ -51,6 +51,7 @@ Configure your relying party with these values:
 | `staff-10` | Meng Keat | mk.mixed@example.com | `6101_TW_ROLE_HOD`, `1234_TW_ROLE_TEACHER` | MK-anchored role alongside a role at a non-MK school; signs in as `ROLE_TEACHER` |
 | `staff-11` | Grace Lee | grace.lee@example.com | `0001_TW_ROLE_PRINCIPAL` | Single non-teacher role; signs in as `ROLE_PRINCIPAL` |
 | `staff-12` | Henry Wong | henry.wong@example.com | `1234_TW_ROLE_VICE_PRINCIPAL_ADMINISTRATION` | Single non-teacher role with the longest display name; signs in as `ROLE_VICE_PRINCIPAL_ADMINISTRATION` |
+| `staff-13` | Nora Teo | nora.teo@example.com | `1234_TW_ATTR_CCE` | An attribute and no base role |
 
 ## How It Works
 

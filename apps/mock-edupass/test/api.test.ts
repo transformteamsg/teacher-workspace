@@ -737,6 +737,11 @@ describe('POST /token', () => {
         title: 'non-TW role alongside TW role',
         groups: ['X_TW_ROLE_TEACHER', 'X_XX_ROLE_COUNSELLOR'],
       },
+      {
+        account: 'staff-13',
+        title: 'an attribute and no base role',
+        groups: ['1234_TW_ATTR_CCE'],
+      },
     ];
 
     for (const { account, title, groups } of groupsFixtures) {
