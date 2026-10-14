@@ -2052,7 +2052,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 	t.Run("logs the user in with their base role elsewhere when their ID token also carries one at an MK school", func(t *testing.T) {
 		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
 			"email":  "john.smith@example.com",
-			"groups": []string{"6100_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"},
+			"groups": []string{"6101_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"},
 		})
 
 		sess := session.New()
@@ -2131,7 +2131,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			},
 			{
 				name:   "when the ID token's only base role is at an MK school",
-				groups: []string{"6100_TW_ROLE_TEACHER"},
+				groups: []string{"6101_TW_ROLE_TEACHER"},
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
@@ -2512,18 +2512,18 @@ func TestResolveEdupassGroups(t *testing.T) {
 	})
 
 	t.Run("drops and reports a base role at an MK school without affecting the rest", func(t *testing.T) {
-		resolved := resolveEdupassGroups([]string{"6100_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"}, config.EdupassAppCodeTW)
+		resolved := resolveEdupassGroups([]string{"6101_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"}, config.EdupassAppCodeTW)
 
 		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.roles: %q; got: %q", want, got)
 		}
-		if want, got := []string{"6100_TW_ROLE_HOD"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+		if want, got := []string{"6101_TW_ROLE_HOD"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
 		}
 	})
 
 	t.Run("keeps an attribute at an MK school", func(t *testing.T) {
-		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "6100_TW_ATTR_CCE"}, config.EdupassAppCodeTW)
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "6101_TW_ATTR_CCE"}, config.EdupassAppCodeTW)
 
 		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.attributes: %q; got: %q", want, got)

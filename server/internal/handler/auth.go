@@ -401,10 +401,11 @@ func isRecognizedEdupassAttribute(code string) bool {
 }
 
 // isMKSchoolCode reports whether code is the location code of a MOE
-// Kindergarten (MK) school. Add new codes here as they're recognized.
+// Kindergarten (MK) school. The cases are the full list of known MK school
+// codes; add new codes here as they're assigned.
 func isMKSchoolCode(code string) bool {
 	switch code {
-	case "6100", "6101", "6102", "6103", "6104", "6105", "6106", "6107", "6108", "6109",
+	case "6101", "6102", "6103", "6104", "6105", "6106", "6107", "6108", "6109",
 		"6110", "6111", "6112", "6113", "6114", "6115", "6116", "6117", "6118", "6119",
 		"6120", "6121", "6122", "6123", "6124", "6126", "6127", "6128", "6129",
 		"6130", "6131", "6132", "6133", "6134", "6135", "6136", "6137", "6138", "6139",
@@ -450,7 +451,10 @@ type edupassGroups struct {
 // not appCode, is reported in unrecognized rather than blocking resolution:
 // Edupass can add codes between Teacher Workspace releases. A base role at a
 // MOE Kindergarten (MK) school is reported in unrecognized too, since Teacher
-// Workspace doesn't support MK staff; an attribute at one is kept.
+// Workspace doesn't support MK staff. The MK check covers base roles only: an
+// attribute at an MK school still resolves into attributes, because sign-in is
+// granted by a base role alone, so dropping MK base roles is enough to keep
+// MK staff out.
 // resolveEdupassGroups doesn't decide whether sign-in proceeds; the caller
 // refuses unless roles holds exactly one entry.
 func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
