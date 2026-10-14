@@ -2051,8 +2051,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 	t.Run("logs the user in with their base role elsewhere when their ID token also carries one at an MK school", func(t *testing.T) {
 		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
-			"email":  "john.smith@example.com",
-			"groups": []string{"6101_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"},
+			"cesEmail": "john.smith@example.com",
+			"groups":   []string{"6101_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"},
 		})
 
 		sess := session.New()
