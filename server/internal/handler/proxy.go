@@ -16,6 +16,13 @@ import (
 
 type ctxKeySignedToken struct{}
 
+type remoteBackendClaims struct {
+	Roles         []string `json:"roles"`
+	EffectiveRole string   `json:"effective_role"`
+	Attributes    []string `json:"attributes"`
+	jwt.RegisteredClaims
+}
+
 type remoteBackend struct {
 	proxy      http.Handler
 	signingKey string
@@ -58,12 +65,32 @@ func (h *Handler) proxy() http.HandlerFunc {
 		}
 
 		issuedAt := now()
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-			Issuer:    "tw",
-			Audience:  jwt.ClaimStrings{b.audience},
-			IssuedAt:  jwt.NewNumericDate(issuedAt),
-			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
-		})
+		claims := remoteBackendClaims{
+			Roles:      []string{},
+			Attributes: []string{},
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    "tw",
+				Audience:  jwt.ClaimStrings{b.audience},
+				IssuedAt:  jwt.NewNumericDate(issuedAt),
+				ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
+			},
+		}
+		if sess, ok := middleware.SessionFromContext(r.Context()); ok {
+			if u, ok := sess.User(); ok {
+				claims.EffectiveRole = u.Role
+
+				// Sessions saved before roles and attributes were stored load
+				// without them, and the claims must still encode as arrays.
+				if u.Role != "" {
+					claims.Roles = []string{u.Role}
+				}
+				if u.Attributes != nil {
+					claims.Attributes = u.Attributes
+				}
+			}
+		}
+
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		signedToken, err := token.SignedString([]byte(b.signingKey))
 		if err != nil {
 			logger.Error("failed to sign JWT", "app", name, "err", err)
