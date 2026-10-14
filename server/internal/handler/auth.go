@@ -134,7 +134,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			attrs = append(attrs, slog.String("error_description", errDescription))
 		}
 
-		logger.LogAttrs(r.Context(), level, "login failed at provider", attrs...)
+		logger.LogAttrs(r.Context(), level, "failed to get authorization code", attrs...)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
@@ -179,31 +179,23 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		switch retrieveErr.Response.StatusCode {
-		case http.StatusBadRequest, http.StatusUnauthorized:
-			var edupassExtensions struct {
-				ErrorCodes    []int  `json:"error_codes"`
-				Timestamp     string `json:"timestamp"`
-				TraceID       string `json:"trace_id"`
-				CorrelationID string `json:"correlation_id"`
-			}
-			if err := json.Unmarshal(retrieveErr.Body, &edupassExtensions); err != nil {
-				logger.Error("failed to exchange code for token", "status", retrieveErr.Response.StatusCode, "err", err)
-			} else {
-				logger.Error(
-					"failed to exchange code for token",
-					"status", retrieveErr.Response.StatusCode,
-					"error", retrieveErr.ErrorCode,
-					"error_description", retrieveErr.ErrorDescription,
-					"error_codes", edupassExtensions.ErrorCodes,
-					"timestamp", edupassExtensions.Timestamp,
-					"trace_id", edupassExtensions.TraceID,
-					"correlation_id", edupassExtensions.CorrelationID,
-				)
-			}
-		default:
-			logger.Error("failed to exchange code for token", "status", retrieveErr.Response.StatusCode)
+		var edupassExtensions struct {
+			ErrorCodes    []int  `json:"error_codes"`
+			Timestamp     string `json:"timestamp"`
+			TraceID       string `json:"trace_id"`
+			CorrelationID string `json:"correlation_id"`
 		}
+		_ = json.Unmarshal(retrieveErr.Body, &edupassExtensions)
+		logger.Error(
+			"failed to exchange code for token",
+			"status", retrieveErr.Response.StatusCode,
+			"error_code", retrieveErr.ErrorCode,
+			"error_description", retrieveErr.ErrorDescription,
+			"error_codes", edupassExtensions.ErrorCodes,
+			"timestamp", edupassExtensions.Timestamp,
+			"trace_id", edupassExtensions.TraceID,
+			"correlation_id", edupassExtensions.CorrelationID,
+		)
 
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
