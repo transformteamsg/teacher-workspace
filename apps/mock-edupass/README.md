@@ -50,6 +50,7 @@ Configure your relying party with these values:
 | `staff-9` | Mary Koh | mk.only@example.com | `6101_TW_ROLE_TEACHER` | Only role is at an MOE Kindergarten (MK) school (location `6101`); for MK-filter rejection testing |
 | `staff-10` | Meng Keat | mk.mixed@example.com | `6101_TW_ROLE_HOD`, `1234_TW_ROLE_TEACHER` | MK-anchored role alongside a role at a non-MK school; signs in as `ROLE_TEACHER` |
 | `staff-11` | Nora Teo | nora.teo@example.com | `1234_TW_ATTR_CCE` | An attribute and no base role |
+| `staff-12` | Oscar Lee | oscar.lee@example.com | `1234_TW_ROLE_TEACHER`, `1234_TW_ROLE_HOD`, `5678_TW_ROLE_TEACHER` | **Conflict fixture:** two roles at one school and a role at another; for `multiple_roles` testing where both conflicts apply |
 
 ## How It Works
 

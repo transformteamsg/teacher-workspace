@@ -742,6 +742,11 @@ describe('POST /token', () => {
         title: 'an attribute and no base role',
         groups: ['1234_TW_ATTR_CCE'],
       },
+      {
+        account: 'staff-12',
+        title: 'two base roles at one school and a base role at another',
+        groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ROLE_HOD', '5678_TW_ROLE_TEACHER'],
+      },
     ];
 
     for (const { account, title, groups } of groupsFixtures) {
