@@ -596,6 +596,8 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 	})
 }
 
+// signedTokenClaims spells out the claim names remote backends read, so a test
+// decoding into it fails when a claim is renamed.
 type signedTokenClaims struct {
 	Roles         []string `json:"roles"`
 	EffectiveRole string   `json:"effective_role"`
@@ -603,6 +605,8 @@ type signedTokenClaims struct {
 	jwt.RegisteredClaims
 }
 
+// parseSignedTokenClaims verifies authorization, an Authorization header value,
+// as a bearer JWT signed with signingKey, and returns its claims.
 func parseSignedTokenClaims(t *testing.T, authorization, signingKey string) signedTokenClaims {
 	t.Helper()
 

@@ -16,6 +16,9 @@ import (
 
 type ctxKeySignedToken struct{}
 
+// remoteBackendClaims are the claims of the JWT attached to every request
+// proxied to a remote app backend. Roles and Attributes are never nil, so they
+// encode as empty arrays rather than null when no user is signed in.
 type remoteBackendClaims struct {
 	Roles         []string `json:"roles"`
 	EffectiveRole string   `json:"effective_role"`
