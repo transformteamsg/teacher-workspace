@@ -18,6 +18,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/transformteamsg/teacher-workspace/server/internal/config"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 )
 
 // newRemoteBackend starts a fake remote backend served by handler and returns
@@ -263,6 +264,118 @@ func TestHandler_proxy(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("carries empty role claims in the JWT", func(t *testing.T) {
+		const signingKey = "posts-string-secret-at-least-256-bits-long"
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						_, _ = io.WriteString(w, r.Header.Get("Authorization"))
+					})),
+					PostsBackendSigningKey: signingKey,
+				},
+			},
+		}
+
+		tests := []struct {
+			name    string
+			withCtx func(context.Context) context.Context
+		}{
+			{
+				name:    "when there is no session",
+				withCtx: func(ctx context.Context) context.Context { return ctx },
+			},
+			{
+				name: "when the session has no user",
+				withCtx: func(ctx context.Context) context.Context {
+					return middleware.WithSession(ctx, session.New())
+				},
+			},
+			{
+				// A session saved before roles and attributes were stored loads its
+				// user with neither.
+				name: "when the user was stored without a role or attributes",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{Email: "teacher@example.com"})
+					return middleware.WithSession(ctx, sess)
+				},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				ctx := test.withCtx(middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler)))
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+				rec := httptest.NewRecorder()
+
+				h.proxy().ServeHTTP(rec, req)
+
+				claims := parseSignedTokenClaims(t, rec.Body.String(), signingKey)
+
+				// %#v tells an empty slice from nil, which would encode as null.
+				if want, got := []string{}, claims.Roles; !reflect.DeepEqual(want, got) {
+					t.Errorf("want claims.Roles: %#v; got: %#v", want, got)
+				}
+				if got := claims.EffectiveRole; got != "" {
+					t.Errorf("want claims.EffectiveRole: empty; got: %q", got)
+				}
+				if want, got := []string{}, claims.Attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("want claims.Attributes: %#v; got: %#v", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("carries the signed-in user's stored role and attributes in the JWT", func(t *testing.T) {
+		const signingKey = "posts-string-secret-at-least-256-bits-long"
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						_, _ = io.WriteString(w, r.Header.Get("Authorization"))
+					})),
+					PostsBackendSigningKey: signingKey,
+				},
+			},
+		}
+
+		// Attributes are out of alphabetical order, so a sort would show.
+		sess := session.New()
+		sess.SetUser(session.User{
+			Email:      "teacher@example.com",
+			Role:       "ROLE_TEACHER",
+			Attributes: []string{"ATTR_SLD", "ATTR_CCE"},
+		})
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		h.proxy().ServeHTTP(rec, req)
+
+		claims := parseSignedTokenClaims(t, rec.Body.String(), signingKey)
+
+		if want, got := []string{"ROLE_TEACHER"}, claims.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want claims.Roles: %q; got: %q", want, got)
+		}
+		if want, got := "ROLE_TEACHER", claims.EffectiveRole; want != got {
+			t.Errorf("want claims.EffectiveRole: %q; got: %q", want, got)
+		}
+		if want, got := []string{"ATTR_SLD", "ATTR_CCE"}, claims.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want claims.Attributes: %q; got: %q", want, got)
+		}
+	})
 }
 
 func TestNewRemoteBackendProxy(t *testing.T) {
@@ -481,4 +594,32 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 			t.Errorf("want: empty; got: %q", got)
 		}
 	})
+}
+
+type signedTokenClaims struct {
+	Roles         []string `json:"roles"`
+	EffectiveRole string   `json:"effective_role"`
+	Attributes    []string `json:"attributes"`
+	jwt.RegisteredClaims
+}
+
+func parseSignedTokenClaims(t *testing.T, authorization, signingKey string) signedTokenClaims {
+	t.Helper()
+
+	token, ok := strings.CutPrefix(authorization, "Bearer ")
+	if !ok {
+		t.Fatalf("want Authorization: containing %q; got: %q", "Bearer ", authorization)
+	}
+
+	var claims signedTokenClaims
+	if _, err := jwt.ParseWithClaims(token, &claims,
+		func(*jwt.Token) (any, error) {
+			return []byte(signingKey), nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+	); err != nil {
+		t.Fatalf("jwt.ParseWithClaims: %v", err)
+	}
+
+	return claims
 }
