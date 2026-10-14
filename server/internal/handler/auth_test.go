@@ -2511,7 +2511,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 		}
 	})
 
-	t.Run("drops and reports a base role at an MK school without affecting the rest", func(t *testing.T) {
+	t.Run("treats a base role at an MK school as unrecognized", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"6101_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"}, config.EdupassAppCodeTW)
 
 		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
