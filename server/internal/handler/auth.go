@@ -429,7 +429,9 @@ type edupassGroups struct {
 	// location code and app code, unranked and in arrival order.
 	attributes []string
 	// unrecognized contains every raw entry that didn't split into a
-	// recognized base role or attribute, verbatim, for logging.
+	// recognized base role or attribute, verbatim, for logging. A base role
+	// at a MOE Kindergarten (MK) school is reported here too, even though
+	// its role code is recognized.
 	unrecognized []string
 }
 
