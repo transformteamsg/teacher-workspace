@@ -2049,6 +2049,31 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("logs the user in with their base role elsewhere when their ID token also carries one at an MK school", func(t *testing.T) {
+		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
+			"cesEmail": "john.smith@example.com",
+			"groups":   []string{"6101_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"},
+		})
+
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		user, ok := sess.User()
+		if !ok {
+			t.Fatal("want sess.User() ok: true; got: false")
+		}
+		if want, got := "ROLE_TEACHER", user.Role; want != got {
+			t.Errorf("want user.Role: %q; got: %q", want, got)
+		}
+	})
+
 	t.Run("logs a warning when the ID token carries unrecognized Edupass codes", func(t *testing.T) {
 		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
 			"cesEmail": "john.smith@example.com",
@@ -2103,6 +2128,10 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			{
 				name:   "when the ID token carries more than one recognized base role",
 				groups: []string{"1234_TW_ROLE_PRINCIPAL", "5678_TW_ROLE_TEACHER"},
+			},
+			{
+				name:   "when the ID token's only base role is at an MK school",
+				groups: []string{"6101_TW_ROLE_TEACHER"},
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
@@ -2478,6 +2507,28 @@ func TestResolveEdupassGroups(t *testing.T) {
 			t.Errorf("want resolved.roles: %q; got: %q", want, got)
 		}
 		if want, got := []string{"1234_TW_ROLE_SUPERINTENDENT"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("treats a base role at an MK school as unrecognized", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"6101_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"}, config.EdupassAppCodeTW)
+
+		if want, got := []string{"ROLE_TEACHER"}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.roles: %q; got: %q", want, got)
+		}
+		if want, got := []string{"6101_TW_ROLE_HOD"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps an attribute at an MK school", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "6101_TW_ATTR_CCE"}, config.EdupassAppCodeTW)
+
+		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		}
+		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
 		}
 	})
