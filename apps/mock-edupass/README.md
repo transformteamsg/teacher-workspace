@@ -49,6 +49,7 @@ Configure your relying party with these values:
 | `staff-8` | Ivan Koh | _(absent)_ | `[]` | Empty groups and missing CES email |
 | `staff-9` | Mary Koh | mk.only@example.com | `6101_TW_ROLE_TEACHER` | Only role is at an MOE Kindergarten (MK) school (location `6101`); for MK-filter rejection testing |
 | `staff-10` | Meng Keat | mk.mixed@example.com | `6101_TW_ROLE_HOD`, `1234_TW_ROLE_TEACHER` | MK-anchored role alongside a role at a non-MK school; signs in as `ROLE_TEACHER` |
+| `staff-11` | Nora Teo | nora.teo@example.com | `1234_TW_ATTR_CCE` | An attribute and no base role |
 
 ## How It Works
 
