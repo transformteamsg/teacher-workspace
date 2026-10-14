@@ -187,7 +187,7 @@ func TestSave(t *testing.T) {
 	t.Run("writes session under its ID with TTL", func(t *testing.T) {
 		store := &fakeStore{}
 		sess := New()
-		sess.SetUser(User{Email: "a@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
+		sess.SetUser(User{ID: "123456789012", Name: "John Smith", Email: "a@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
 		sess.Set("key", "value")
 
 		err := Save(t.Context(), store, sess, time.Hour)
@@ -199,6 +199,8 @@ func TestSave(t *testing.T) {
 			"id":         sess.ID(),
 			"csrf_token": sess.csrfToken,
 			"user": map[string]any{
+				"id":         "123456789012",
+				"name":       "John Smith",
 				"email":      "a@example.com",
 				"role":       "ROLE_TEACHER",
 				"attributes": []any{"ATTR_CCE"},

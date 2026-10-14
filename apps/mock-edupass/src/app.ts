@@ -18,19 +18,19 @@ export function createApp(provider: Provider): Express {
     if (details.prompt.name === 'login') {
       const requestedAccount = details.params.account as string | undefined;
       const account = requestedAccount
-        ? accounts.find((a) => a.sub === requestedAccount)
+        ? accounts.find((a) => a.id === requestedAccount)
         : accounts[0];
 
       if (!account) {
         throw new Error(
-          `Unknown account '${requestedAccount}'. Available: ${accounts.map((a) => a.sub).join(', ')}`,
+          `Unknown account '${requestedAccount}'. Available: ${accounts.map((a) => a.id).join(', ')}`,
         );
       }
 
       await provider.interactionFinished(
         req,
         res,
-        { login: { accountId: account.sub } },
+        { login: { accountId: account.id } },
         { mergeWithLastSubmission: false },
       );
       return;

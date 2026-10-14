@@ -231,18 +231,41 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check iat (issued at) here because the verifier skips it, allowing the same 5 minutes of clock skew it allows for nbf: https://github.com/coreos/go-oidc/blob/v3.21.0/oidc/verify.go#L272-L281
+	if idToken.IssuedAt.IsZero() {
+		logger.Error("no iat found in ID token")
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+	if idToken.IssuedAt.After(time.Now().Add(5 * time.Minute)) {
+		logger.Error("ID token iat is in the future", "iat", idToken.IssuedAt)
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+
 	var claims struct {
-		ID     string   `json:"id"`
-		Email  string   `json:"email"`
-		Groups []string `json:"groups"`
+		ID       string   `json:"id"`
+		Name     string   `json:"name"`
+		CESEmail string   `json:"cesEmail"`
+		Groups   []string `json:"groups"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		logger.Error("failed to unmarshal claims", "err", err)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
-	if claims.Email == "" {
-		logger.Error("no email found in claims")
+	if claims.ID == "" {
+		logger.Error("no id found in claims")
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+	if claims.Name == "" {
+		logger.Error("no name found in claims")
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		return
+	}
+	if claims.CESEmail == "" {
+		logger.Error("no cesEmail found in claims")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
@@ -266,7 +289,9 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess.SetUser(session.User{
-		Email:      claims.Email,
+		ID:         claims.ID,
+		Name:       claims.Name,
+		Email:      claims.CESEmail,
 		Role:       resolved.roles[0],
 		Attributes: resolved.attributes,
 	})
