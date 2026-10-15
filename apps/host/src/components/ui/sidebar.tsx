@@ -19,9 +19,10 @@ import {
 import { Skeleton } from '~/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
 import { cn } from '~/helpers/cn';
-import { useIsMobile } from '~/hooks/use-mobile';
+import { useIsMobile, useIsTablet } from '~/hooks/use-mobile';
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state';
+const SIDEBAR_TABLET_COOKIE_NAME = 'sidebar_tablet_state';
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = '16rem';
 const SIDEBAR_WIDTH_MOBILE = '18rem';
@@ -81,6 +82,7 @@ function SidebarProvider({
   onOpenChange?: (open: boolean) => void;
 }) {
   const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   const [openMobile, setOpenMobile] = React.useState(false);
 
   // This is the internal state of the sidebar.
@@ -104,10 +106,28 @@ function SidebarProvider({
     [setOpenProp, open],
   );
 
+  // Tablets start on the icon rail. Expanding there is remembered apart from the
+  // desktop choice, so collapsing on a laptop never expands the rail on a tablet.
+  const [tabletOpen, _setTabletOpen] = React.useState(
+    () => readSidebarCookie(SIDEBAR_TABLET_COOKIE_NAME) ?? false,
+  );
+  const setTabletOpen = React.useCallback(
+    (value: boolean | ((value: boolean) => boolean)) => {
+      const openState = typeof value === 'function' ? value(tabletOpen) : value;
+      _setTabletOpen(openState);
+      writeSidebarCookie(SIDEBAR_TABLET_COOKIE_NAME, openState);
+    },
+    [tabletOpen],
+  );
+
+  // The open state of the sidebar at the current screen size.
+  const effectiveOpen = isTablet ? tabletOpen : open;
+  const setEffectiveOpen = isTablet ? setTabletOpen : setOpen;
+
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
-  }, [isMobile, setOpen, setOpenMobile]);
+    return isMobile ? setOpenMobile((open) => !open) : setEffectiveOpen((open) => !open);
+  }, [isMobile, setEffectiveOpen, setOpenMobile]);
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
@@ -124,19 +144,19 @@ function SidebarProvider({
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
-  const state = open ? 'expanded' : 'collapsed';
+  const state = effectiveOpen ? 'expanded' : 'collapsed';
 
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
       state,
-      open,
-      setOpen,
+      open: effectiveOpen,
+      setOpen: setEffectiveOpen,
       isMobile,
       openMobile,
       setOpenMobile,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+    [state, effectiveOpen, setEffectiveOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
   );
 
   return (
