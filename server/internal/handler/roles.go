@@ -1,55 +1,39 @@
 package handler
 
+// edupassRoleLabels maps every Edupass base role code the server recognizes
+// to the name shown to users, as the Edupass application onboarding form
+// registers it. Recognizing a new code means adding it here.
+var edupassRoleLabels = map[string]string{
+	"ROLE_PRINCIPAL":                     "Principal",
+	"ROLE_VICE_PRINCIPAL":                "Vice Principal",
+	"ROLE_VICE_PRINCIPAL_ADMINISTRATION": "Vice Principal (Administration)",
+	"ROLE_ADMIN_MANAGER":                 "Administration Manager",
+	"ROLE_ADMIN_SUPPORT":                 "Administrative Support Staff",
+	"ROLE_YEAR_HEAD":                     "Year Head",
+	"ROLE_ASST_YEAR_HEAD":                "Assistant Year Head",
+	"ROLE_HOD":                           "Head of Department",
+	"ROLE_SUBJECT_HEAD":                  "Subject Head",
+	"ROLE_LEVEL_HEAD":                    "Level Head",
+	"ROLE_SSD":                           "School Staff Developer",
+	"ROLE_LEAD_TEACHER":                  "Lead Teacher",
+	"ROLE_SNR_TEACHER":                   "Senior Teacher",
+	"ROLE_TEACHER":                       "Teacher",
+	"ROLE_SNR_COUNSELLOR":                "Senior School Counsellor",
+	"ROLE_COUNSELLOR":                    "School Counsellor",
+	"ROLE_SNR_SEN_OFFICER":               "Senior SEN Officer",
+	"ROLE_SEN_OFFICER":                   "SEN Officer",
+	"ROLE_SNR_SWO":                       "Senior Student Welfare Officer",
+	"ROLE_SWO":                           "Student Welfare Officer",
+	"ROLE_AED_TL":                        "Allied Educator (T&L)",
+	"ROLE_ICT_MANAGER":                   "ICT Manager",
+}
+
 // edupassRoleLabel returns the name shown to users for an Edupass base role
-// code, as the Edupass application onboarding form registers it. It returns
-// code itself when no label is known, so a resolved role never renders blank.
+// code. It returns code itself when the code is unrecognized, so a resolved
+// role never renders blank.
 func edupassRoleLabel(code string) string {
-	switch code {
-	case "ROLE_PRINCIPAL":
-		return "Principal"
-	case "ROLE_VICE_PRINCIPAL":
-		return "Vice Principal"
-	case "ROLE_VICE_PRINCIPAL_ADMINISTRATION":
-		return "Vice Principal (Administration)"
-	case "ROLE_ADMIN_MANAGER":
-		return "Administration Manager"
-	case "ROLE_ADMIN_SUPPORT":
-		return "Administrative Support Staff"
-	case "ROLE_YEAR_HEAD":
-		return "Year Head"
-	case "ROLE_ASST_YEAR_HEAD":
-		return "Assistant Year Head"
-	case "ROLE_HOD":
-		return "Head of Department"
-	case "ROLE_SUBJECT_HEAD":
-		return "Subject Head"
-	case "ROLE_LEVEL_HEAD":
-		return "Level Head"
-	case "ROLE_SSD":
-		return "School Staff Developer"
-	case "ROLE_LEAD_TEACHER":
-		return "Lead Teacher"
-	case "ROLE_SNR_TEACHER":
-		return "Senior Teacher"
-	case "ROLE_TEACHER":
-		return "Teacher"
-	case "ROLE_SNR_COUNSELLOR":
-		return "Senior School Counsellor"
-	case "ROLE_COUNSELLOR":
-		return "School Counsellor"
-	case "ROLE_SNR_SEN_OFFICER":
-		return "Senior SEN Officer"
-	case "ROLE_SEN_OFFICER":
-		return "SEN Officer"
-	case "ROLE_SNR_SWO":
-		return "Senior Student Welfare Officer"
-	case "ROLE_SWO":
-		return "Student Welfare Officer"
-	case "ROLE_AED_TL":
-		return "Allied Educator (T&L)"
-	case "ROLE_ICT_MANAGER":
-		return "ICT Manager"
-	default:
-		return code
+	if label, ok := edupassRoleLabels[code]; ok {
+		return label
 	}
+	return code
 }
