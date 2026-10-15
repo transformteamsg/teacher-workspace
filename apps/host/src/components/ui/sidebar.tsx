@@ -22,7 +22,7 @@ import { cn } from '~/helpers/cn';
 import { useIsMobile } from '~/hooks/use-mobile';
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state';
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = '16rem';
 const SIDEBAR_WIDTH_MOBILE = '18rem';
 // The rail fits an expanded row's icon and padding exactly, so collapsing trims
@@ -41,6 +41,22 @@ interface SidebarContextProps {
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
+
+// Returns the stored choice, or null when there is none. Only 'true' and
+// 'false' count, so a missing or mangled cookie falls back to the default.
+function readSidebarCookie(name: string): boolean | null {
+  const value = document.cookie
+    .split('; ')
+    .find((entry) => entry.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+}
+
+function writeSidebarCookie(name: string, value: boolean) {
+  document.cookie = `${name}=${value}; path=/; samesite=lax; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+}
 
 function useSidebar() {
   const context = React.useContext(SidebarContext);
@@ -69,7 +85,9 @@ function SidebarProvider({
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen);
+  const [_open, _setOpen] = React.useState(
+    () => readSidebarCookie(SIDEBAR_COOKIE_NAME) ?? defaultOpen,
+  );
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -81,7 +99,7 @@ function SidebarProvider({
       }
 
       // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+      writeSidebarCookie(SIDEBAR_COOKIE_NAME, openState);
     },
     [setOpenProp, open],
   );
