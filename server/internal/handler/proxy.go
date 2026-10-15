@@ -98,6 +98,7 @@ func (h *Handler) proxy() http.Handler {
 			Audience:  jwt.ClaimStrings{b.audience},
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
+			Subject:   u.ID,
 
 			Role:          u.Role,
 			EffectiveRole: u.Role,
