@@ -6,11 +6,12 @@ import { cn } from '~/helpers/cn';
 /**
  * One `ResizeObserver` for every label on the page rather than one each.
  *
- * A table renders one of these per row, and an observer apiece delivers a
- * callback apiece: React commits between them, so every read finds the layout
- * dirty again and flushes it. A single observer hands the whole page over in
- * one callback instead, and reading every label before notifying any of them
- * keeps that to one flush, because a notification re-renders.
+ * Several labels on one page resize together: a list or a table renders one
+ * per row. An observer apiece then delivers a callback apiece, and React
+ * commits between them, so every read finds the layout dirty again and
+ * flushes it. A single observer hands the whole page over in one callback
+ * instead, and reading every label before notifying any of them keeps that
+ * to one flush, because a notification re-renders.
  */
 const subscribers = new WeakMap<Element, (truncated: boolean) => void>();
 let sharedObserver: ResizeObserver | null = null;
