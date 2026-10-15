@@ -198,7 +198,7 @@ export function AppSidebar() {
             <SidebarMenuButton
               render={
                 <a
-                  href="https://go.gov.sg/teacherworkspace-feedback"
+                  href="https://go.gov.sg/teacherworkspace-feedbackform"
                   target="_blank"
                   rel="noopener noreferrer"
                 />
