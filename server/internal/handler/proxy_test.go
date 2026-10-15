@@ -401,13 +401,13 @@ func TestHandler_proxy(t *testing.T) {
 
 				claims := parseSignedTokenClaims(t, rec.Body.String(), signingKey)
 
-				// %#v tells an empty slice from nil, which would encode as null.
-				if want, got := []string{}, claims.Roles; !reflect.DeepEqual(want, got) {
-					t.Errorf("want claims.Roles: %#v; got: %#v", want, got)
+				if got := claims.Role; got != "" {
+					t.Errorf("want claims.Role: empty; got: %q", got)
 				}
 				if got := claims.EffectiveRole; got != "" {
 					t.Errorf("want claims.EffectiveRole: empty; got: %q", got)
 				}
+				// %#v tells an empty slice from nil, which would encode as null.
 				if want, got := []string{}, claims.Attributes; !reflect.DeepEqual(want, got) {
 					t.Errorf("want claims.Attributes: %#v; got: %#v", want, got)
 				}
@@ -453,8 +453,8 @@ func TestHandler_proxy(t *testing.T) {
 
 		claims := parseSignedTokenClaims(t, rec.Body.String(), signingKey)
 
-		if want, got := []string{"ROLE_TEACHER"}, claims.Roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("want claims.Roles: %q; got: %q", want, got)
+		if want, got := "ROLE_TEACHER", claims.Role; want != got {
+			t.Errorf("want claims.Role: %q; got: %q", want, got)
 		}
 		if want, got := "ROLE_TEACHER", claims.EffectiveRole; want != got {
 			t.Errorf("want claims.EffectiveRole: %q; got: %q", want, got)
@@ -686,7 +686,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 // signedTokenClaims spells out the claim names remote backends read, so a test
 // decoding into it fails when a claim is renamed.
 type signedTokenClaims struct {
-	Roles         []string `json:"roles"`
+	Role          string   `json:"role"`
 	EffectiveRole string   `json:"effective_role"`
 	Attributes    []string `json:"attributes"`
 	jwt.RegisteredClaims

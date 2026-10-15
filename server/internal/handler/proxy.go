@@ -70,7 +70,9 @@ func (h *Handler) proxy() http.HandlerFunc {
 		claims := struct {
 			jwt.RegisteredClaims
 
-			Roles         []string `json:"roles"`
+			Role string `json:"role"`
+			// EffectiveRole always equals Role. It is kept only because PG was
+			// promised it, and can be removed once PG reads role instead.
 			EffectiveRole string   `json:"effective_role"`
 			Attributes    []string `json:"attributes"`
 		}{
@@ -80,19 +82,16 @@ func (h *Handler) proxy() http.HandlerFunc {
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
 
-			// Roles and Attributes must always encode as arrays, empty when
-			// there are none.
-			Roles:      []string{},
+			// Attributes must always encode as an array, empty when there are
+			// none.
 			Attributes: []string{},
 		}
 		if u, ok := sess.User(); ok {
+			claims.Role = u.Role
 			claims.EffectiveRole = u.Role
 
-			// Sessions saved before roles and attributes were stored load
-			// without them, and the claims must still encode as arrays.
-			if u.Role != "" {
-				claims.Roles = []string{u.Role}
-			}
+			// Sessions saved before attributes were stored load without them,
+			// and the claim must still encode as an array.
 			if u.Attributes != nil {
 				claims.Attributes = u.Attributes
 			}
