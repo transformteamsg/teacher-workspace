@@ -340,35 +340,10 @@ const (
 // issues. A staff member is meant to hold exactly one for a location, but
 // Edupass enforces nothing: resolveEdupassGroups reports every one it sees
 // and leaves the "more than one" case to the caller, rather than guessing
-// which was meant. Add new codes here as they're recognized.
+// which was meant. The recognized codes are the keys of edupassRoleLabels.
 func isRecognizedEdupassRole(code string) bool {
-	switch code {
-	case "ROLE_PRINCIPAL",
-		"ROLE_VICE_PRINCIPAL",
-		"ROLE_VICE_PRINCIPAL_ADMINISTRATION",
-		"ROLE_ADMIN_MANAGER",
-		"ROLE_ADMIN_SUPPORT",
-		"ROLE_YEAR_HEAD",
-		"ROLE_ASST_YEAR_HEAD",
-		"ROLE_HOD",
-		"ROLE_SUBJECT_HEAD",
-		"ROLE_LEVEL_HEAD",
-		"ROLE_SSD",
-		"ROLE_LEAD_TEACHER",
-		"ROLE_SNR_TEACHER",
-		"ROLE_TEACHER",
-		"ROLE_SNR_COUNSELLOR",
-		"ROLE_COUNSELLOR",
-		"ROLE_SNR_SEN_OFFICER",
-		"ROLE_SEN_OFFICER",
-		"ROLE_SNR_SWO",
-		"ROLE_SWO",
-		"ROLE_AED_TL",
-		"ROLE_ICT_MANAGER":
-		return true
-	default:
-		return false
-	}
+	_, ok := edupassRoleLabels[code]
+	return ok
 }
 
 // isRecognizedEdupassAttribute reports whether code is an attribute Edupass
