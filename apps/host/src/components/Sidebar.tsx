@@ -1,5 +1,7 @@
 import { CalendarClock, CircleHelp, Home, Layers, Mail, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { NavLink, useMatch } from 'react-router';
 
 import teacherWorkspaceMark from '~/assets/logos/teacher-workspace.svg';
@@ -14,10 +16,11 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
+  SidebarProvider,
   useSidebar,
 } from '~/components/ui/sidebar';
 import { cn } from '~/helpers/cn';
+import { useIsTablet } from '~/hooks/use-tablet';
 
 interface NavItem {
   title: string;
@@ -51,26 +54,74 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-// Text that exists only in the expanded sidebar. Collapsing, it fades and blurs
-// out in 100ms, before the width has moved far enough to truncate it. Expanding,
-// it resolves back in once the width has started to settle. With reduced motion
-// it only fades.
+const DESKTOP_OPEN_KEY = 'tw_sidebar_desktop_open';
+const TABLET_OPEN_KEY = 'tw_sidebar_tablet_open';
+
+// shadcn centres a collapsed item with flex, and justify-content cannot
+// transition, so the icon would drift while the rail narrows.
+const MENU_ITEM_CLASS = 'tw:group-data-[collapsible=icon]:block';
+const MENU_BUTTON_CLASS =
+  'tw:h-9 tw:gap-3 tw:rounded-xl tw:transition-[width,height,padding,margin] tw:duration-(--duration-sidebar) tw:ease-(--ease-sidebar) tw:group-data-[collapsible=icon]:my-0.5';
 const EXPANDED_ONLY_TEXT_CLASS =
   'tw:transition-[opacity,filter] tw:delay-75 tw:duration-150 tw:ease-out tw:group-data-[collapsible=icon]:opacity-0 tw:group-data-[collapsible=icon]:blur-sm tw:group-data-[collapsible=icon]:delay-0 tw:group-data-[collapsible=icon]:duration-100 tw:motion-reduce:transition-opacity tw:motion-reduce:delay-0 tw:motion-reduce:duration-100 tw:motion-reduce:group-data-[collapsible=icon]:blur-none';
 
+function readStoredOpen(key: string, fallback: boolean): boolean {
+  try {
+    const value = window.localStorage.getItem(key);
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storeOpen(key: string, open: boolean) {
+  try {
+    window.localStorage.setItem(key, String(open));
+  } catch {
+    return;
+  }
+}
+
+export function AppSidebarProvider({ children }: { children: ReactNode }) {
+  const isTablet = useIsTablet();
+  const [desktopOpen, setDesktopOpen] = useState(() => readStoredOpen(DESKTOP_OPEN_KEY, true));
+  const [tabletOpen, setTabletOpen] = useState(() => readStoredOpen(TABLET_OPEN_KEY, false));
+
+  const handleOpenChange = (open: boolean) => {
+    if (isTablet) {
+      setTabletOpen(open);
+      storeOpen(TABLET_OPEN_KEY, open);
+    } else {
+      setDesktopOpen(open);
+      storeOpen(DESKTOP_OPEN_KEY, open);
+    }
+  };
+
+  return (
+    <SidebarProvider
+      open={isTablet ? tabletOpen : desktopOpen}
+      onOpenChange={handleOpenChange}
+      style={{ '--sidebar-width-icon': '3rem' } as CSSProperties}
+    >
+      {children}
+    </SidebarProvider>
+  );
+}
+
 function NavMenuItem({ item }: { item: NavItem }) {
   const { setOpenMobile } = useSidebar();
-  // Home matches only itself; every other destination stays active on the
-  // pages nested under it, such as one student's profile.
   const end = item.to === '/';
   const isActive = useMatch({ path: item.to, end }) !== null;
 
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem className={MENU_ITEM_CLASS}>
       <SidebarMenuButton
         render={<NavLink to={item.to} end={end} />}
         isActive={isActive}
         tooltip={item.title}
+        className={MENU_BUTTON_CLASS}
         onClick={() => setOpenMobile(false)}
       >
         <item.icon />
@@ -82,18 +133,17 @@ function NavMenuItem({ item }: { item: NavItem }) {
 
 export function AppSidebar() {
   return (
-    <SidebarRoot collapsible="icon">
-      <SidebarHeader>
-        {/* The collapse control sits over the product mark and shows in its place
-            on hover or keyboard focus, so the row reads as the mark, the name and
-            the Beta pill, and collapses to the mark alone. On touch screens the
-            mark stays visible and tapping it toggles the sidebar. */}
-        <div className="tw:group/identity tw:relative tw:flex tw:h-10 tw:items-center tw:gap-2 tw:pl-1 tw:transition-[gap] tw:duration-(--duration-sidebar) tw:ease-(--ease-sidebar) tw:select-none tw:group-data-[collapsible=icon]:gap-0">
+    <SidebarRoot
+      collapsible="icon"
+      className="tw:border-sidebar-border tw:duration-(--duration-sidebar) tw:ease-(--ease-sidebar)"
+    >
+      <SidebarHeader className="tw:in-data-[slot=sidebar-inner]:mb-2">
+        <div className="tw:flex tw:h-10 tw:items-center tw:gap-2 tw:pl-1 tw:transition-[gap] tw:duration-(--duration-sidebar) tw:ease-(--ease-sidebar) tw:select-none tw:group-data-[collapsible=icon]:gap-0">
           <img
             src={teacherWorkspaceMark}
             alt=""
             draggable={false}
-            className="tw:size-6 tw:shrink-0 tw:transition-opacity tw:duration-150 tw:group-hover/identity:opacity-0 tw:group-has-[:focus-visible]/identity:opacity-0"
+            className="tw:size-6 tw:shrink-0"
           />
           <span
             className={cn(
@@ -105,20 +155,32 @@ export function AppSidebar() {
           </span>
           <span
             className={cn(
-              'tw:inline-flex tw:h-5 tw:shrink-0 tw:items-center tw:overflow-hidden tw:rounded-full tw:bg-info tw:px-2 tw:text-xs tw:font-medium tw:text-info-foreground tw:group-data-[collapsible=icon]:w-0 tw:group-data-[collapsible=icon]:px-0',
+              'tw:inline-flex tw:h-5 tw:shrink-0 tw:items-center tw:overflow-hidden tw:rounded-4xl tw:border tw:border-transparent tw:bg-info tw:px-2 tw:py-0.5 tw:text-xs tw:font-medium tw:text-info-foreground tw:group-data-[collapsible=icon]:w-0 tw:group-data-[collapsible=icon]:border-0 tw:group-data-[collapsible=icon]:px-0',
               EXPANDED_ONLY_TEXT_CLASS,
             )}
           >
             Beta
           </span>
-          <SidebarTrigger className="tw:absolute tw:top-1 tw:left-0 tw:opacity-0 tw:transition-opacity tw:duration-150 tw:group-hover/identity:opacity-100 tw:focus-visible:opacity-100" />
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="tw:transition-[gap] tw:duration-(--duration-sidebar) tw:ease-(--ease-sidebar) tw:group-data-[collapsible=icon]:gap-1">
         {navGroups.map((group, index) => (
-          <SidebarGroup key={group.label ?? index}>
-            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+          <SidebarGroup
+            key={group.label ?? index}
+            className={cn(
+              'tw:transition-[padding,margin] tw:duration-(--duration-sidebar) tw:ease-(--ease-sidebar) tw:group-data-[collapsible=icon]:pb-0',
+              group.label &&
+                'tw:group-data-[collapsible=icon]:mt-2 tw:group-data-[collapsible=icon]:pt-0',
+            )}
+          >
+            {group.label && (
+              // A label slides over the row above it while the sidebar expands, so
+              // it takes no pointer events and a click there reaches that row.
+              <SidebarGroupLabel className="tw:pointer-events-none tw:transition-[margin,opacity,filter] tw:delay-[0s,75ms,75ms] tw:duration-[var(--duration-sidebar),150ms,150ms] tw:ease-[var(--ease-sidebar),ease-out,ease-out] tw:group-data-[collapsible=icon]:blur-sm tw:group-data-[collapsible=icon]:delay-0 tw:group-data-[collapsible=icon]:duration-[var(--duration-sidebar),100ms,100ms] tw:motion-reduce:delay-0 tw:motion-reduce:duration-[var(--duration-sidebar),100ms,100ms] tw:motion-reduce:group-data-[collapsible=icon]:blur-none">
+                {group.label}
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
@@ -130,9 +192,9 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="tw:in-data-[slot=sidebar-inner]:mt-2">
         <SidebarMenu>
-          <SidebarMenuItem>
+          <SidebarMenuItem className={MENU_ITEM_CLASS}>
             <SidebarMenuButton
               render={
                 <a
@@ -142,6 +204,7 @@ export function AppSidebar() {
                 />
               }
               tooltip="Help"
+              className={MENU_BUTTON_CLASS}
             >
               <CircleHelp />
               <span className={EXPANDED_ONLY_TEXT_CLASS}>Help</span>

@@ -25,6 +25,7 @@
   --border: #d9d9e0;
   --input: #d9d9e0;
   --ring: #73a7ff;
+  --overlay: rgba(0, 0, 0, 0.6);
   --radius: 0.625rem;
 
   --duration-sidebar: 200ms;
@@ -34,16 +35,55 @@
   --sidebar-foreground: #1c2024;
   --sidebar-primary: #0064ff;
   --sidebar-primary-foreground: white;
-  --sidebar-accent: #eef1f5;
+  --sidebar-accent: #e8e8ec;
   --sidebar-accent-foreground: #1c2024;
-  --sidebar-border: #d9d9e0;
+  --sidebar-border: #e8e8ec;
   --sidebar-ring: #73a7ff;
 }
 
-/* The sidebar's width and spacing snap into place; only its labels still fade. */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-sidebar: 0s;
+  }
+}
+
+/* The shadcn sidebar exposes no className for its gap or sheet. Unlayered, these beat their utilities. */
+[data-slot='sidebar-gap'] {
+  transition-duration: var(--duration-sidebar);
+  transition-timing-function: var(--ease-sidebar);
+}
+
+[data-slot='sheet-overlay'],
+[data-slot='sidebar'][data-mobile='true'] {
+  transition-duration: 250ms;
+  transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+}
+
+:is([data-slot='sheet-overlay'], [data-slot='sidebar'][data-mobile='true'])[data-ending-style] {
+  transition-duration: 200ms;
+}
+
+[data-slot='sheet-overlay'] {
+  background-color: var(--overlay);
+}
+
+[data-slot='sidebar'][data-mobile='true'] {
+  transition-property: translate, opacity;
+}
+
+[data-slot='sidebar'][data-mobile='true'][data-side='left']:is(
+    [data-starting-style],
+    [data-ending-style]
+  ) {
+  translate: -100% 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='sidebar'][data-mobile='true'][data-side]:is(
+      [data-starting-style],
+      [data-ending-style]
+    ) {
+    translate: 0 0;
   }
 }
 
