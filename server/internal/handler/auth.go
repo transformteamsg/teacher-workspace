@@ -72,6 +72,18 @@ const (
 	sessionKeyEdupassCodeVerifier = "edupass_code_verifier"
 )
 
+const (
+	loginErrNoRole               = "no_role"
+	loginErrMultipleRoles        = "multiple_roles"
+	loginErrUnsupportedSchoolMK  = "unsupported_school_mk"
+	loginErrOAuth2CallbackFailed = "oauth2_callback_failed"
+)
+
+// logReasonMultipleLocations is the log reason for roles spread across more
+// than one location. It has no login error code: staff see the
+// [loginErrMultipleRoles] error.
+const logReasonMultipleLocations = "multiple_locations"
+
 // authEdupass starts logging the user in with Edupass. It records a pending
 // login in the session for [Handler.authEdupassCallback] to complete, and
 // redirects the user to Edupass to log in. Calling it again on the same session
@@ -117,12 +129,16 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 // they asked to return to.
 //
 // On failure, it redirects the user to the login page, which reports the
-// failure and keeps the path they asked to return to. It fails if:
+// failure and keeps the path they asked to return to. The error query
+// parameter says why: [loginErrNoRole], [loginErrMultipleRoles] or
+// [loginErrUnsupportedSchoolMK] for the role refusals below, and
+// [loginErrOAuth2CallbackFailed] for every other failure. It fails if:
 //   - the session has no pending login
 //   - the callback does not belong to the pending login
 //   - Edupass reports an error
 //   - Edupass does not issue a valid ID token with the claims the session needs
-//   - the ID token's groups claim does not hold exactly one recognized base role
+//   - the ID token's groups claim holds no recognized base role, or more than
+//     one, once base roles at MOE Kindergarten (MK) schools are set aside
 //
 // Either way, it clears the pending login from the session, so a repeated
 // callback fails because there is no pending login.
@@ -316,15 +332,33 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(resolved.roles) != 1 {
 		roleCodes := make([]string, 0, len(resolved.roles))
+		locations := make([]string, 0, len(resolved.roles))
 		for _, role := range resolved.roles {
 			roleCodes = append(roleCodes, role.code)
+			locations = append(locations, role.location)
 		}
+
+		errCode := loginErrNoRole
+		switch {
+		case len(resolved.roles) > 1:
+			errCode = loginErrMultipleRoles
+		case resolved.removedMKRole:
+			errCode = loginErrUnsupportedSchoolMK
+		}
+
+		reason := errCode
+		if hasMultipleLocations(locations) {
+			reason = logReasonMultipleLocations
+		}
+
 		logger.Warn(
 			"staff does not have exactly one recognized base role",
+			"reason", reason,
 			"edupass_id", claims.ID,
 			"roles", roleCodes,
+			"locations", locations,
 		)
-		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		httputil.Redirect(w, logger, http.StatusFound, loginFailedURLWithCode(returnTo, errCode))
 		return
 	}
 
@@ -394,10 +428,28 @@ func loginURL(returnTo string) string {
 	return "/login?" + q.Encode()
 }
 
+func hasMultipleLocations(locations []string) bool {
+	for _, location := range locations {
+		if location != locations[0] {
+			return true
+		}
+	}
+	return false
+}
+
 // loginFailedURL returns the login page URL for a failed login, carrying
-// returnTo.
+// returnTo and the generic [loginErrOAuth2CallbackFailed] error code.
 func loginFailedURL(returnTo string) string {
-	return loginURL(returnTo) + "&error=oauth2_callback_failed"
+	return loginFailedURLWithCode(returnTo, loginErrOAuth2CallbackFailed)
+}
+
+// loginFailedURLWithCode returns the login page URL for a failed login,
+// carrying errCode and returnTo.
+func loginFailedURLWithCode(returnTo, errCode string) string {
+	q := url.Values{}
+	q.Set("error", errCode)
+	q.Set("return_to", returnTo)
+	return "/login?" + q.Encode()
 }
 
 const (

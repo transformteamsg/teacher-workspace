@@ -768,7 +768,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			if want, got := http.StatusFound, rec.Code; want != got {
 				t.Fatalf("want status: %d; got: %d", want, got)
 			}
-			if want, got := loginFailedURL("/"), rec.Header().Get("Location"); want != got {
+			if want, got := "/login?error=oauth2_callback_failed&return_to=%2F", rec.Header().Get("Location"); want != got {
 				t.Errorf("want Location: %q; got: %q", want, got)
 			}
 			if sess.IsAuthenticated() {
@@ -808,7 +808,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want status: %d; got: %d", want, got)
 		}
-		if want, got := loginFailedURL("/"), rec.Header().Get("Location"); want != got {
+		if want, got := "/login?error=oauth2_callback_failed&return_to=%2F", rec.Header().Get("Location"); want != got {
 			t.Errorf("want Location: %q; got: %q", want, got)
 		}
 		if sess.IsAuthenticated() {
@@ -881,7 +881,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want status: %d; got: %d", want, got)
 		}
-		if want, got := loginFailedURL("/posts"), rec.Header().Get("Location"); want != got {
+		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fposts", rec.Header().Get("Location"); want != got {
 			t.Errorf("want Location: %q; got: %q", want, got)
 		}
 		if sess.IsAuthenticated() {
@@ -952,7 +952,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want status: %d; got: %d", want, got)
 		}
-		if want, got := loginFailedURL("/posts"), rec.Header().Get("Location"); want != got {
+		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fposts", rec.Header().Get("Location"); want != got {
 			t.Errorf("want Location: %q; got: %q", want, got)
 		}
 		if sess.IsAuthenticated() {
@@ -1024,7 +1024,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want status: %d; got: %d", want, got)
 		}
-		if want, got := loginFailedURL("/posts"), rec.Header().Get("Location"); want != got {
+		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fposts", rec.Header().Get("Location"); want != got {
 			t.Errorf("want Location: %q; got: %q", want, got)
 		}
 		if sess.IsAuthenticated() {
@@ -1164,7 +1164,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want status: %d; got: %d", want, got)
 		}
-		if want, got := loginFailedURL("/posts"), rec.Header().Get("Location"); want != got {
+		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fposts", rec.Header().Get("Location"); want != got {
 			t.Errorf("want Location: %q; got: %q", want, got)
 		}
 		if sess.IsAuthenticated() {
@@ -1235,7 +1235,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want status: %d; got: %d", want, got)
 		}
-		if want, got := loginFailedURL("/posts"), rec.Header().Get("Location"); want != got {
+		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fposts", rec.Header().Get("Location"); want != got {
 			t.Errorf("want Location: %q; got: %q", want, got)
 		}
 		if sess.IsAuthenticated() {
@@ -1306,7 +1306,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := http.StatusFound, rec.Code; want != got {
 			t.Fatalf("want status: %d; got: %d", want, got)
 		}
-		if want, got := loginFailedURL("/posts"), rec.Header().Get("Location"); want != got {
+		if want, got := "/login?error=oauth2_callback_failed&return_to=%2Fposts", rec.Header().Get("Location"); want != got {
 			t.Errorf("want Location: %q; got: %q", want, got)
 		}
 		if sess.IsAuthenticated() {
@@ -2292,26 +2292,56 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("fails the login", func(t *testing.T) {
+	t.Run("redirects to the login page with the error code for the refusal", func(t *testing.T) {
 		for _, test := range []struct {
-			name   string
-			groups []string
+			name         string
+			groups       []string
+			wantLocation string
 		}{
 			{
-				name:   "when the ID token's groups claim is empty",
-				groups: []string{},
+				name:         "no_role when the ID token's groups claim is empty",
+				groups:       []string{},
+				wantLocation: "/login?error=no_role&return_to=%2Fposts",
 			},
 			{
-				name:   "when the ID token carries no recognized base role",
-				groups: []string{"1234_TW_ATTR_CCE", "1234_TW_ROLE_SUPERINTENDENT"},
+				name:         "no_role when the ID token carries only an attribute and an unrecognized role",
+				groups:       []string{"1234_TW_ATTR_CCE", "1234_TW_ROLE_SUPERINTENDENT"},
+				wantLocation: "/login?error=no_role&return_to=%2Fposts",
 			},
 			{
-				name:   "when the ID token carries more than one recognized base role",
-				groups: []string{"1234_TW_ROLE_PRINCIPAL", "5678_TW_ROLE_TEACHER"},
+				name:         "no_role when the only MK entry has an unrecognized role code",
+				groups:       []string{"6101_TW_ROLE_SUPERINTENDENT"},
+				wantLocation: "/login?error=no_role&return_to=%2Fposts",
 			},
 			{
-				name:   "when the ID token's only base role is at an MK school",
-				groups: []string{"6101_TW_ROLE_TEACHER"},
+				name:         "no_role when the only MK entry is an attribute",
+				groups:       []string{"6101_TW_ATTR_CCE"},
+				wantLocation: "/login?error=no_role&return_to=%2Fposts",
+			},
+			{
+				name:         "multiple_roles when two base roles are at one school",
+				groups:       []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_HOD"},
+				wantLocation: "/login?error=multiple_roles&return_to=%2Fposts",
+			},
+			{
+				name:         "multiple_roles when a base role is at each of two schools",
+				groups:       []string{"1234_TW_ROLE_PRINCIPAL", "5678_TW_ROLE_TEACHER"},
+				wantLocation: "/login?error=multiple_roles&return_to=%2Fposts",
+			},
+			{
+				name:         "multiple_roles when two base roles share a school and a third is at another",
+				groups:       []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_HOD", "5678_TW_ROLE_TEACHER"},
+				wantLocation: "/login?error=multiple_roles&return_to=%2Fposts",
+			},
+			{
+				name:         "multiple_roles when two non-MK base roles remain beside an MK one",
+				groups:       []string{"6101_TW_ROLE_TEACHER", "1234_TW_ROLE_TEACHER", "1234_TW_ROLE_HOD"},
+				wantLocation: "/login?error=multiple_roles&return_to=%2Fposts",
+			},
+			{
+				name:         "unsupported_school_mk when the only base role is at an MK school",
+				groups:       []string{"6101_TW_ROLE_TEACHER"},
+				wantLocation: "/login?error=unsupported_school_mk&return_to=%2Fposts",
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
@@ -2335,7 +2365,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				if want, got := http.StatusFound, rec.Code; want != got {
 					t.Fatalf("want status: %d; got: %d", want, got)
 				}
-				if want, got := loginFailedURL("/posts"), rec.Header().Get("Location"); want != got {
+				if want, got := test.wantLocation, rec.Header().Get("Location"); want != got {
 					t.Errorf("want Location: %q; got: %q", want, got)
 				}
 				if sess.IsAuthenticated() {
@@ -2345,10 +2375,90 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("logs a warning when the ID token does not carry exactly one recognized base role", func(t *testing.T) {
+	t.Run("logs a warning with the refusal reason and the roles and locations it saw", func(t *testing.T) {
+		for _, test := range []struct {
+			name          string
+			groups        []string
+			wantReason    string
+			wantRoles     []string
+			wantLocations []string
+		}{
+			{
+				name:          "as no_role when the ID token carries only an attribute",
+				groups:        []string{"1234_TW_ATTR_CCE"},
+				wantReason:    "no_role",
+				wantRoles:     []string{},
+				wantLocations: []string{},
+			},
+			{
+				name:          "as multiple_roles when two base roles are at one location",
+				groups:        []string{"1234_TW_ROLE_PRINCIPAL", "1234_TW_ROLE_TEACHER"},
+				wantReason:    "multiple_roles",
+				wantRoles:     []string{"ROLE_PRINCIPAL", "ROLE_TEACHER"},
+				wantLocations: []string{"1234", "1234"},
+			},
+			{
+				name:          "as multiple_locations when base roles are at two locations",
+				groups:        []string{"1234_TW_ROLE_PRINCIPAL", "5678_TW_ROLE_TEACHER"},
+				wantReason:    "multiple_locations",
+				wantRoles:     []string{"ROLE_PRINCIPAL", "ROLE_TEACHER"},
+				wantLocations: []string{"1234", "5678"},
+			},
+			{
+				name:          "as multiple_locations when two base roles share a location and a third is elsewhere",
+				groups:        []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_HOD", "5678_TW_ROLE_TEACHER"},
+				wantReason:    "multiple_locations",
+				wantRoles:     []string{"ROLE_TEACHER", "ROLE_HOD", "ROLE_TEACHER"},
+				wantLocations: []string{"1234", "1234", "5678"},
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
+					"cesEmail": "john.smith@example.com",
+					"groups":   test.groups,
+				})
+
+				var logs bytes.Buffer
+				sess := session.New()
+				sess.Set(sessionKeyEdupassState, "test-state")
+				sess.Set(sessionKeyEdupassNonce, "test-nonce")
+				sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+				ctx = middleware.WithSession(ctx, sess)
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+				h.authEdupassCallback(httptest.NewRecorder(), req)
+
+				records := decodeLogRecords(t, &logs)
+				if want, got := 1, len(records); want != got {
+					t.Fatalf("want len(records): %d; got: %d", want, got)
+				}
+				if want, got := slog.LevelWarn.String(), records[0].Level; want != got {
+					t.Errorf("want records[0].Level: %q; got: %q", want, got)
+				}
+				if want, got := "staff does not have exactly one recognized base role", records[0].Msg; want != got {
+					t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+				}
+				if want, got := test.wantReason, records[0].Reason; want != got {
+					t.Errorf("want records[0].Reason: %q; got: %q", want, got)
+				}
+				if want, got := "test-id", records[0].EdupassID; want != got {
+					t.Errorf("want records[0].EdupassID: %q; got: %q", want, got)
+				}
+				if want, got := test.wantRoles, records[0].Roles; !reflect.DeepEqual(want, got) {
+					t.Errorf("want records[0].Roles: %q; got: %q", want, got)
+				}
+				if want, got := test.wantLocations, records[0].Locations; !reflect.DeepEqual(want, got) {
+					t.Errorf("want records[0].Locations: %q; got: %q", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("logs a warning with the reason unsupported_school_mk when the only base role is at an MK school", func(t *testing.T) {
 		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
 			"cesEmail": "john.smith@example.com",
-			"groups":   []string{"1234_TW_ROLE_PRINCIPAL", "1234_TW_ROLE_TEACHER"},
+			"groups":   []string{"6101_TW_ROLE_TEACHER"},
 		})
 
 		var logs bytes.Buffer
@@ -2362,21 +2472,32 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 
 		h.authEdupassCallback(httptest.NewRecorder(), req)
 
+		const refusalMsg = "staff does not have exactly one recognized base role"
+		var refusal *logRecord
 		records := decodeLogRecords(t, &logs)
-		if want, got := 1, len(records); want != got {
-			t.Fatalf("want len(records): %d; got: %d", want, got)
+		for i := range records {
+			if records[i].Msg == refusalMsg {
+				refusal = &records[i]
+				break
+			}
 		}
-		if want, got := slog.LevelWarn.String(), records[0].Level; want != got {
-			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		if refusal == nil {
+			t.Fatalf("want record with Msg %q: non-nil; got: nil", refusalMsg)
 		}
-		if want, got := "staff does not have exactly one recognized base role", records[0].Msg; want != got {
-			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		if want, got := slog.LevelWarn.String(), refusal.Level; want != got {
+			t.Errorf("want refusal.Level: %q; got: %q", want, got)
 		}
-		if want, got := "test-id", records[0].EdupassID; want != got {
-			t.Errorf("want records[0].EdupassID: %q; got: %q", want, got)
+		if want, got := "unsupported_school_mk", refusal.Reason; want != got {
+			t.Errorf("want refusal.Reason: %q; got: %q", want, got)
 		}
-		if want, got := []string{"ROLE_PRINCIPAL", "ROLE_TEACHER"}, records[0].Roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("want records[0].Roles: %q; got: %q", want, got)
+		if want, got := "test-id", refusal.EdupassID; want != got {
+			t.Errorf("want refusal.EdupassID: %q; got: %q", want, got)
+		}
+		if want, got := []string{}, refusal.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want refusal.Roles: %q; got: %q", want, got)
+		}
+		if want, got := []string{}, refusal.Locations; !reflect.DeepEqual(want, got) {
+			t.Errorf("want refusal.Locations: %q; got: %q", want, got)
 		}
 	})
 
@@ -3009,6 +3130,8 @@ type logRecord struct {
 	EdupassID string   `json:"edupass_id"`
 	Codes     []string `json:"codes"`
 	Roles     []string `json:"roles"`
+	Reason    string   `json:"reason"`
+	Locations []string `json:"locations"`
 }
 
 // decodeLogRecords returns the records in logs, the output of a
