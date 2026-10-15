@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
 import { cn } from '~/helpers/cn';
@@ -58,12 +58,14 @@ interface TruncatedTextProps {
  * swapped out, so the DOM shape survives a resize.
  */
 export function TruncatedText({ text, className }: TruncatedTextProps) {
-  // A state ref, not `useRef`: the measurement has to re-run once the
-  // element exists, and Base UI types the trigger's own ref as a button's.
-  const [element, setElement] = useState<HTMLElement | null>(null);
+  // Base UI types the trigger's ref as a button's, so a `useRef` of the
+  // `<span>` it renders here does not type-check against the prop; a
+  // callback ref does, and keeps the element out of state.
+  const label = useRef<HTMLElement | null>(null);
   const [truncated, setTruncated] = useState(false);
 
   useEffect(() => {
+    const element = label.current;
     if (!element) return;
     // Without a ResizeObserver the first observe callback never arrives, so
     // the measurement has to be made here.
@@ -74,12 +76,14 @@ export function TruncatedText({ text, className }: TruncatedTextProps) {
     // New text re-observes, which re-measures: a longer string clips where
     // the one it replaced did not.
     return observeLabel(element, setTruncated);
-  }, [element, text]);
+  }, [text]);
 
   return (
     <Tooltip disabled={!truncated}>
       <TooltipTrigger
-        ref={setElement}
+        ref={(element) => {
+          label.current = element;
+        }}
         render={<span />}
         className={cn('tw:block tw:truncate', className)}
       >
