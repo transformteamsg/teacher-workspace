@@ -191,10 +191,10 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			"status", retrieveErr.Response.StatusCode,
 			"error_code", retrieveErr.ErrorCode,
 			"error_description", retrieveErr.ErrorDescription,
-			"error_codes", edupassExtensions.ErrorCodes,
-			"timestamp", edupassExtensions.Timestamp,
-			"trace_id", edupassExtensions.TraceID,
-			"correlation_id", edupassExtensions.CorrelationID,
+			"edupass_error_codes", edupassExtensions.ErrorCodes,
+			"edupass_timestamp", edupassExtensions.Timestamp,
+			"edupass_trace_id", edupassExtensions.TraceID,
+			"edupass_correlation_id", edupassExtensions.CorrelationID,
 		)
 
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))

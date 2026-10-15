@@ -765,21 +765,21 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			t.Fatalf("json.Unmarshal: %v; logs: %s", err, logs.String())
 		}
 		for field, want := range map[string]any{
-			"msg":               "failed to exchange code for token",
-			"provider":          "edupass",
-			"status":            float64(http.StatusUnauthorized),
-			"error_code":        "invalid_client",
-			"error_description": "client authentication failed",
-			"timestamp":         "2026-10-09 02:02:12Z",
-			"trace_id":          "test-trace-id",
-			"correlation_id":    "test-correlation-id",
+			"msg":                    "failed to exchange code for token",
+			"provider":               "edupass",
+			"status":                 float64(http.StatusUnauthorized),
+			"error_code":             "invalid_client",
+			"error_description":      "client authentication failed",
+			"edupass_timestamp":      "2026-10-09 02:02:12Z",
+			"edupass_trace_id":       "test-trace-id",
+			"edupass_correlation_id": "test-correlation-id",
 		} {
 			if got := record[field]; want != got {
 				t.Errorf("want record[%q]: %v; got: %v", field, want, got)
 			}
 		}
-		if want, got := []any{float64(7000215)}, record["error_codes"]; !reflect.DeepEqual(want, got) {
-			t.Errorf("want record[\"error_codes\"]: %v; got: %v", want, got)
+		if want, got := []any{float64(7000215)}, record["edupass_error_codes"]; !reflect.DeepEqual(want, got) {
+			t.Errorf("want record[\"edupass_error_codes\"]: %v; got: %v", want, got)
 		}
 		if got := logs.String(); strings.Contains(got, "test-secret") {
 			t.Errorf("want logs: without the client secret; got: %s", got)
