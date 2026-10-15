@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/transformteamsg/teacher-workspace/server/internal/config"
 	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
@@ -61,13 +61,6 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 	)
 
 	httputil.Redirect(w, logger, http.StatusFound, authURL)
-}
-
-type edupassTokenErrorExtensions struct {
-	ErrorCodes    []int  `json:"error_codes"`
-	Timestamp     string `json:"timestamp"`
-	TraceID       string `json:"trace_id"`
-	CorrelationID string `json:"correlation_id"`
 }
 
 // authEdupassCallback completes the pending login started by
@@ -141,77 +134,74 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			attrs = append(attrs, slog.String("error_description", errDescription))
 		}
 
-		logger.LogAttrs(r.Context(), level, "login failed at provider", attrs...)
+		logger.LogAttrs(r.Context(), level, "failed to get authorization code", attrs...)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 
-	exchangeContext := context.WithValue(r.Context(), oauth2.HTTPClient, h.edupassHTTPClient)
-	var edupassTokenResponse *oauth2.Token
-	var err error
+	exchangeOpts := []oauth2.AuthCodeOption{oauth2.VerifierOption(codeVerifier)}
 	switch h.cfg.Edupass.ClientAuthMethod {
 	case config.OAuth2ClientAuthMethodPrivateKeyJWT:
-		issuedAt := time.Now()
+		now := time.Now()
 		clientAssertion := jwt.NewWithClaims(jwt.SigningMethodPS256, jwt.RegisteredClaims{
 			Issuer:    h.edupassOAuth2Config.ClientID,
 			Subject:   h.edupassOAuth2Config.ClientID,
 			Audience:  jwt.ClaimStrings{h.edupassOAuth2Config.Endpoint.TokenURL},
 			ID:        random.Base62(32),
-			IssuedAt:  jwt.NewNumericDate(issuedAt),
-			NotBefore: jwt.NewNumericDate(issuedAt),
-			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(5 * time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
 		})
 		clientAssertion.Header["x5t#S256"] = h.cfg.Edupass.ClientCredentials.CertificateThumbprint
 
-		signedClientAssertion, signErr := clientAssertion.SignedString(h.cfg.Edupass.ClientCredentials.Key)
-		if signErr != nil {
-			logger.Error("failed to sign client assertion", "err", signErr)
+		signedClientAssertion, err := clientAssertion.SignedString(h.cfg.Edupass.ClientCredentials.Key)
+		if err != nil {
+			logger.Error("failed to sign client assertion", "err", err)
 			httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 			return
 		}
-		edupassTokenResponse, err = h.edupassOAuth2Config.Exchange(exchangeContext, query.Get("code"),
-			oauth2.VerifierOption(codeVerifier),
+
+		exchangeOpts = append(exchangeOpts,
 			oauth2.SetAuthURLParam("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"),
 			oauth2.SetAuthURLParam("client_assertion", signedClientAssertion),
 		)
 	case config.OAuth2ClientAuthMethodClientSecretPost:
-		edupassTokenResponse, err = h.edupassOAuth2Config.Exchange(exchangeContext, query.Get("code"),
-			oauth2.VerifierOption(codeVerifier),
-			oauth2.SetAuthURLParam("client_secret", h.cfg.Edupass.ClientCredentials.Secret),
-		)
+		exchangeOpts = append(exchangeOpts, oauth2.SetAuthURLParam("client_secret", h.cfg.Edupass.ClientCredentials.Secret))
 	}
+
+	ctx := oidc.ClientContext(r.Context(), h.edupassHTTPClient)
+	token, err := h.edupassOAuth2Config.Exchange(ctx, query.Get("code"), exchangeOpts...)
 	if err != nil {
-		var retrieveErr *oauth2.RetrieveError
-		if !errors.As(err, &retrieveErr) {
+		retrieveErr, ok := errors.AsType[*oauth2.RetrieveError](err)
+		if !ok {
 			logger.Error("failed to exchange code for token", "err", err)
 			httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 			return
 		}
 
-		switch retrieveErr.Response.StatusCode {
-		case http.StatusBadRequest, http.StatusUnauthorized:
-			var edupassErrorExtensions edupassTokenErrorExtensions
-			if err := json.Unmarshal(retrieveErr.Body, &edupassErrorExtensions); err != nil {
-				logger.Error("failed to exchange code for token", "status", retrieveErr.Response.StatusCode, "err", err)
-			} else {
-				logger.Error("failed to exchange code for token",
-					"status", retrieveErr.Response.StatusCode,
-					"error", retrieveErr.ErrorCode,
-					"error_description", retrieveErr.ErrorDescription,
-					"error_codes", edupassErrorExtensions.ErrorCodes,
-					"timestamp", edupassErrorExtensions.Timestamp,
-					"trace_id", edupassErrorExtensions.TraceID,
-					"correlation_id", edupassErrorExtensions.CorrelationID,
-				)
-			}
-		default:
-			logger.Error("failed to exchange code for token", "status", retrieveErr.Response.StatusCode)
+		var edupassExtensions struct {
+			ErrorCodes    []int  `json:"error_codes"`
+			Timestamp     string `json:"timestamp"`
+			TraceID       string `json:"trace_id"`
+			CorrelationID string `json:"correlation_id"`
 		}
+		_ = json.Unmarshal(retrieveErr.Body, &edupassExtensions)
+		logger.Error(
+			"failed to exchange code for token",
+			"status", retrieveErr.Response.StatusCode,
+			"error_code", retrieveErr.ErrorCode,
+			"error_description", retrieveErr.ErrorDescription,
+			"edupass_error_codes", edupassExtensions.ErrorCodes,
+			"edupass_timestamp", edupassExtensions.Timestamp,
+			"edupass_trace_id", edupassExtensions.TraceID,
+			"edupass_correlation_id", edupassExtensions.CorrelationID,
+		)
+
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
 	}
 
-	rawIDToken, ok := edupassTokenResponse.Extra("id_token").(string)
+	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok || rawIDToken == "" {
 		logger.Error("no ID token found in token")
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
