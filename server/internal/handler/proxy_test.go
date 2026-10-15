@@ -96,8 +96,11 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
+				sess := session.New()
+				sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
+
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
-				ctx = middleware.WithSession(ctx, newSignedInSession())
+				ctx = middleware.WithSession(ctx, sess)
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
@@ -156,8 +159,11 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
+				sess := session.New()
+				sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
+
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
-				ctx = middleware.WithSession(ctx, newSignedInSession())
+				ctx = middleware.WithSession(ctx, sess)
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
@@ -393,8 +399,11 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
+				sess := session.New()
+				sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
+
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
-				ctx = middleware.WithSession(ctx, newSignedInSession())
+				ctx = middleware.WithSession(ctx, sess)
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
@@ -487,7 +496,26 @@ func TestHandler_proxy(t *testing.T) {
 					t.Fatalf("want rec.Code: %d; got: %d", want, got)
 				}
 
-				claims := parseSignedTokenClaims(t, rec.Body.String(), signingKey)
+				token, ok := strings.CutPrefix(rec.Body.String(), "Bearer ")
+				if !ok {
+					t.Fatalf("want Authorization: containing %q; got: %q", "Bearer ", rec.Body.String())
+				}
+
+				var claims struct {
+					jwt.RegisteredClaims
+
+					Role          string   `json:"role"`
+					EffectiveRole string   `json:"effective_role"`
+					Attributes    []string `json:"attributes"`
+				}
+				if _, err := jwt.ParseWithClaims(token, &claims,
+					func(*jwt.Token) (any, error) {
+						return []byte(signingKey), nil
+					},
+					jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+				); err != nil {
+					t.Fatalf("jwt.ParseWithClaims: %v", err)
+				}
 
 				if want, got := "ROLE_TEACHER", claims.Role; want != got {
 					t.Errorf("want claims.Role: %q; got: %q", want, got)
@@ -720,44 +748,4 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 			t.Errorf("want: empty; got: %q", got)
 		}
 	})
-}
-
-// signedTokenClaims names the claims as remote backends read them, so renaming
-// one in proxy.go fails the tests.
-type signedTokenClaims struct {
-	Role          string   `json:"role"`
-	EffectiveRole string   `json:"effective_role"`
-	Attributes    []string `json:"attributes"`
-	jwt.RegisteredClaims
-}
-
-// parseSignedTokenClaims verifies authorization as a bearer JWT signed with
-// signingKey, and returns its claims.
-func parseSignedTokenClaims(t *testing.T, authorization, signingKey string) signedTokenClaims {
-	t.Helper()
-
-	token, ok := strings.CutPrefix(authorization, "Bearer ")
-	if !ok {
-		t.Fatalf("want Authorization: containing %q; got: %q", "Bearer ", authorization)
-	}
-
-	var claims signedTokenClaims
-	if _, err := jwt.ParseWithClaims(token, &claims,
-		func(*jwt.Token) (any, error) {
-			return []byte(signingKey), nil
-		},
-		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
-	); err != nil {
-		t.Fatalf("jwt.ParseWithClaims: %v", err)
-	}
-
-	return claims
-}
-
-// newSignedInSession returns a session with a signed-in user, for tests that
-// only need the proxy to accept the request.
-func newSignedInSession() *session.Session {
-	sess := session.New()
-	sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
-	return sess
 }
