@@ -24,6 +24,111 @@ import (
 	"golang.org/x/oauth2"
 )
 
+func TestHandler_logout(t *testing.T) {
+	t.Run("responds with 500 when the request has no session", func(t *testing.T) {
+		h, err := New(newEdupassConfig())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
+		rec := httptest.NewRecorder()
+
+		h.logout(rec, req)
+
+		if want, got := http.StatusInternalServerError, rec.Code; want != got {
+			t.Errorf("want status: %d; got: %d", want, got)
+		}
+		if got := rec.Header().Get("Location"); got != "" {
+			t.Errorf("want Location: empty; got: %q", got)
+		}
+	})
+
+	t.Run("logs an error when the request has no session", func(t *testing.T) {
+		h, err := New(newEdupassConfig())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		ctx := middleware.WithLogger(t.Context(), logger)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
+		rec := httptest.NewRecorder()
+
+		h.logout(rec, req)
+
+		records := decodeLogRecords(t, &logs)
+		if want, got := 1, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := slog.LevelError.String(), records[0].Level; want != got {
+			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		}
+		if want, got := "no session found in context", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("logs out and redirects to the login page when the session is authenticated", func(t *testing.T) {
+		h, err := New(newEdupassConfig())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		sess := session.New()
+		sess.SetUser(session.User{Email: "a@example.com"})
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
+		rec := httptest.NewRecorder()
+
+		h.logout(rec, req)
+
+		if !sess.IsDestroyed() {
+			t.Error("want sess.IsDestroyed(): true; got: false")
+		}
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Errorf("want status: %d; got: %d", want, got)
+		}
+		if want, got := "/login", rec.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps the session and redirects to the login page when the session is unauthenticated", func(t *testing.T) {
+		h, err := New(newEdupassConfig())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
+		rec := httptest.NewRecorder()
+
+		h.logout(rec, req)
+
+		if sess.IsDestroyed() {
+			t.Error("want sess.IsDestroyed(): false; got: true")
+		}
+		if _, ok := sess.Get[string](sessionKeyEdupassState); !ok {
+			t.Error("want sess.Get[string](sessionKeyEdupassState) ok: true; got: false")
+		}
+		if want, got := http.StatusSeeOther, rec.Code; want != got {
+			t.Errorf("want status: %d; got: %d", want, got)
+		}
+		if want, got := "/login", rec.Header().Get("Location"); want != got {
+			t.Errorf("want Location: %q; got: %q", want, got)
+		}
+	})
+}
+
 func TestHandler_authEdupass(t *testing.T) {
 	t.Run("responds with 500 when the request has no session", func(t *testing.T) {
 		h, err := New(newEdupassConfig())

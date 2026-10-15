@@ -92,6 +92,7 @@ func New(cfg *config.Config) (*Handler, error) {
 // [middleware.Session].
 func (h *Handler) Routes(session middleware.Middleware) http.Handler {
 	app := http.NewServeMux()
+	app.HandleFunc("POST /logout", h.logout)
 	app.HandleFunc("GET /auth/edupass", h.authEdupass)
 	app.HandleFunc("GET /auth/edupass/callback", h.authEdupassCallback)
 	app.HandleFunc("/api/", h.proxy())
