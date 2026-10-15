@@ -20,10 +20,15 @@
   --accent: #eef1f5;
   --accent-foreground: #1c2024;
   --destructive: #e5484d;
+  --info: #eaf3ff;
+  --info-foreground: #015ceb;
   --border: #d9d9e0;
   --input: #d9d9e0;
   --ring: #73a7ff;
   --radius: 0.625rem;
+
+  --duration-sidebar: 200ms;
+  --ease-sidebar: cubic-bezier(0.645, 0.045, 0.355, 1);
 
   --sidebar: #f9f9fb;
   --sidebar-foreground: #1c2024;
@@ -33,6 +38,13 @@
   --sidebar-accent-foreground: #1c2024;
   --sidebar-border: #d9d9e0;
   --sidebar-ring: #73a7ff;
+}
+
+/* The sidebar's width and spacing snap into place; only its labels still fade. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-sidebar: 0s;
+  }
 }
 
 .dark {
@@ -51,6 +63,8 @@
   --accent: #28282c;
   --accent-foreground: #edeef0;
   --destructive: #e5484d;
+  --info: #0f2847;
+  --info-foreground: #6da8ff;
   --border: #28282c;
   --input: #28282c;
   --ring: #3d63dd;
@@ -82,6 +96,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
