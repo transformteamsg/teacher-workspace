@@ -96,7 +96,8 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				ctx := middleware.WithSession(t.Context(), session.New())
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, session.New())
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
@@ -155,7 +156,10 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, test.target, nil)
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, session.New())
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
 
 				h.proxy().ServeHTTP(rec, req)
@@ -229,7 +233,8 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				ctx := middleware.WithSession(t.Context(), session.New())
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, session.New())
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
@@ -316,6 +321,10 @@ func TestHandler_proxy(t *testing.T) {
 
 				h.proxy().ServeHTTP(rec, req)
 
+				if want, got := http.StatusOK, rec.Code; want != got {
+					t.Fatalf("want rec.Code: %d; got: %d", want, got)
+				}
+
 				claims := parseSignedTokenClaims(t, rec.Body.String(), signingKey)
 
 				// %#v tells an empty slice from nil, which would encode as null.
@@ -363,6 +372,10 @@ func TestHandler_proxy(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		h.proxy().ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Fatalf("want rec.Code: %d; got: %d", want, got)
+		}
 
 		claims := parseSignedTokenClaims(t, rec.Body.String(), signingKey)
 
