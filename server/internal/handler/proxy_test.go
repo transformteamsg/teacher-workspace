@@ -185,6 +185,80 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
+	t.Run("responds with 500 when the request has no session", func(t *testing.T) {
+		var calls int
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+						calls++
+					})),
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+				},
+			},
+		}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		h.proxy().ServeHTTP(rec, req)
+
+		if want, got := http.StatusInternalServerError, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+
+		var body struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := http.StatusText(http.StatusInternalServerError), body.Message; want != got {
+			t.Errorf("want body.Message: %q; got: %q", want, got)
+		}
+		if want := 0; want != calls {
+			t.Errorf("want calls: %d; got: %d", want, calls)
+		}
+	})
+
+	t.Run("logs an error when the request has no session", func(t *testing.T) {
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:    newRemoteBackend(t, http.NotFoundHandler()),
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+				},
+			},
+		}
+
+		var logs bytes.Buffer
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		h.proxy().ServeHTTP(rec, req)
+
+		records := decodeLogRecords(t, &logs)
+		if want, got := 1, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := slog.LevelError.String(), records[0].Level; want != got {
+			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		}
+		if want, got := "no session found in context", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+	})
+
 	t.Run("attaches a signed JWT for the remote app", func(t *testing.T) {
 		echoAuthorization := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, r.Header.Get("Authorization"))
