@@ -469,7 +469,7 @@ func TestHandler_proxy(t *testing.T) {
 				attributes: []string{"ATTR_SLD", "ATTR_CCE"},
 			},
 			{
-				// Sign-in stores a teacher with no attributes as an empty list, not nil.
+				// A user with no attributes holds an empty list, not nil.
 				name:       "when the user has none",
 				attributes: []string{},
 			},

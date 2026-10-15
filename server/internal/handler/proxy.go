@@ -94,7 +94,6 @@ func (h *Handler) proxy() http.HandlerFunc {
 			EffectiveRole string   `json:"effective_role"`
 			Attributes    []string `json:"attributes"`
 		}{
-
 			Issuer:    "tw",
 			Audience:  jwt.ClaimStrings{b.audience},
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
