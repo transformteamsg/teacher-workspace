@@ -35,22 +35,29 @@ type SessionOptions struct {
 }
 
 // Session is a middleware that gives each request a session, available
-// through [SessionFromContext], and saves it once the handler responds.
+// through [SessionFromContext], and updates the store to match it once the
+// request is handled.
 //
 // The session is the one identified by the request's session cookie. A new
 // session is created when the cookie is missing, names no stored session, or
 // names one that cannot be decoded.
 //
-// The session is saved before the first write of the response, so handlers
-// must change it before writing: changes made after the first write are not
-// saved. It is saved even if the client disconnects while the handler runs.
-// Every response carries the session cookie and Cache-Control: no-store. If
-// the session's ID has changed, the cookie carries the new ID, and the
-// session under the old ID is removed on a best-effort basis.
+// The store is updated before the first write of the response, or once the
+// request is handled if nothing is written, so the session must be changed
+// before the first write: changes made after it are lost. The store is updated
+// even if the client disconnects while the request is handled:
+//   - A destroyed session is removed, and the session cookie is expired.
+//   - Any other session is saved to expire after [SessionOptions.DefaultTTL],
+//     or [SessionOptions.AuthenticatedTTL] when a user is attached, and the
+//     session cookie carries its ID for as long. If its ID has changed, the
+//     session under the old ID is removed on a best-effort basis.
 //
-// If the store fails to load the session, or the session cannot be saved, the
-// response is a 500. If the client disconnects before the session loads,
-// nothing is written.
+// Every response carries Cache-Control: no-store.
+//
+// If the store fails to load the session, the request goes no further and the
+// response is a 500. If the session cannot be saved, or a destroyed session
+// cannot be removed, the response is replaced with a 500. If the client
+// disconnects before the session loads, nothing is written.
 func Session(store session.Store, opts SessionOptions) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,38 +92,57 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 				ResponseWriter: w,
 				initialHeader:  w.Header().Clone(),
 				logger:         logger,
-				commit: func(h http.Header) error {
-					ttl := opts.DefaultTTL
-					if sess.IsAuthenticated() {
-						ttl = opts.AuthenticatedTTL
-					}
-
-					// Save even if the client disconnects: the request has already
-					// been handled, and the store must reflect it.
+				finalise: func(h http.Header) error {
+					// Update the store even if the client disconnects: the request has
+					// already been handled, and the store must reflect it.
 					ctx := context.WithoutCancel(r.Context())
 
-					if err := session.Save(ctx, store, sess, ttl); err != nil {
-						return err
-					}
-
-					h.Set("Cache-Control", "no-store")
-					h.Add("Set-Cookie", (&http.Cookie{
+					cookie := &http.Cookie{
 						Name:     opts.Name,
-						Value:    sess.ID(),
 						Path:     "/",
-						MaxAge:   int(ttl.Seconds()),
 						Secure:   opts.Secure,
 						HttpOnly: true,
 						SameSite: http.SameSiteLaxMode,
-					}).String())
+					}
 
-					// Once the ID changes, the entry under the old one is stale.
-					// Dropping it is best effort: it expires by TTL otherwise.
-					if sess.ID() != initialID {
+					switch {
+					case sess.IsDestroyed():
+						// Unlike a superseded session, a destroyed one must be gone
+						// before the response says so: a client still holding its ID
+						// would otherwise stay logged in.
 						if err := store.Drop(ctx, initialID); err != nil {
-							logger.Error("failed to drop superseded session", "err", err)
+							logger.Error("failed to drop destroyed session", "err", err)
+							return err
+						}
+
+						// A zero MaxAge omits the attribute rather than expiring the
+						// cookie.
+						cookie.MaxAge = -1
+					default:
+						ttl := opts.DefaultTTL
+						if sess.IsAuthenticated() {
+							ttl = opts.AuthenticatedTTL
+						}
+
+						if err := session.Save(ctx, store, sess, ttl); err != nil {
+							logger.Error("failed to save session", "err", err)
+							return err
+						}
+
+						cookie.Value = sess.ID()
+						cookie.MaxAge = int(ttl.Seconds())
+
+						// Once the ID changes, the entry under the old one is stale.
+						// Dropping it is best effort: it expires by TTL otherwise.
+						if sess.ID() != initialID {
+							if err := store.Drop(ctx, initialID); err != nil {
+								logger.Error("failed to drop superseded session", "err", err)
+							}
 						}
 					}
+
+					h.Set("Cache-Control", "no-store")
+					h.Add("Set-Cookie", cookie.String())
 
 					return nil
 				},
@@ -125,8 +151,8 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 			ctx := WithSession(r.Context(), sess)
 			next.ServeHTTP(sw, r.WithContext(ctx))
 
-			// Covers handlers that never write; otherwise the save has already run.
-			sw.commitOnce()
+			// Runs finalise for a response that was never written.
+			sw.finaliseOnce()
 		})
 	}
 }
@@ -144,37 +170,36 @@ func WithSession(ctx context.Context, sess *session.Session) context.Context {
 	return context.WithValue(ctx, ctxKeySession{}, sess)
 }
 
-// sessionResponseWriter saves the session and sets the session cookie just
-// before the response headers are sent. If the session could not be saved, it
-// sends a 500 in place of the response being written and discards any later
-// writes.
+// sessionResponseWriter runs finalise once, just before the response headers
+// are sent. If finalise fails, it sends a 500 in place of the response being
+// written, with only the headers the response had when the writer was created,
+// and discards any later writes.
 type sessionResponseWriter struct {
 	http.ResponseWriter
 
-	// commit is called once, before the response headers are sent, with the
-	// headers it may add to. A non-nil error replaces the response with a 500.
-	commit func(h http.Header) error
+	// finalise is the function run with the response headers just before they
+	// are sent, which it may add to. It logs any error it returns.
+	finalise func(h http.Header) error
 
 	// initialHeader holds the response headers as they were when the writer was
 	// created.
 	initialHeader http.Header
 
-	logger    *slog.Logger
-	once      sync.Once
-	commitErr error
+	logger      *slog.Logger
+	once        sync.Once
+	finaliseErr error
 }
 
-// commitOnce runs commit on its first call and does nothing after. If commit
-// fails, it sends a 500 in place of the response being written.
-func (rw *sessionResponseWriter) commitOnce() {
+// finaliseOnce runs finalise on its first call and does nothing after. If
+// finalise fails, it sends a 500 in place of the response being written.
+func (rw *sessionResponseWriter) finaliseOnce() {
 	rw.once.Do(func() {
-		err := rw.commit(rw.Header())
+		err := rw.finalise(rw.Header())
 		if err == nil {
 			return
 		}
 
-		rw.logger.Error("failed to save session", "err", err)
-		rw.commitErr = err
+		rw.finaliseErr = err
 
 		// Reset to the headers from when the writer was created. Any added since
 		// were meant for a response that will not be sent, and some, such as
@@ -187,48 +212,48 @@ func (rw *sessionResponseWriter) commitOnce() {
 	})
 }
 
-// WriteHeader saves the session if status is final, then sends status. If the
-// session could not be saved, it sends a 500 in place of status.
+// WriteHeader runs finalise if status is final, then sends status. If finalise
+// failed, the 500 takes the place of status.
 func (rw *sessionResponseWriter) WriteHeader(status int) {
 	// A 1xx other than 101 leaves the final headers unsent.
 	if status >= 200 || status == http.StatusSwitchingProtocols {
-		rw.commitOnce()
+		rw.finaliseOnce()
 	}
-	if rw.commitErr != nil {
+	if rw.finaliseErr != nil {
 		return
 	}
 
 	rw.ResponseWriter.WriteHeader(status)
 }
 
-// Write saves the session, then writes b. If the session could not be saved,
-// it discards b and returns the save error.
+// Write runs finalise, then writes b. If finalise failed, it discards b and
+// returns finalise's error.
 func (rw *sessionResponseWriter) Write(b []byte) (int, error) {
-	rw.commitOnce()
-	if rw.commitErr != nil {
-		return 0, rw.commitErr
+	rw.finaliseOnce()
+	if rw.finaliseErr != nil {
+		return 0, rw.finaliseErr
 	}
 
 	return rw.ResponseWriter.Write(b)
 }
 
-// Flush saves the session, then flushes the response. If the session could
-// not be saved, it returns without flushing.
+// Flush runs finalise, then flushes the response. If finalise failed, it
+// returns without flushing.
 func (rw *sessionResponseWriter) Flush() {
-	rw.commitOnce()
-	if rw.commitErr != nil {
+	rw.finaliseOnce()
+	if rw.finaliseErr != nil {
 		return
 	}
 
 	_ = http.NewResponseController(rw.ResponseWriter).Flush()
 }
 
-// Hijack saves the session, then hands over the connection. If the session
-// could not be saved, it returns the save error.
+// Hijack runs finalise, then hands over the connection. If finalise failed, it
+// returns finalise's error.
 func (rw *sessionResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	rw.commitOnce()
-	if rw.commitErr != nil {
-		return nil, nil, rw.commitErr
+	rw.finaliseOnce()
+	if rw.finaliseErr != nil {
+		return nil, nil, rw.finaliseErr
 	}
 
 	return http.NewResponseController(rw.ResponseWriter).Hijack()
