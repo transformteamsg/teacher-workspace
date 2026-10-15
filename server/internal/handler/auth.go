@@ -279,10 +279,14 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 	if len(resolved.roles) != 1 {
+		roleCodes := make([]string, 0, len(resolved.roles))
+		for _, role := range resolved.roles {
+			roleCodes = append(roleCodes, role.code)
+		}
 		logger.Warn(
 			"staff does not have exactly one recognized base role",
 			"edupass_id", claims.ID,
-			"roles", resolved.roles,
+			"roles", roleCodes,
 		)
 		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
 		return
@@ -292,7 +296,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		ID:         claims.ID,
 		Name:       claims.Name,
 		Email:      claims.CESEmail,
-		Role:       resolved.roles[0],
+		Role:       resolved.roles[0].code,
 		Attributes: resolved.attributes,
 	})
 
@@ -417,14 +421,21 @@ func isMKSchoolCode(code string) bool {
 	}
 }
 
+// edupassRole is a base role resolved from one Edupass `groups` entry.
+type edupassRole struct {
+	// location is the location code the role was granted at.
+	location string
+	// code is the role code
+	code string
+}
+
 // edupassGroups is the outcome of resolving one staff member's Edupass
 // `groups` claim.
 type edupassGroups struct {
-	// roles contains every recognized base role, stripped of its location
-	// code and app code, in arrival order. More than one entry means
-	// Edupass returned conflicting base roles, whether for one location or
-	// spread across several.
-	roles []string
+	// roles contains every recognized base role in arrival order. More than
+	// one entry means Edupass returned conflicting base roles, whether for
+	// one location or spread across several.
+	roles []edupassRole
 	// attributes contains every recognized attribute, stripped of its
 	// location code and app code, unranked and in arrival order.
 	attributes []string
@@ -438,8 +449,10 @@ type edupassGroups struct {
 }
 
 // resolveEdupassGroups splits raw (an Edupass `groups` claim) into recognized
-// base roles and attributes, stripping the location code and app code from
-// each. Every slice in the result is non-nil, even when empty.
+// base roles and attributes, stripping the app code from each. A base role
+// keeps the location code it was granted at, so a caller can tell roles at one
+// location from roles spread across several. An attribute drops its location
+// code. Every slice in the result is non-nil, even when empty.
 //
 // Each entry is an Edupass app role, named
 // `<location_code>_<app_code>_<tw_role_code>`. app_code is Teacher Workspace's
@@ -463,7 +476,7 @@ type edupassGroups struct {
 // resolveEdupassGroups doesn't decide whether sign-in proceeds; the caller
 // refuses unless roles holds exactly one entry.
 func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
-	roles := []string{}
+	roles := []edupassRole{}
 	attributes := []string{}
 	unrecognized := []string{}
 	removedMKRole := false
@@ -480,7 +493,7 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 				unrecognized = append(unrecognized, entry)
 				removedMKRole = true
 			default:
-				roles = append(roles, code)
+				roles = append(roles, edupassRole{location: location, code: code})
 			}
 		case strings.Contains(entry, edupassAttrInfix):
 			code := codeAfterInfix(entry, edupassAttrInfix)
