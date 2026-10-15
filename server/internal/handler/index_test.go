@@ -210,7 +210,8 @@ func TestHandler_index(t *testing.T) {
 			Role:       "ROLE_TEACHER",
 			Attributes: []string{"ATTR_PG_USER"},
 		})
-		ctx := middleware.WithSession(t.Context(), sess)
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
 
 		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -226,7 +227,7 @@ func TestHandler_index(t *testing.T) {
 		}
 		want := `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher"}`
 		if got := string(state.User); want != got {
-			t.Errorf("want: %s; got: %s", want, got)
+			t.Errorf("want state.User: %s; got: %s", want, got)
 		}
 	})
 
@@ -236,7 +237,8 @@ func TestHandler_index(t *testing.T) {
 			indexTemplate: newPreloadedStateTemplate(),
 		}
 
-		ctx := middleware.WithSession(t.Context(), session.New())
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
 
 		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
