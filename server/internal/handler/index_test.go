@@ -196,7 +196,7 @@ func TestHandler_index(t *testing.T) {
 		}
 	})
 
-	t.Run("embeds the signed-in user in preloaded state", func(t *testing.T) {
+	t.Run("embeds the user in preloaded state when the session is authenticated", func(t *testing.T) {
 		h := &Handler{
 			cfg:           &config.Config{Env: config.EnvProduction},
 			indexTemplate: newPreloadedStateTemplate(),
