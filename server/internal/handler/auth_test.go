@@ -2533,6 +2533,46 @@ func TestResolveEdupassGroups(t *testing.T) {
 		}
 	})
 
+	t.Run("reports an MK removal when a recognized base role is at an MK school", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"6101_TW_ROLE_TEACHER"}, config.EdupassAppCodeTW)
+
+		if !resolved.removedMKRole {
+			t.Error("want resolved.removedMKRole: true; got: false")
+		}
+	})
+
+	t.Run("does not report an MK removal", func(t *testing.T) {
+		for _, test := range []struct {
+			name   string
+			groups []string
+		}{
+			{
+				name:   "when no entry is at an MK school",
+				groups: []string{"1234_TW_ROLE_TEACHER"},
+			},
+			{
+				name:   "when the MK entry carries another application's app code",
+				groups: []string{"6101_XX_ROLE_TEACHER"},
+			},
+			{
+				name:   "when the MK entry's role code is unrecognized",
+				groups: []string{"6101_TW_ROLE_SUPERINTENDENT"},
+			},
+			{
+				name:   "when the MK entry is an attribute",
+				groups: []string{"6101_TW_ATTR_CCE"},
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups(test.groups, config.EdupassAppCodeTW)
+
+				if resolved.removedMKRole {
+					t.Error("want resolved.removedMKRole: false; got: true")
+				}
+			})
+		}
+	})
+
 	t.Run("reports an entry matching neither infix as unrecognized", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_SOMETHING_ELSE"}, config.EdupassAppCodeTW)
 

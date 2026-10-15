@@ -433,6 +433,8 @@ type edupassGroups struct {
 	// at a MOE Kindergarten (MK) school is reported here too, even though
 	// its role code is recognized.
 	unrecognized []string
+	// removedMKRole reports whether a base role at an MK school was dropped.
+	removedMKRole bool
 }
 
 // resolveEdupassGroups splits raw (an Edupass `groups` claim) into recognized
@@ -456,25 +458,29 @@ type edupassGroups struct {
 // Workspace doesn't support MK staff. The MK check covers base roles only: an
 // attribute at an MK school still resolves into attributes, because sign-in is
 // granted by a base role alone, so dropping MK base roles is enough to keep
-// MK staff out.
+// MK staff out. removedMKRole reports that one was dropped, counting only an
+// entry that would otherwise have resolved into roles.
 // resolveEdupassGroups doesn't decide whether sign-in proceeds; the caller
 // refuses unless roles holds exactly one entry.
 func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
 	roles := []string{}
 	attributes := []string{}
 	unrecognized := []string{}
+	removedMKRole := false
 
 	for _, entry := range raw {
 		switch {
 		case strings.Contains(entry, edupassRoleInfix):
 			code := codeAfterInfix(entry, edupassRoleInfix)
 			location, _, _ := strings.Cut(entry, "_")
-			if !hasEdupassAppCode(entry, edupassRoleInfix, appCode) || isMKSchoolCode(location) {
+			switch {
+			case !hasEdupassAppCode(entry, edupassRoleInfix, appCode) || !isRecognizedEdupassRole(code):
 				unrecognized = append(unrecognized, entry)
-			} else if isRecognizedEdupassRole(code) {
+			case isMKSchoolCode(location):
+				unrecognized = append(unrecognized, entry)
+				removedMKRole = true
+			default:
 				roles = append(roles, code)
-			} else {
-				unrecognized = append(unrecognized, entry)
 			}
 		case strings.Contains(entry, edupassAttrInfix):
 			code := codeAfterInfix(entry, edupassAttrInfix)
@@ -491,9 +497,10 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 	}
 
 	return edupassGroups{
-		roles:        roles,
-		attributes:   attributes,
-		unrecognized: unrecognized,
+		roles:         roles,
+		attributes:    attributes,
+		unrecognized:  unrecognized,
+		removedMKRole: removedMKRole,
 	}
 }
 
