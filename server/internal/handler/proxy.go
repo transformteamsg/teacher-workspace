@@ -75,10 +75,10 @@ func (h *Handler) proxy() http.Handler {
 			return
 		}
 
-		// A user without a role or attributes has no claims that a remote app
-		// backend could act on.
-		if u.Role == "" || u.Attributes == nil {
-			logger.Error("no role or attributes found in user")
+		// A user without an Edupass ID, role or attributes has no claims that a
+		// remote app backend could act on.
+		if u.ID == "" || u.Role == "" || u.Attributes == nil {
+			logger.Error("no Edupass ID, role or attributes found in user")
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
 				Message: http.StatusText(http.StatusInternalServerError),
 			})
