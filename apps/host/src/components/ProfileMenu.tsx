@@ -2,7 +2,7 @@ import { LogOutIcon } from 'lucide-react';
 import { useRef } from 'react';
 
 import { TruncatedText } from '~/components/TruncatedText';
-import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
+import { Avatar, AvatarFallback } from '~/components/ui/avatar';
 import { Button } from '~/components/ui/button';
 import {
   DropdownMenu,
@@ -33,7 +33,7 @@ export function ProfileMenu() {
       {/* A real form post rather than fetch, so the browser follows the
           server's redirect to the sign-in page. It sits outside the menu
           because the menu content is portalled out of any enclosing form. */}
-      <form ref={signOutFormRef} method="post" action="/auth/logout" hidden />
+      <form ref={signOutFormRef} method="post" action="/logout" hidden />
 
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -47,7 +47,6 @@ export function ProfileMenu() {
           }
         >
           <Avatar>
-            <AvatarImage src="" alt="" />
             <AvatarFallback>{user.name.charAt(0).toUpperCase()}</AvatarFallback>
           </Avatar>
         </DropdownMenuTrigger>
