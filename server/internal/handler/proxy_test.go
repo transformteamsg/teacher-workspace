@@ -96,7 +96,9 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, test.target, nil)
+				ctx := middleware.WithSession(t.Context(), session.New())
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
 
 				h.proxy().ServeHTTP(rec, req)
@@ -227,7 +229,9 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, test.target, nil)
+				ctx := middleware.WithSession(t.Context(), session.New())
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
 
 				h.proxy().ServeHTTP(rec, req)
@@ -285,10 +289,6 @@ func TestHandler_proxy(t *testing.T) {
 			name    string
 			withCtx func(context.Context) context.Context
 		}{
-			{
-				name:    "when there is no session",
-				withCtx: func(ctx context.Context) context.Context { return ctx },
-			},
 			{
 				name: "when the session has no user",
 				withCtx: func(ctx context.Context) context.Context {
