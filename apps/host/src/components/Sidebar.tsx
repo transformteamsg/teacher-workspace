@@ -2,6 +2,7 @@ import { CalendarClock, CircleHelp, Home, Layers, Mail, Users } from 'lucide-rea
 import type { LucideIcon } from 'lucide-react';
 import { NavLink, useMatch } from 'react-router';
 
+import teacherWorkspaceMark from '~/assets/logos/teacher-workspace.svg';
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
@@ -16,6 +17,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '~/components/ui/sidebar';
+import { cn } from '~/helpers/cn';
 
 interface NavItem {
   title: string;
@@ -49,6 +51,13 @@ const navGroups: NavGroup[] = [
   },
 ];
 
+// Text that exists only in the expanded sidebar. Collapsing, it fades and blurs
+// out in 100ms, before the width has moved far enough to truncate it. Expanding,
+// it resolves back in once the width has started to settle. With reduced motion
+// it only fades.
+const EXPANDED_ONLY_TEXT_CLASS =
+  'tw:transition-[opacity,filter] tw:delay-75 tw:duration-150 tw:ease-out tw:group-data-[collapsible=icon]:opacity-0 tw:group-data-[collapsible=icon]:blur-sm tw:group-data-[collapsible=icon]:delay-0 tw:group-data-[collapsible=icon]:duration-100 tw:motion-reduce:transition-opacity tw:motion-reduce:delay-0 tw:motion-reduce:duration-100 tw:motion-reduce:group-data-[collapsible=icon]:blur-none';
+
 function NavMenuItem({ item }: { item: NavItem }) {
   const { setOpenMobile } = useSidebar();
   // Home matches only itself; every other destination stays active on the
@@ -65,7 +74,7 @@ function NavMenuItem({ item }: { item: NavItem }) {
         onClick={() => setOpenMobile(false)}
       >
         <item.icon />
-        <span>{item.title}</span>
+        <span className={EXPANDED_ONLY_TEXT_CLASS}>{item.title}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -74,15 +83,35 @@ function NavMenuItem({ item }: { item: NavItem }) {
 export function AppSidebar() {
   return (
     <SidebarRoot collapsible="icon">
-      <SidebarHeader className="tw:p-0">
-        <div className="tw:flex tw:h-14 tw:items-center tw:justify-center tw:gap-2 tw:px-4 tw:group-data-[collapsible=icon]:gap-0 tw:group-data-[collapsible=icon]:px-0">
-          <span className="tw:min-w-0 tw:flex-1 tw:cursor-default tw:truncate tw:text-sm tw:font-semibold tw:transition-[opacity,flex] tw:duration-150 tw:select-none tw:group-data-[collapsible=icon]:flex-[0] tw:group-data-[collapsible=icon]:opacity-0">
+      <SidebarHeader>
+        {/* The collapse control sits over the product mark and shows in its place
+            on hover or keyboard focus, so the row reads as the mark, the name and
+            the Beta pill, and collapses to the mark alone. On touch screens the
+            mark stays visible and tapping it toggles the sidebar. */}
+        <div className="tw:group/identity tw:relative tw:flex tw:h-10 tw:items-center tw:gap-2 tw:pl-1 tw:transition-[gap] tw:duration-(--duration-sidebar) tw:ease-(--ease-sidebar) tw:select-none tw:group-data-[collapsible=icon]:gap-0">
+          <img
+            src={teacherWorkspaceMark}
+            alt=""
+            draggable={false}
+            className="tw:size-6 tw:shrink-0 tw:transition-opacity tw:duration-150 tw:group-hover/identity:opacity-0 tw:group-has-[:focus-visible]/identity:opacity-0"
+          />
+          <span
+            className={cn(
+              'tw:min-w-0 tw:flex-1 tw:truncate tw:text-[13px] tw:font-semibold tw:group-data-[collapsible=icon]:flex-[0]',
+              EXPANDED_ONLY_TEXT_CLASS,
+            )}
+          >
             Teacher Workspace
-            <span className="tw:ml-1.5 tw:rounded-full tw:bg-[#eaf3ff] tw:px-1.5 tw:py-0.5 tw:text-xs tw:font-medium tw:text-primary">
-              Beta
-            </span>
           </span>
-          <SidebarTrigger />
+          <span
+            className={cn(
+              'tw:inline-flex tw:h-5 tw:shrink-0 tw:items-center tw:overflow-hidden tw:rounded-full tw:bg-info tw:px-2 tw:text-xs tw:font-medium tw:text-info-foreground tw:group-data-[collapsible=icon]:w-0 tw:group-data-[collapsible=icon]:px-0',
+              EXPANDED_ONLY_TEXT_CLASS,
+            )}
+          >
+            Beta
+          </span>
+          <SidebarTrigger className="tw:absolute tw:top-1 tw:left-0 tw:opacity-0 tw:transition-opacity tw:duration-150 tw:group-hover/identity:opacity-100 tw:focus-visible:opacity-100" />
         </div>
       </SidebarHeader>
 
@@ -115,7 +144,7 @@ export function AppSidebar() {
               tooltip="Help"
             >
               <CircleHelp />
-              <span>Help</span>
+              <span className={EXPANDED_ONLY_TEXT_CLASS}>Help</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
