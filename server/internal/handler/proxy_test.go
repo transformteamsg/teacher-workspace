@@ -97,7 +97,7 @@ func TestHandler_proxy(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
-				ctx = middleware.WithSession(ctx, session.New())
+				ctx = middleware.WithSession(ctx, newSignedInSession())
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
@@ -157,7 +157,7 @@ func TestHandler_proxy(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
-				ctx = middleware.WithSession(ctx, session.New())
+				ctx = middleware.WithSession(ctx, newSignedInSession())
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
@@ -259,6 +259,82 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
+	t.Run("responds with 500 when the session has no user", func(t *testing.T) {
+		var calls int
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+						calls++
+					})),
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+				},
+			},
+		}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		h.proxy().ServeHTTP(rec, req)
+
+		if want, got := http.StatusInternalServerError, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+
+		var body struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := http.StatusText(http.StatusInternalServerError), body.Message; want != got {
+			t.Errorf("want body.Message: %q; got: %q", want, got)
+		}
+		if want := 0; want != calls {
+			t.Errorf("want calls: %d; got: %d", want, calls)
+		}
+	})
+
+	t.Run("logs an error when the session has no user", func(t *testing.T) {
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:    newRemoteBackend(t, http.NotFoundHandler()),
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+				},
+			},
+		}
+
+		var logs bytes.Buffer
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		h.proxy().ServeHTTP(rec, req)
+
+		records := decodeLogRecords(t, &logs)
+		if want, got := 1, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := slog.LevelError.String(), records[0].Level; want != got {
+			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		}
+		if want, got := "no user found in session", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+	})
+
 	t.Run("attaches a signed JWT for the remote app", func(t *testing.T) {
 		echoAuthorization := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, r.Header.Get("Authorization"))
@@ -308,7 +384,7 @@ func TestHandler_proxy(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
-				ctx = middleware.WithSession(ctx, session.New())
+				ctx = middleware.WithSession(ctx, newSignedInSession())
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
@@ -348,7 +424,7 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
-	t.Run("carries empty role claims in the JWT", func(t *testing.T) {
+	t.Run("carries empty role claims in the JWT for a user stored without a role or attributes", func(t *testing.T) {
 		const signingKey = "posts-string-secret-at-least-256-bits-long"
 		h := &Handler{
 			cfg: &config.Config{
@@ -364,54 +440,34 @@ func TestHandler_proxy(t *testing.T) {
 			},
 		}
 
-		tests := []struct {
-			name    string
-			withCtx func(context.Context) context.Context
-		}{
-			{
-				name: "when the session has no user",
-				withCtx: func(ctx context.Context) context.Context {
-					return middleware.WithSession(ctx, session.New())
-				},
-			},
-			{
-				// A session saved before roles and attributes were stored loads its
-				// user with neither.
-				name: "when the user was stored without a role or attributes",
-				withCtx: func(ctx context.Context) context.Context {
-					sess := session.New()
-					sess.SetUser(session.User{Email: "teacher@example.com"})
-					return middleware.WithSession(ctx, sess)
-				},
-			},
+		// A session saved before roles and attributes were stored loads its user
+		// with neither.
+		sess := session.New()
+		sess.SetUser(session.User{Email: "teacher@example.com"})
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		h.proxy().ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Fatalf("want rec.Code: %d; got: %d", want, got)
 		}
 
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
-				ctx := test.withCtx(middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler)))
+		claims := parseSignedTokenClaims(t, rec.Body.String(), signingKey)
 
-				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
-				rec := httptest.NewRecorder()
-
-				h.proxy().ServeHTTP(rec, req)
-
-				if want, got := http.StatusOK, rec.Code; want != got {
-					t.Fatalf("want rec.Code: %d; got: %d", want, got)
-				}
-
-				claims := parseSignedTokenClaims(t, rec.Body.String(), signingKey)
-
-				if got := claims.Role; got != "" {
-					t.Errorf("want claims.Role: empty; got: %q", got)
-				}
-				if got := claims.EffectiveRole; got != "" {
-					t.Errorf("want claims.EffectiveRole: empty; got: %q", got)
-				}
-				// %#v tells an empty slice from nil, which would encode as null.
-				if want, got := []string{}, claims.Attributes; !reflect.DeepEqual(want, got) {
-					t.Errorf("want claims.Attributes: %#v; got: %#v", want, got)
-				}
-			})
+		if got := claims.Role; got != "" {
+			t.Errorf("want claims.Role: empty; got: %q", got)
+		}
+		if got := claims.EffectiveRole; got != "" {
+			t.Errorf("want claims.EffectiveRole: empty; got: %q", got)
+		}
+		// %#v tells [] from nil, which would encode as null.
+		if want, got := []string{}, claims.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want claims.Attributes: %#v; got: %#v", want, got)
 		}
 	})
 
@@ -431,7 +487,7 @@ func TestHandler_proxy(t *testing.T) {
 			},
 		}
 
-		// Attributes are out of alphabetical order, so a sort would show.
+		// Unsorted, so a sort would show.
 		sess := session.New()
 		sess.SetUser(session.User{
 			Email:      "teacher@example.com",
@@ -683,8 +739,8 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 	})
 }
 
-// signedTokenClaims spells out the claim names remote backends read, so a test
-// decoding into it fails when a claim is renamed.
+// signedTokenClaims names the claims as remote backends read them, so renaming
+// one in proxy.go fails the tests.
 type signedTokenClaims struct {
 	Role          string   `json:"role"`
 	EffectiveRole string   `json:"effective_role"`
@@ -692,8 +748,8 @@ type signedTokenClaims struct {
 	jwt.RegisteredClaims
 }
 
-// parseSignedTokenClaims verifies authorization, an Authorization header value,
-// as a bearer JWT signed with signingKey, and returns its claims.
+// parseSignedTokenClaims verifies authorization as a bearer JWT signed with
+// signingKey, and returns its claims.
 func parseSignedTokenClaims(t *testing.T, authorization, signingKey string) signedTokenClaims {
 	t.Helper()
 
@@ -713,4 +769,12 @@ func parseSignedTokenClaims(t *testing.T, authorization, signingKey string) sign
 	}
 
 	return claims
+}
+
+// newSignedInSession returns a session with a signed-in user, for tests that
+// only need the proxy to accept the request.
+func newSignedInSession() *session.Session {
+	sess := session.New()
+	sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER"})
+	return sess
 }

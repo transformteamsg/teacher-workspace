@@ -66,13 +66,22 @@ func (h *Handler) proxy() http.HandlerFunc {
 			return
 		}
 
+		// RequireAuth only lets signed-in users through, so no user is a bug.
+		u, ok := sess.User()
+		if !ok {
+			logger.Error("no user found in session")
+			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
+				Message: http.StatusText(http.StatusInternalServerError),
+			})
+			return
+		}
+
 		issuedAt := now()
 		claims := struct {
 			jwt.RegisteredClaims
 
 			Role string `json:"role"`
-			// EffectiveRole always equals Role. It is kept only because PG was
-			// promised it, and can be removed once PG reads role instead.
+			// EffectiveRole duplicates Role for PG. Remove it once PG reads role.
 			EffectiveRole string   `json:"effective_role"`
 			Attributes    []string `json:"attributes"`
 		}{
@@ -82,19 +91,15 @@ func (h *Handler) proxy() http.HandlerFunc {
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
 
-			// Attributes must always encode as an array, empty when there are
-			// none.
+			Role:          u.Role,
+			EffectiveRole: u.Role,
+
+			// Attributes is never null, even for sessions saved before attributes
+			// were stored.
 			Attributes: []string{},
 		}
-		if u, ok := sess.User(); ok {
-			claims.Role = u.Role
-			claims.EffectiveRole = u.Role
-
-			// Sessions saved before attributes were stored load without them,
-			// and the claim must still encode as an array.
-			if u.Attributes != nil {
-				claims.Attributes = u.Attributes
-			}
+		if u.Attributes != nil {
+			claims.Attributes = u.Attributes
 		}
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
