@@ -66,7 +66,6 @@ func (h *Handler) proxy() http.HandlerFunc {
 			return
 		}
 
-		// RequireAuth only lets signed-in users through, so no user is a bug.
 		u, ok := sess.User()
 		if !ok {
 			logger.Error("no user found in session")
@@ -76,8 +75,8 @@ func (h *Handler) proxy() http.HandlerFunc {
 			return
 		}
 
-		// Sign-in always stores a role and a non-nil attributes list, so a user
-		// missing either holds no claims a remote app backend could act on.
+		// A user without a role or attributes has no claims that a remote app
+		// backend could act on.
 		if u.Role == "" || u.Attributes == nil {
 			logger.Error("no role or attributes found in user")
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
