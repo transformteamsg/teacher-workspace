@@ -66,25 +66,24 @@ func (h *Handler) proxy() http.HandlerFunc {
 			return
 		}
 
-		// Roles and Attributes are never nil, so they encode as empty arrays
-		// rather than null when no user is signed in.
-		type remoteBackendClaims struct {
+		issuedAt := now()
+		claims := struct {
+			jwt.RegisteredClaims
+
 			Roles         []string `json:"roles"`
 			EffectiveRole string   `json:"effective_role"`
 			Attributes    []string `json:"attributes"`
-			jwt.RegisteredClaims
-		}
+		}{
 
-		issuedAt := now()
-		claims := remoteBackendClaims{
+			Issuer:    "tw",
+			Audience:  jwt.ClaimStrings{b.audience},
+			IssuedAt:  jwt.NewNumericDate(issuedAt),
+			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
+
+			// Roles and Attributes must always encode as arrays, empty when
+			// there are none.
 			Roles:      []string{},
 			Attributes: []string{},
-			RegisteredClaims: jwt.RegisteredClaims{
-				Issuer:    "tw",
-				Audience:  jwt.ClaimStrings{b.audience},
-				IssuedAt:  jwt.NewNumericDate(issuedAt),
-				ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
-			},
 		}
 		if u, ok := sess.User(); ok {
 			claims.EffectiveRole = u.Role
