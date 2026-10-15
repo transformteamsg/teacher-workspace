@@ -76,6 +76,16 @@ func (h *Handler) proxy() http.HandlerFunc {
 			return
 		}
 
+		// Sign-in always stores a role and a non-nil attributes list, so a user
+		// missing either holds no claims a remote app backend could act on.
+		if u.Role == "" || u.Attributes == nil {
+			logger.Error("no role or attributes found in user")
+			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
+				Message: http.StatusText(http.StatusInternalServerError),
+			})
+			return
+		}
+
 		issuedAt := now()
 		claims := struct {
 			jwt.RegisteredClaims
@@ -93,13 +103,7 @@ func (h *Handler) proxy() http.HandlerFunc {
 
 			Role:          u.Role,
 			EffectiveRole: u.Role,
-
-			// Attributes is never null, even for sessions saved before attributes
-			// were stored.
-			Attributes: []string{},
-		}
-		if u.Attributes != nil {
-			claims.Attributes = u.Attributes
+			Attributes:    u.Attributes,
 		}
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
