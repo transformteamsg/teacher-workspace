@@ -1,6 +1,6 @@
-import { CircleHelp, Home, Mail, Users, UsersRound } from 'lucide-react';
+import { CalendarClock, CircleHelp, Home, Layers, Mail, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { NavLink } from 'react-router';
+import { NavLink, useMatch } from 'react-router';
 
 import {
   Sidebar as SidebarRoot,
@@ -13,7 +13,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
   SidebarTrigger,
   useSidebar,
 } from '~/components/ui/sidebar';
@@ -24,34 +23,51 @@ interface NavItem {
   to: string;
 }
 
-const navItems: NavItem[] = [
-  { title: 'Home', icon: Home, to: '/' },
-  { title: 'Student Insights', icon: Users, to: '/students' },
+interface NavGroup {
+  label?: string;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    items: [{ title: 'Home', icon: Home, to: '/' }],
+  },
+  {
+    label: 'Student Insights',
+    items: [{ title: 'Profiles', icon: Users, to: '/students' }],
+  },
+  {
+    label: 'Communications',
+    items: [
+      { title: 'Posts', icon: Mail, to: '/posts' },
+      { title: 'Meetings', icon: CalendarClock, to: '/meetings' },
+    ],
+  },
+  {
+    label: 'Manage',
+    items: [{ title: 'Student groups', icon: Layers, to: '/groups' }],
+  },
 ];
 
-const communicationsItems: NavItem[] = [
-  { title: 'Posts', icon: Mail, to: '/posts' },
-  { title: 'Groups', icon: UsersRound, to: '/groups' },
-];
-
-function NavMenuItems({ items }: { items: NavItem[] }) {
+function NavMenuItem({ item }: { item: NavItem }) {
   const { setOpenMobile } = useSidebar();
+  // Home matches only itself; every other destination stays active on the
+  // pages nested under it, such as one student's profile.
+  const end = item.to === '/';
+  const isActive = useMatch({ path: item.to, end }) !== null;
 
   return (
-    <SidebarMenu>
-      {items.map((item) => (
-        <SidebarMenuItem key={item.title}>
-          <NavLink to={item.to} end={item.to === '/'} onClick={() => setOpenMobile(false)}>
-            {({ isActive }) => (
-              <SidebarMenuButton tooltip={item.title} isActive={isActive}>
-                <item.icon className="tw:size-4" />
-                <span>{item.title}</span>
-              </SidebarMenuButton>
-            )}
-          </NavLink>
-        </SidebarMenuItem>
-      ))}
-    </SidebarMenu>
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        render={<NavLink to={item.to} end={end} />}
+        isActive={isActive}
+        tooltip={item.title}
+        onClick={() => setOpenMobile(false)}
+      >
+        <item.icon />
+        <span>{item.title}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
@@ -71,34 +87,36 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup className="tw:pb-0">
-          <SidebarGroupContent>
-            <NavMenuItems items={navItems} />
-          </SidebarGroupContent>
-
-          <SidebarSeparator className="tw:mx-0 tw:mt-3 tw:group-data-[collapsible=icon]:mb-3" />
-          <SidebarGroupLabel className="tw:mt-2 tw:group-data-[collapsible=icon]:pointer-events-none">
-            Communications
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <NavMenuItems items={communicationsItems} />
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {navGroups.map((group, index) => (
+          <SidebarGroup key={group.label ?? index}>
+            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => (
+                  <NavMenuItem key={item.to} item={item} />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <a
-              href="https://go.gov.sg/teacherworkspace-feedback"
-              target="_blank"
-              rel="noopener noreferrer"
+            <SidebarMenuButton
+              render={
+                <a
+                  href="https://go.gov.sg/teacherworkspace-feedback"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              }
+              tooltip="Help"
             >
-              <SidebarMenuButton tooltip="Help">
-                <CircleHelp className="tw:size-4" />
-                <span>Help</span>
-              </SidebarMenuButton>
-            </a>
+              <CircleHelp />
+              <span>Help</span>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
