@@ -574,6 +574,53 @@ func TestSession_SetUser(t *testing.T) {
 	})
 }
 
+func TestSession_Destroy(t *testing.T) {
+	t.Run("detaches user", func(t *testing.T) {
+		sess := New()
+		sess.SetUser(User{Email: "a@example.com"})
+
+		sess.Destroy()
+
+		if sess.IsAuthenticated() {
+			t.Error("want sess.IsAuthenticated(): false; got: true")
+		}
+	})
+
+	t.Run("discards data", func(t *testing.T) {
+		sess := New()
+		sess.Set("key", "value")
+
+		sess.Destroy()
+
+		if _, ok := sess.Get[any]("key"); ok {
+			t.Error("want sess.Get[any](\"key\") ok: false; got: true")
+		}
+	})
+}
+
+func TestSession_IsDestroyed(t *testing.T) {
+	t.Run("reports true after Destroy", func(t *testing.T) {
+		sess := New()
+		sess.Destroy()
+
+		destroyed := sess.IsDestroyed()
+
+		if !destroyed {
+			t.Error("want destroyed: true; got: false")
+		}
+	})
+
+	t.Run("reports false before Destroy", func(t *testing.T) {
+		sess := New()
+
+		destroyed := sess.IsDestroyed()
+
+		if destroyed {
+			t.Error("want destroyed: false; got: true")
+		}
+	})
+}
+
 // Asserts at compile time that *fakeStore satisfies Store.
 var _ Store = (*fakeStore)(nil)
 
