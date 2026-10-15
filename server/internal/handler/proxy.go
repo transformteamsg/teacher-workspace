@@ -16,16 +16,6 @@ import (
 
 type ctxKeySignedToken struct{}
 
-// remoteBackendClaims are the claims of the JWT attached to every request
-// proxied to a remote app backend. Roles and Attributes are never nil, so they
-// encode as empty arrays rather than null when no user is signed in.
-type remoteBackendClaims struct {
-	Roles         []string `json:"roles"`
-	EffectiveRole string   `json:"effective_role"`
-	Attributes    []string `json:"attributes"`
-	jwt.RegisteredClaims
-}
-
 type remoteBackend struct {
 	proxy      http.Handler
 	signingKey string
@@ -65,6 +55,15 @@ func (h *Handler) proxy() http.HandlerFunc {
 				Message: http.StatusText(http.StatusNotFound),
 			})
 			return
+		}
+
+		// Roles and Attributes are never nil, so they encode as empty arrays
+		// rather than null when no user is signed in.
+		type remoteBackendClaims struct {
+			Roles         []string `json:"roles"`
+			EffectiveRole string   `json:"effective_role"`
+			Attributes    []string `json:"attributes"`
+			jwt.RegisteredClaims
 		}
 
 		issuedAt := now()
