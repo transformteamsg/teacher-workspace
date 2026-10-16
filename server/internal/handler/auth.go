@@ -347,8 +347,8 @@ func isRecognizedEdupassRole(code string) bool {
 }
 
 // edupassRoleLabels maps every Edupass base role code the server recognizes
-// to the name shown to users, as the Edupass application onboarding form
-// registers it. Recognizing a new code means adding it here.
+// to the name shown to users, as Edupass registers it. Recognizing a new code
+// means adding it here.
 var edupassRoleLabels = map[string]string{
 	"ROLE_PRINCIPAL":                     "Principal",
 	"ROLE_VICE_PRINCIPAL":                "Vice Principal",
