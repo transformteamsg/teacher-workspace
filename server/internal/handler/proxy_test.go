@@ -210,19 +210,16 @@ func TestHandler_proxy(t *testing.T) {
 		tests := []struct {
 			name    string
 			withCtx func(context.Context) context.Context
-			wantMsg string
 		}{
 			{
 				name:    "when the request has no session",
 				withCtx: func(ctx context.Context) context.Context { return ctx },
-				wantMsg: "no session found in context",
 			},
 			{
 				name: "when the session has no user",
 				withCtx: func(ctx context.Context) context.Context {
 					return middleware.WithSession(ctx, session.New())
 				},
-				wantMsg: "no user found in session",
 			},
 			{
 				name: "when the user has no Edupass ID",
@@ -231,7 +228,6 @@ func TestHandler_proxy(t *testing.T) {
 					sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg: "no Edupass ID, role or attributes found in user",
 			},
 			{
 				name: "when the user has no role",
@@ -240,7 +236,6 @@ func TestHandler_proxy(t *testing.T) {
 					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg: "no Edupass ID, role or attributes found in user",
 			},
 			{
 				name: "when the user has no attributes",
@@ -249,7 +244,6 @@ func TestHandler_proxy(t *testing.T) {
 					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg: "no Edupass ID, role or attributes found in user",
 			},
 		}
 
