@@ -2770,7 +2770,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 }
 
 func TestEdupassRoleLabel(t *testing.T) {
-	t.Run("returns the name registered on the onboarding form", func(t *testing.T) {
+	t.Run("returns the name Edupass registers", func(t *testing.T) {
 		tests := []struct {
 			name string
 			code string
