@@ -75,10 +75,20 @@ func (h *Handler) proxy() http.HandlerFunc {
 			return
 		}
 
-		// A user without a role or attributes has no claims that a remote app
-		// backend could act on.
-		if u.Role == "" || u.Attributes == nil {
-			logger.Error("no role or attributes found in user")
+		// A user without an Edupass ID, role or attributes has no claims that a
+		// remote app backend could act on.
+		var missing []string
+		if u.ID == "" {
+			missing = append(missing, "edupass_id")
+		}
+		if u.Role == "" {
+			missing = append(missing, "role")
+		}
+		if u.Attributes == nil {
+			missing = append(missing, "attributes")
+		}
+		if len(missing) > 0 {
+			logger.Error("missing claims found in user", "missing", missing)
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
 				Message: http.StatusText(http.StatusInternalServerError),
 			})
@@ -98,6 +108,7 @@ func (h *Handler) proxy() http.HandlerFunc {
 			Audience:  jwt.ClaimStrings{b.audience},
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
+			Subject:   u.ID,
 
 			Role:          u.Role,
 			EffectiveRole: u.Role,
