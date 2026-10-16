@@ -57,8 +57,6 @@ const navGroups: NavGroup[] = [
 const DESKTOP_OPEN_KEY = 'tw_sidebar_desktop_open';
 const TABLET_OPEN_KEY = 'tw_sidebar_tablet_open';
 
-// shadcn centres a collapsed item with flex, and justify-content cannot
-// transition, so the icon would drift while the rail narrows.
 const MENU_ITEM_CLASS = 'tw:group-data-[collapsible=icon]:block';
 const MENU_BUTTON_CLASS =
   'tw:h-9 tw:gap-3 tw:rounded-xl tw:transition-[width,height,padding,margin] tw:duration-(--duration-sidebar) tw:ease-(--ease-sidebar) tw:group-data-[collapsible=icon]:my-0.5';
@@ -175,8 +173,6 @@ export function AppSidebar() {
             )}
           >
             {group.label && (
-              // A label slides over the row above it while the sidebar expands, so
-              // it takes no pointer events and a click there reaches that row.
               <SidebarGroupLabel className="tw:pointer-events-none tw:transition-[margin,opacity,filter] tw:delay-[0s,75ms,75ms] tw:duration-[var(--duration-sidebar),150ms,150ms] tw:ease-[var(--ease-sidebar),ease-out,ease-out] tw:group-data-[collapsible=icon]:blur-sm tw:group-data-[collapsible=icon]:delay-0 tw:group-data-[collapsible=icon]:duration-[var(--duration-sidebar),100ms,100ms] tw:motion-reduce:delay-0 tw:motion-reduce:duration-[var(--duration-sidebar),100ms,100ms] tw:motion-reduce:group-data-[collapsible=icon]:blur-none">
                 {group.label}
               </SidebarGroupLabel>

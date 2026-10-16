@@ -47,7 +47,6 @@
   }
 }
 
-/* The shadcn sidebar exposes no className for its gap or sheet. Unlayered, these beat their utilities. */
 [data-slot='sidebar-gap'] {
   transition-duration: var(--duration-sidebar);
   transition-timing-function: var(--ease-sidebar);
@@ -65,6 +64,7 @@
 
 [data-slot='sheet-overlay'] {
   background-color: var(--overlay);
+  backdrop-filter: blur(4px);
 }
 
 [data-slot='sidebar'][data-mobile='true'] {
