@@ -315,33 +315,6 @@ func TestHandler_proxy(t *testing.T) {
 				},
 				wantMsg: "no user found in session",
 			},
-			{
-				name: "when the user has no Edupass ID",
-				withCtx: func(ctx context.Context) context.Context {
-					sess := session.New()
-					sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
-					return middleware.WithSession(ctx, sess)
-				},
-				wantMsg: "no Edupass ID, role or attributes found in user",
-			},
-			{
-				name: "when the user has no role",
-				withCtx: func(ctx context.Context) context.Context {
-					sess := session.New()
-					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}})
-					return middleware.WithSession(ctx, sess)
-				},
-				wantMsg: "no Edupass ID, role or attributes found in user",
-			},
-			{
-				name: "when the user has no attributes",
-				withCtx: func(ctx context.Context) context.Context {
-					sess := session.New()
-					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"})
-					return middleware.WithSession(ctx, sess)
-				},
-				wantMsg: "no Edupass ID, role or attributes found in user",
-			},
 		}
 
 		for _, test := range tests {
@@ -364,6 +337,104 @@ func TestHandler_proxy(t *testing.T) {
 				}
 				if want, got := test.wantMsg, records[0].Msg; want != got {
 					t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("logs which of the user's claims are missing", func(t *testing.T) {
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:    newRemoteBackend(t, http.NotFoundHandler()),
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+				},
+			},
+		}
+
+		tests := []struct {
+			name              string
+			user              session.User
+			wantHasEdupassID  bool
+			wantHasRole       bool
+			wantHasAttributes bool
+		}{
+			{
+				name:              "when the user has no Edupass ID",
+				user:              session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}},
+				wantHasEdupassID:  false,
+				wantHasRole:       true,
+				wantHasAttributes: true,
+			},
+			{
+				name:              "when the user has no role",
+				user:              session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}},
+				wantHasEdupassID:  true,
+				wantHasRole:       false,
+				wantHasAttributes: true,
+			},
+			{
+				name:              "when the user has no attributes",
+				user:              session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"},
+				wantHasEdupassID:  true,
+				wantHasRole:       true,
+				wantHasAttributes: false,
+			},
+			{
+				// An empty list still counts as having attributes.
+				name:              "when the user has no role and an empty attributes list",
+				user:              session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{}},
+				wantHasEdupassID:  true,
+				wantHasRole:       false,
+				wantHasAttributes: true,
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				sess := session.New()
+				sess.SetUser(test.user)
+
+				var logs bytes.Buffer
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+				rec := httptest.NewRecorder()
+
+				h.proxy().ServeHTTP(rec, req)
+
+				if want, got := 1, bytes.Count(logs.Bytes(), []byte("\n")); want != got {
+					t.Fatalf("want log records: %d; got: %d", want, got)
+				}
+
+				var record struct {
+					Level         string `json:"level"`
+					Msg           string `json:"msg"`
+					HasEdupassID  bool   `json:"has_edupass_id"`
+					HasRole       bool   `json:"has_role"`
+					HasAttributes bool   `json:"has_attributes"`
+				}
+				if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+					t.Fatalf("json.Unmarshal: %v", err)
+				}
+				if want, got := slog.LevelError.String(), record.Level; want != got {
+					t.Errorf("want record.Level: %q; got: %q", want, got)
+				}
+				if want, got := "no Edupass ID, role or attributes found in user", record.Msg; want != got {
+					t.Errorf("want record.Msg: %q; got: %q", want, got)
+				}
+				if want, got := test.wantHasEdupassID, record.HasEdupassID; want != got {
+					t.Errorf("want record.HasEdupassID: %t; got: %t", want, got)
+				}
+				if want, got := test.wantHasRole, record.HasRole; want != got {
+					t.Errorf("want record.HasRole: %t; got: %t", want, got)
+				}
+				if want, got := test.wantHasAttributes, record.HasAttributes; want != got {
+					t.Errorf("want record.HasAttributes: %t; got: %t", want, got)
 				}
 			})
 		}
