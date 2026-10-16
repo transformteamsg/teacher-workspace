@@ -33,6 +33,7 @@ func (h *Handler) index() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		logger := middleware.LoggerFromContext(r.Context())
+
 		sess, ok := middleware.SessionFromContext(r.Context())
 		if !ok {
 			logger.Error("no session found in context")

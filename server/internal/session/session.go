@@ -45,6 +45,7 @@ type Session struct {
 	csrfToken string
 	user      *User
 	data      map[string]any
+	destroyed bool
 }
 
 // snapshot is the stored form of a Session.
@@ -200,4 +201,16 @@ func (s *Session) SetUser(u User) {
 	s.csrfToken = random.Base58(tokenLength)
 	s.user = &u
 	clear(s.data)
+}
+
+// Destroy ends the session, detaching its user and discarding its data.
+func (s *Session) Destroy() {
+	s.user = nil
+	clear(s.data)
+	s.destroyed = true
+}
+
+// IsDestroyed reports whether [Session.Destroy] has been called.
+func (s *Session) IsDestroyed() bool {
+	return s.destroyed
 }

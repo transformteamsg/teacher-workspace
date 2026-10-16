@@ -1170,6 +1170,204 @@ func TestSession(t *testing.T) {
 		}
 	})
 
+	t.Run("removes the session from the store when the handler destroys it", func(t *testing.T) {
+		store := newFakeStore(t)
+		seeded := session.New()
+		seeded.SetUser(session.User{Email: "teacher@example.com"})
+		if err := session.Save(t.Context(), store.Store, seeded, time.Hour); err != nil {
+			t.Fatalf("session.Save: %v", err)
+		}
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+		}
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sess, ok := SessionFromContext(r.Context())
+			if !ok {
+				t.Fatal("want SessionFromContext(r.Context()) ok: true; got: false")
+			}
+			sess.Destroy()
+			w.WriteHeader(http.StatusSeeOther)
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+		req.AddCookie(&http.Cookie{
+			Name:  opts.Name,
+			Value: seeded.ID(),
+		})
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		data, err := store.Store.Prepare(t.Context(), seeded.ID())
+		if err != nil {
+			t.Fatalf("memstore.Store.Prepare: %v", err)
+		}
+		if data != nil {
+			t.Error("want data: nil; got: non-nil")
+		}
+	})
+
+	t.Run("does not save the session when the handler destroys it", func(t *testing.T) {
+		store := newFakeStore(t)
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+		}
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sess, ok := SessionFromContext(r.Context())
+			if !ok {
+				t.Fatal("want SessionFromContext(r.Context()) ok: true; got: false")
+			}
+			sess.Destroy()
+			w.WriteHeader(http.StatusSeeOther)
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		if got := store.commits; len(got) != 0 {
+			t.Errorf("want store.commits: empty; got: %v", got)
+		}
+	})
+
+	t.Run("expires the session cookie when the handler destroys the session", func(t *testing.T) {
+		store := newFakeStore(t)
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+		}
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sess, ok := SessionFromContext(r.Context())
+			if !ok {
+				t.Fatal("want SessionFromContext(r.Context()) ok: true; got: false")
+			}
+			sess.Destroy()
+			w.WriteHeader(http.StatusSeeOther)
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		cookies := rec.Result().Cookies()
+		if len(cookies) == 0 {
+			t.Fatal("want cookies: non-empty; got: empty")
+		}
+		if want, got := opts.Name, cookies[0].Name; want != got {
+			t.Errorf("want cookies[0].Name: %q; got: %q", want, got)
+		}
+		if got := cookies[0].Value; got != "" {
+			t.Errorf("want cookies[0].Value: empty; got: %q", got)
+		}
+		if want, got := "/", cookies[0].Path; want != got {
+			t.Errorf("want cookies[0].Path: %q; got: %q", want, got)
+		}
+		if got := cookies[0].MaxAge; got >= 0 {
+			t.Errorf("want cookies[0].MaxAge: < 0; got: %d", got)
+		}
+	})
+
+	t.Run("replaces the handler's response with a 500 when the destroyed session cannot be removed", func(t *testing.T) {
+		store := newFakeStore(t)
+		store.dropErr = errors.New("store unavailable")
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+		}
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sess, ok := SessionFromContext(r.Context())
+			if !ok {
+				t.Fatal("want SessionFromContext(r.Context()) ok: true; got: false")
+			}
+			sess.Destroy()
+			w.Header().Set("Location", "/login")
+			w.WriteHeader(http.StatusSeeOther)
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		if want, got := http.StatusInternalServerError, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+		header := rec.Result().Header
+		if got := header.Get("Location"); got != "" {
+			t.Errorf("want Location: empty; got: %q", got)
+		}
+		if got := header.Values("Set-Cookie"); len(got) != 0 {
+			t.Errorf("want Set-Cookie: empty; got: %q", got)
+		}
+	})
+
+	t.Run("logs an error when the destroyed session cannot be removed", func(t *testing.T) {
+		store := newFakeStore(t)
+		store.dropErr = errors.New("store unavailable")
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+		}
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sess, ok := SessionFromContext(r.Context())
+			if !ok {
+				t.Fatal("want SessionFromContext(r.Context()) ok: true; got: false")
+			}
+			sess.Destroy()
+			w.WriteHeader(http.StatusSeeOther)
+		})
+
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		ctx := WithLogger(t.Context(), logger)
+
+		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		records := decodeLogRecords(t, &logs)
+		if want, got := 1, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := slog.LevelError.String(), records[0].Level; want != got {
+			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		}
+		if want, got := "failed to drop destroyed session", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+		if want, got := "store unavailable", records[0].Err; !strings.Contains(got, want) {
+			t.Errorf("want records[0].Err: containing %q; got: %q", want, got)
+		}
+	})
+
 	t.Run("keeps the rest of the handler's response", func(t *testing.T) {
 		store := newFakeStore(t)
 
@@ -1261,13 +1459,13 @@ func TestWithSession(t *testing.T) {
 }
 
 func TestSessionResponseWriter_WriteHeader(t *testing.T) {
-	t.Run("does not save the session before sending a 1xx status other than 101", func(t *testing.T) {
-		var saved bool
+	t.Run("does not run finalise before sending a 1xx status other than 101", func(t *testing.T) {
+		var finalised bool
 		rec := httptest.NewRecorder()
 		rw := &sessionResponseWriter{
 			ResponseWriter: rec,
-			commit: func(h http.Header) error {
-				saved = true
+			finalise: func(h http.Header) error {
+				finalised = true
 				return nil
 			},
 			initialHeader: http.Header{},
@@ -1276,12 +1474,12 @@ func TestSessionResponseWriter_WriteHeader(t *testing.T) {
 
 		rw.WriteHeader(http.StatusEarlyHints)
 
-		if saved {
-			t.Error("want saved: false; got: true")
+		if finalised {
+			t.Error("want finalised: false; got: true")
 		}
 	})
 
-	t.Run("saves the session before sending", func(t *testing.T) {
+	t.Run("runs finalise before sending", func(t *testing.T) {
 		for _, test := range []struct {
 			name   string
 			status int
@@ -1299,7 +1497,7 @@ func TestSessionResponseWriter_WriteHeader(t *testing.T) {
 				rec := httptest.NewRecorder()
 				rw := &sessionResponseWriter{
 					ResponseWriter: rec,
-					commit: func(h http.Header) error {
+					finalise: func(h http.Header) error {
 						h.Add("Set-Cookie", "sid=id-1")
 						return nil
 					},
@@ -1319,11 +1517,11 @@ func TestSessionResponseWriter_WriteHeader(t *testing.T) {
 		}
 	})
 
-	t.Run("sends a 500 in place of the status when the session cannot be saved", func(t *testing.T) {
+	t.Run("sends a 500 in place of the status when finalise fails", func(t *testing.T) {
 		rec := &statusRecordingWriter{ResponseRecorder: httptest.NewRecorder()}
 		rw := &sessionResponseWriter{
 			ResponseWriter: rec,
-			commit: func(h http.Header) error {
+			finalise: func(h http.Header) error {
 				return errors.New("store unavailable")
 			},
 			initialHeader: http.Header{},
@@ -1339,11 +1537,11 @@ func TestSessionResponseWriter_WriteHeader(t *testing.T) {
 }
 
 func TestSessionResponseWriter_Write(t *testing.T) {
-	t.Run("saves the session before writing", func(t *testing.T) {
+	t.Run("runs finalise before writing", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		rw := &sessionResponseWriter{
 			ResponseWriter: rec,
-			commit: func(h http.Header) error {
+			finalise: func(h http.Header) error {
 				h.Add("Set-Cookie", "sid=id-1")
 				return nil
 			},
@@ -1367,13 +1565,13 @@ func TestSessionResponseWriter_Write(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects the write when the session cannot be saved", func(t *testing.T) {
-		saveErr := errors.New("store unavailable")
+	t.Run("rejects the write when finalise fails", func(t *testing.T) {
+		finaliseErr := errors.New("store unavailable")
 		rec := httptest.NewRecorder()
 		rw := &sessionResponseWriter{
 			ResponseWriter: rec,
-			commit: func(h http.Header) error {
-				return saveErr
+			finalise: func(h http.Header) error {
+				return finaliseErr
 			},
 			initialHeader: http.Header{},
 			logger:        slog.New(slog.DiscardHandler),
@@ -1381,8 +1579,8 @@ func TestSessionResponseWriter_Write(t *testing.T) {
 
 		n, err := rw.Write([]byte("hello"))
 
-		if !errors.Is(err, saveErr) {
-			t.Errorf("want err: %v; got: %v", saveErr, err)
+		if !errors.Is(err, finaliseErr) {
+			t.Errorf("want err: %v; got: %v", finaliseErr, err)
 		}
 		if want := 0; want != n {
 			t.Errorf("want n: %d; got: %d", want, n)
@@ -1394,11 +1592,11 @@ func TestSessionResponseWriter_Write(t *testing.T) {
 }
 
 func TestSessionResponseWriter_Flush(t *testing.T) {
-	t.Run("saves the session before flushing", func(t *testing.T) {
+	t.Run("runs finalise before flushing", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		rw := &sessionResponseWriter{
 			ResponseWriter: rec,
-			commit: func(h http.Header) error {
+			finalise: func(h http.Header) error {
 				h.Add("Set-Cookie", "sid=id-1")
 				return nil
 			},
@@ -1416,11 +1614,11 @@ func TestSessionResponseWriter_Flush(t *testing.T) {
 		}
 	})
 
-	t.Run("returns without flushing when the session cannot be saved", func(t *testing.T) {
+	t.Run("returns without flushing when finalise fails", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		rw := &sessionResponseWriter{
 			ResponseWriter: rec,
-			commit: func(h http.Header) error {
+			finalise: func(h http.Header) error {
 				return errors.New("store unavailable")
 			},
 			initialHeader: http.Header{},
@@ -1436,7 +1634,7 @@ func TestSessionResponseWriter_Flush(t *testing.T) {
 }
 
 func TestSessionResponseWriter_Hijack(t *testing.T) {
-	t.Run("saves the session before handing over the connection", func(t *testing.T) {
+	t.Run("runs finalise before handing over the connection", func(t *testing.T) {
 		conn, peer := net.Pipe()
 		t.Cleanup(func() {
 			_ = conn.Close()
@@ -1449,7 +1647,7 @@ func TestSessionResponseWriter_Hijack(t *testing.T) {
 		}
 		rw := &sessionResponseWriter{
 			ResponseWriter: rec,
-			commit: func(h http.Header) error {
+			finalise: func(h http.Header) error {
 				h.Add("Set-Cookie", "sid=id-1")
 				return nil
 			},
@@ -1473,22 +1671,22 @@ func TestSessionResponseWriter_Hijack(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects the hijack when the session cannot be saved", func(t *testing.T) {
+	t.Run("rejects the hijack when finalise fails", func(t *testing.T) {
 		conn, peer := net.Pipe()
 		t.Cleanup(func() {
 			_ = conn.Close()
 			_ = peer.Close()
 		})
 
-		saveErr := errors.New("store unavailable")
+		finaliseErr := errors.New("store unavailable")
 		rec := &hijackableWriter{
 			ResponseRecorder: httptest.NewRecorder(),
 			conn:             conn,
 		}
 		rw := &sessionResponseWriter{
 			ResponseWriter: rec,
-			commit: func(h http.Header) error {
-				return saveErr
+			finalise: func(h http.Header) error {
+				return finaliseErr
 			},
 			initialHeader: http.Header{},
 			logger:        slog.New(slog.DiscardHandler),
@@ -1496,8 +1694,8 @@ func TestSessionResponseWriter_Hijack(t *testing.T) {
 
 		hijacked, brw, err := rw.Hijack()
 
-		if !errors.Is(err, saveErr) {
-			t.Errorf("want err: %v; got: %v", saveErr, err)
+		if !errors.Is(err, finaliseErr) {
+			t.Errorf("want err: %v; got: %v", finaliseErr, err)
 		}
 		if hijacked != nil {
 			t.Error("want hijacked: nil; got: non-nil")
