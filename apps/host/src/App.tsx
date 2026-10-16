@@ -34,7 +34,7 @@ const RemoteGroupsView = React.lazy(async () => {
 export default function App() {
   return (
     <BrowserRouter>
-      <TooltipProvider>
+      <TooltipProvider delay={600}>
         <Toaster />
 
         <Routes>
