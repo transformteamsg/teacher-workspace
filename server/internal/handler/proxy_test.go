@@ -374,26 +374,18 @@ func TestHandler_proxy(t *testing.T) {
 
 				h.proxy().ServeHTTP(rec, req)
 
-				if want, got := 1, bytes.Count(logs.Bytes(), []byte("\n")); want != got {
-					t.Fatalf("want log records: %d; got: %d", want, got)
+				records := decodeLogRecords(t, &logs)
+				if want, got := 1, len(records); want != got {
+					t.Fatalf("want len(records): %d; got: %d", want, got)
 				}
-
-				var record struct {
-					Level   string   `json:"level"`
-					Msg     string   `json:"msg"`
-					Missing []string `json:"missing"`
+				if want, got := slog.LevelError.String(), records[0].Level; want != got {
+					t.Errorf("want records[0].Level: %q; got: %q", want, got)
 				}
-				if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
-					t.Fatalf("json.Unmarshal: %v", err)
+				if want, got := test.wantMsg, records[0].Msg; want != got {
+					t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 				}
-				if want, got := slog.LevelError.String(), record.Level; want != got {
-					t.Errorf("want record.Level: %q; got: %q", want, got)
-				}
-				if want, got := test.wantMsg, record.Msg; want != got {
-					t.Errorf("want record.Msg: %q; got: %q", want, got)
-				}
-				if want, got := test.wantMissing, record.Missing; !reflect.DeepEqual(want, got) {
-					t.Errorf("want record.Missing: %q; got: %q", want, got)
+				if want, got := test.wantMissing, records[0].Missing; !reflect.DeepEqual(want, got) {
+					t.Errorf("want records[0].Missing: %q; got: %q", want, got)
 				}
 			})
 		}
