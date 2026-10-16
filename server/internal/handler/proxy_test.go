@@ -293,9 +293,10 @@ func TestHandler_proxy(t *testing.T) {
 		}
 
 		tests := []struct {
-			name    string
-			withCtx func(context.Context) context.Context
-			wantMsg string
+			name        string
+			withCtx     func(context.Context) context.Context
+			wantMsg     string
+			wantMissing []string
 		}{
 			{
 				name:    "when the request has no session",
@@ -309,6 +310,57 @@ func TestHandler_proxy(t *testing.T) {
 				},
 				wantMsg: "no user found in session",
 			},
+			{
+				name: "when the user has no Edupass ID",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg:     "missing claims found in user",
+				wantMissing: []string{"edupass_id"},
+			},
+			{
+				name: "when the user has no role",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg:     "missing claims found in user",
+				wantMissing: []string{"role"},
+			},
+			{
+				name: "when the user has no attributes",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg:     "missing claims found in user",
+				wantMissing: []string{"attributes"},
+			},
+			{
+				name: "when the user has no Edupass ID, role or attributes",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{Email: "teacher@example.com"})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg:     "missing claims found in user",
+				wantMissing: []string{"edupass_id", "role", "attributes"},
+			},
+			{
+				// An empty list still counts as having attributes.
+				name: "when the user has no role and an empty attributes list",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{}})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg:     "missing claims found in user",
+				wantMissing: []string{"role"},
+			},
 		}
 
 		for _, test := range tests {
@@ -316,80 +368,6 @@ func TestHandler_proxy(t *testing.T) {
 				var logs bytes.Buffer
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
 				ctx = test.withCtx(ctx)
-
-				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
-				rec := httptest.NewRecorder()
-
-				h.proxy().ServeHTTP(rec, req)
-
-				records := decodeLogRecords(t, &logs)
-				if want, got := 1, len(records); want != got {
-					t.Fatalf("want len(records): %d; got: %d", want, got)
-				}
-				if want, got := slog.LevelError.String(), records[0].Level; want != got {
-					t.Errorf("want records[0].Level: %q; got: %q", want, got)
-				}
-				if want, got := test.wantMsg, records[0].Msg; want != got {
-					t.Errorf("want records[0].Msg: %q; got: %q", want, got)
-				}
-			})
-		}
-	})
-
-	t.Run("logs which of the user's claims are missing", func(t *testing.T) {
-		h := &Handler{
-			cfg: &config.Config{
-				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
-
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    newRemoteBackend(t, http.NotFoundHandler()),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
-				},
-			},
-		}
-
-		tests := []struct {
-			name        string
-			user        session.User
-			wantMissing []string
-		}{
-			{
-				name:        "when the user has no Edupass ID",
-				user:        session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}},
-				wantMissing: []string{"edupass_id"},
-			},
-			{
-				name:        "when the user has no role",
-				user:        session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}},
-				wantMissing: []string{"role"},
-			},
-			{
-				name:        "when the user has no attributes",
-				user:        session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"},
-				wantMissing: []string{"attributes"},
-			},
-			{
-				name:        "when the user has no Edupass ID, role or attributes",
-				user:        session.User{Email: "teacher@example.com"},
-				wantMissing: []string{"edupass_id", "role", "attributes"},
-			},
-			{
-				// An empty list still counts as having attributes.
-				name:        "when the user has no role and an empty attributes list",
-				user:        session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{}},
-				wantMissing: []string{"role"},
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
-				sess := session.New()
-				sess.SetUser(test.user)
-
-				var logs bytes.Buffer
-				ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
-				ctx = middleware.WithSession(ctx, sess)
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
 				rec := httptest.NewRecorder()
@@ -411,7 +389,7 @@ func TestHandler_proxy(t *testing.T) {
 				if want, got := slog.LevelError.String(), record.Level; want != got {
 					t.Errorf("want record.Level: %q; got: %q", want, got)
 				}
-				if want, got := "missing claims found in user", record.Msg; want != got {
+				if want, got := test.wantMsg, record.Msg; want != got {
 					t.Errorf("want record.Msg: %q; got: %q", want, got)
 				}
 				if want, got := test.wantMissing, record.Missing; !reflect.DeepEqual(want, got) {
