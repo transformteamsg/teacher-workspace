@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -17,10 +18,9 @@ import (
 	"github.com/transformteamsg/teacher-workspace/server/internal/htmlutil"
 	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 	"golang.org/x/oauth2"
 )
-
-var errDevServerResourceNotFound = errors.New("resource not found")
 
 type Handler struct {
 	cfg *config.Config
@@ -87,22 +87,77 @@ func New(cfg *config.Config) (*Handler, error) {
 	return h, nil
 }
 
-// Routes returns the application's routes. Every route except static assets
-// runs through session, which must be the middleware returned by
-// [middleware.Session].
-func (h *Handler) Routes(session middleware.Middleware) http.Handler {
+// Routes returns the application's routes, keeping sessions in store.
+//
+// These routes are open to anyone:
+//   - static assets
+//   - the login page
+//   - the Edupass login routes
+//
+// Every other route requires a logged-in user. A request from a user who is
+// not logged in:
+//   - gets a 401 under /api/
+//   - is otherwise redirected to the login page, carrying the requested URL to
+//     return to
+func (h *Handler) Routes(store session.Store) http.Handler {
+	sessionOpts := middleware.SessionOptions{
+		Name:             h.cfg.Session.Name,
+		DefaultTTL:       h.cfg.Session.DefaultTTL,
+		AuthenticatedTTL: h.cfg.Session.AuthenticatedTTL,
+		Secure:           h.cfg.Session.Secure,
+	}
+
 	app := http.NewServeMux()
+	app.HandleFunc("GET /login", h.login)
 	app.HandleFunc("GET /auth/edupass", h.authEdupass)
 	app.HandleFunc("GET /auth/edupass/callback", h.authEdupassCallback)
-	app.HandleFunc("/api/", h.proxy())
-	app.HandleFunc("/", h.index())
+	app.Handle("/api/", middleware.RequireAuth(renderUnauthorized)(h.proxy()))
+	app.Handle("/", middleware.RequireAuth(redirectToLogin)(h.index()))
 
 	mux := http.NewServeMux()
+	// Static assets skip the session middleware, so their responses stay
+	// cacheable and each asset request doesn't load a session from the store.
 	mux.HandleFunc("/static/", h.static)
-	mux.Handle("/", session(app))
+	mux.Handle("/", middleware.Session(store, sessionOpts)(app))
 
 	return mux
 }
+
+// PreloadedState is the state the index template embeds in the page.
+type PreloadedState struct {
+	CSRFToken string `json:"csrfToken"`
+
+	// Remotes contains those the page registers at startup. It must be
+	// non-nil, even when empty, since the page rejects a null list.
+	Remotes []Remote `json:"remotes"`
+}
+
+// Remote is a reference to a Module Federation remote.
+type Remote struct {
+	// Name is the module ID prefix.
+	Name string `json:"name"`
+
+	// Entry is the manifest URL.
+	Entry string `json:"entry"`
+}
+
+// renderIndexTemplate writes a 200 HTML response whose body is the index
+// template rendered with state. If the template cannot be rendered, a 500 plain
+// text response is written instead.
+func (h *Handler) renderIndexTemplate(w http.ResponseWriter, r *http.Request, state *PreloadedState) {
+	logger := middleware.LoggerFromContext(r.Context())
+
+	var buf bytes.Buffer
+	if err := h.indexTemplate.Execute(r.Context(), &buf, state); err != nil {
+		logger.Error("failed to execute index template", "err", err)
+		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		return
+	}
+
+	httputil.RenderHTML(w, logger, http.StatusOK, buf.Bytes())
+}
+
+var errDevServerResourceNotFound = errors.New("resource not found")
 
 func newDevServerProxy(target *url.URL) *stdhttputil.ReverseProxy {
 	return &stdhttputil.ReverseProxy{

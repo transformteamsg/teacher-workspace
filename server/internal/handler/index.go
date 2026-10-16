@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -11,17 +10,7 @@ import (
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
 )
 
-type PreloadedState struct {
-	CSRFToken string   `json:"csrfToken"`
-	Remotes   []Remote `json:"remotes"`
-}
-
-type Remote struct {
-	Name  string `json:"name"`
-	Entry string `json:"entry"`
-}
-
-func (h *Handler) index() http.HandlerFunc {
+func (h *Handler) index() http.Handler {
 	remotes := []Remote{}
 
 	if h.cfg.RemoteApps.IsPostsRegistered() {
@@ -31,7 +20,7 @@ func (h *Handler) index() http.HandlerFunc {
 		remotes = append(remotes, Remote{Name: "si", Entry: h.cfg.RemoteApps.StudentInsightsManifestURL.String()})
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := middleware.LoggerFromContext(r.Context())
 		sess, ok := middleware.SessionFromContext(r.Context())
 		if !ok {
@@ -40,20 +29,11 @@ func (h *Handler) index() http.HandlerFunc {
 			return
 		}
 
-		preloadedState := &PreloadedState{
+		h.renderIndexTemplate(w, r, &PreloadedState{
 			CSRFToken: sess.CSRFToken(),
 			Remotes:   remotes,
-		}
-
-		var buf bytes.Buffer
-		if err := h.indexTemplate.Execute(r.Context(), &buf, preloadedState); err != nil {
-			logger.Error("failed to execute index template", "err", err)
-			httputil.RenderPlain(w, logger, http.StatusInternalServerError)
-			return
-		}
-
-		httputil.RenderHTML(w, logger, http.StatusOK, buf.Bytes())
-	}
+		})
+	})
 }
 
 func (h *Handler) static(w http.ResponseWriter, r *http.Request) {
