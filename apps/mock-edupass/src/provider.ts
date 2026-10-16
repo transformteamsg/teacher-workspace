@@ -81,7 +81,7 @@ export const accounts: Account[] = [
     id: 'staff-12',
     name: 'Henry Wong',
     cesEmail: 'henry.wong@example.com',
-    groups: ['1234_TW_ROLE_SNR_SWO'],
+    groups: ['1234_TW_ROLE_VICE_PRINCIPAL_ADMINISTRATION'],
   },
 ];
 
