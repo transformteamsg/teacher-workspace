@@ -15,12 +15,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
 import { preloadedState } from '~/stores/preloaded-state';
 
-/**
- * A single-line label that clips with an ellipsis and shows its full text in
- * a tooltip only while it is clipped, re-measured whenever the label resizes.
- * The trigger renders a `<span>`: the label sits inside the menu, where Base
- * UI's default `<button>` would nest one interactive element in another.
- */
 function TruncatedText({ text }: { text: string }) {
   // A callback ref: Base UI types the trigger's ref as a button's, which a
   // `useRef` of the rendered span does not satisfy.
@@ -43,6 +37,8 @@ function TruncatedText({ text }: { text: string }) {
         ref={(element) => {
           label.current = element;
         }}
+        // A span, not Base UI's default button: a button inside the menu would
+        // nest one interactive element in another.
         render={<span />}
         className="tw:block tw:truncate tw:text-sm tw:text-muted-foreground"
       >
@@ -53,11 +49,6 @@ function TruncatedText({ text }: { text: string }) {
   );
 }
 
-/**
- * The signed-in teacher's avatar, opening a menu with their name, role and
- * email, and the Sign out action. Renders nothing when the page has no
- * signed-in user.
- */
 export function ProfileMenu() {
   const signOutFormRef = useRef<HTMLFormElement>(null);
   const user = preloadedState.user;
@@ -68,9 +59,9 @@ export function ProfileMenu() {
 
   return (
     <>
-      {/* A real form post rather than fetch, so the browser follows the
-          server's redirect to the sign-in page. It sits outside the menu
-          because the menu content is portalled out of any enclosing form. */}
+      {/* A form post rather than fetch, so the browser follows the redirect to
+          sign-in. It sits outside the menu, whose content is portalled out of
+          any enclosing form. */}
       <form ref={signOutFormRef} method="post" action="/logout" hidden />
 
       <DropdownMenu>
@@ -99,11 +90,9 @@ export function ProfileMenu() {
                   {user.name}
                 </span>
                 <span className="tw:text-sm tw:text-muted-foreground">{user.role}</span>
-                {/* The affiliation card. `-mx-3` cancels the label's own
-                    padding so the card's edges line up with the menu items'
-                    edges instead of sitting 12px in. The school name belongs
-                    in here above the email, once the session carries it
-                    (follow-up to #161). */}
+                {/* `-mx-3` cancels the label's padding so the card's edges line
+                    up with the menu items'. The school name goes in here above
+                    the email once the session carries it (follow-up to #161). */}
                 <div className="tw:-mx-3 tw:mt-2 tw:flex tw:min-w-0 tw:flex-col tw:rounded-xl tw:bg-muted tw:px-3 tw:py-2">
                   <TruncatedText text={user.email} />
                 </div>
