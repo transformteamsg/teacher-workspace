@@ -196,6 +196,65 @@ func TestHandler_index(t *testing.T) {
 		}
 	})
 
+	t.Run("embeds the user in preloaded state when the session is authenticated", func(t *testing.T) {
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction},
+			indexTemplate: newPreloadedStateTemplate(),
+		}
+
+		sess := session.New()
+		sess.SetUser(session.User{
+			ID:         "a1b2c3",
+			Name:       "Tan Mei Ling",
+			Email:      "tan_mei_ling@schools.gov.sg",
+			Role:       "ROLE_TEACHER",
+			Attributes: []string{"ATTR_PG_USER"},
+		})
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		h.index().ServeHTTP(rec, req)
+
+		payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
+		var state struct {
+			User json.RawMessage `json:"user"`
+		}
+		if err := json.Unmarshal([]byte(payload), &state); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		want := `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher"}`
+		if got := string(state.User); want != got {
+			t.Errorf("want state.User: %s; got: %s", want, got)
+		}
+	})
+
+	t.Run("omits the user from preloaded state when the session is unauthenticated", func(t *testing.T) {
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction},
+			indexTemplate: newPreloadedStateTemplate(),
+		}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		h.index().ServeHTTP(rec, req)
+
+		payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
+		var state map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(payload), &state); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if got, ok := state["user"]; ok {
+			t.Errorf("want state[\"user\"] ok: false; got: %s", got)
+		}
+	})
+
 	t.Run("responds with 500 and logs error when session is missing", func(t *testing.T) {
 		h := &Handler{
 			cfg:           &config.Config{Env: config.EnvProduction},

@@ -14,11 +14,20 @@ import (
 type PreloadedState struct {
 	CSRFToken string   `json:"csrfToken"`
 	Remotes   []Remote `json:"remotes"`
+	User      *User    `json:"user,omitempty"`
 }
 
 type Remote struct {
 	Name  string `json:"name"`
 	Entry string `json:"entry"`
+}
+
+type User struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	// Role is the resolved role's display label, such as "Teacher", not its
+	// Edupass code.
+	Role string `json:"role"`
 }
 
 func (h *Handler) index() http.HandlerFunc {
@@ -43,6 +52,13 @@ func (h *Handler) index() http.HandlerFunc {
 		preloadedState := &PreloadedState{
 			CSRFToken: sess.CSRFToken(),
 			Remotes:   remotes,
+		}
+		if user, ok := sess.User(); ok {
+			preloadedState.User = &User{
+				Name:  user.Name,
+				Email: user.Email,
+				Role:  edupassRoleLabel(user.Role),
+			}
 		}
 
 		var buf bytes.Buffer
