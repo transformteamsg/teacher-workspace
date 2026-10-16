@@ -18,6 +18,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/transformteamsg/teacher-workspace/server/internal/config"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
+	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 )
 
 // newRemoteBackend starts a fake remote backend served by handler and returns
@@ -95,7 +96,13 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, test.target, nil)
+				sess := session.New()
+				sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
+
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
 
 				h.proxy().ServeHTTP(rec, req)
@@ -152,7 +159,13 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, test.target, nil)
+				sess := session.New()
+				sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
+
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
 
 				h.proxy().ServeHTTP(rec, req)
@@ -175,6 +188,166 @@ func TestHandler_proxy(t *testing.T) {
 
 		if want := 0; want != calls {
 			t.Errorf("want: %d; got: %d", want, calls)
+		}
+	})
+
+	t.Run("responds with 500", func(t *testing.T) {
+		var calls int
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+						calls++
+					})),
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+				},
+			},
+		}
+
+		tests := []struct {
+			name    string
+			withCtx func(context.Context) context.Context
+			wantMsg string
+		}{
+			{
+				name:    "when the request has no session",
+				withCtx: func(ctx context.Context) context.Context { return ctx },
+				wantMsg: "no session found in context",
+			},
+			{
+				name: "when the session has no user",
+				withCtx: func(ctx context.Context) context.Context {
+					return middleware.WithSession(ctx, session.New())
+				},
+				wantMsg: "no user found in session",
+			},
+			{
+				name: "when the user has no role",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg: "no role or attributes found in user",
+			},
+			{
+				name: "when the user has no attributes",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER"})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg: "no role or attributes found in user",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				calls = 0
+
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = test.withCtx(ctx)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+				rec := httptest.NewRecorder()
+
+				h.proxy().ServeHTTP(rec, req)
+
+				if want, got := http.StatusInternalServerError, rec.Code; want != got {
+					t.Errorf("want rec.Code: %d; got: %d", want, got)
+				}
+
+				var body struct {
+					Message string `json:"message"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+					t.Fatalf("json.Unmarshal: %v", err)
+				}
+				if want, got := http.StatusText(http.StatusInternalServerError), body.Message; want != got {
+					t.Errorf("want body.Message: %q; got: %q", want, got)
+				}
+				if want := 0; want != calls {
+					t.Errorf("want calls: %d; got: %d", want, calls)
+				}
+			})
+		}
+	})
+
+	t.Run("logs an error", func(t *testing.T) {
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:    newRemoteBackend(t, http.NotFoundHandler()),
+					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+				},
+			},
+		}
+
+		tests := []struct {
+			name    string
+			withCtx func(context.Context) context.Context
+			wantMsg string
+		}{
+			{
+				name:    "when the request has no session",
+				withCtx: func(ctx context.Context) context.Context { return ctx },
+				wantMsg: "no session found in context",
+			},
+			{
+				name: "when the session has no user",
+				withCtx: func(ctx context.Context) context.Context {
+					return middleware.WithSession(ctx, session.New())
+				},
+				wantMsg: "no user found in session",
+			},
+			{
+				name: "when the user has no role",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg: "no role or attributes found in user",
+			},
+			{
+				name: "when the user has no attributes",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER"})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg: "no role or attributes found in user",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				var logs bytes.Buffer
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+				ctx = test.withCtx(ctx)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+				rec := httptest.NewRecorder()
+
+				h.proxy().ServeHTTP(rec, req)
+
+				records := decodeLogRecords(t, &logs)
+				if want, got := 1, len(records); want != got {
+					t.Fatalf("want len(records): %d; got: %d", want, got)
+				}
+				if want, got := slog.LevelError.String(), records[0].Level; want != got {
+					t.Errorf("want records[0].Level: %q; got: %q", want, got)
+				}
+				if want, got := test.wantMsg, records[0].Msg; want != got {
+					t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+				}
+			})
 		}
 	})
 
@@ -226,7 +399,13 @@ func TestHandler_proxy(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodGet, test.target, nil)
+				sess := session.New()
+				sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
+
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
 				rec := httptest.NewRecorder()
 
 				h.proxy().ServeHTTP(rec, req)
@@ -259,6 +438,94 @@ func TestHandler_proxy(t *testing.T) {
 				}
 				if !reflect.DeepEqual(want, claims) {
 					t.Errorf("want: %+v; got: %+v", want, claims)
+				}
+			})
+		}
+	})
+
+	t.Run("carries the signed-in user's stored role and attributes in the JWT", func(t *testing.T) {
+		const signingKey = "posts-string-secret-at-least-256-bits-long"
+		h := &Handler{
+			cfg: &config.Config{
+				RemoteApps: config.RemoteAppsConfig{
+					SignedTokenTTL: time.Minute,
+
+					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						_, _ = io.WriteString(w, r.Header.Get("Authorization"))
+					})),
+					PostsBackendSigningKey: signingKey,
+				},
+			},
+		}
+
+		tests := []struct {
+			name       string
+			attributes []string
+		}{
+			{
+				// Unsorted, so a sort would show.
+				name:       "when the user has attributes",
+				attributes: []string{"ATTR_SLD", "ATTR_CCE"},
+			},
+			{
+				// A user with no attributes holds an empty list, not nil.
+				name:       "when the user has none",
+				attributes: []string{},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				sess := session.New()
+				sess.SetUser(session.User{
+					Email:      "teacher@example.com",
+					Role:       "ROLE_TEACHER",
+					Attributes: test.attributes,
+				})
+
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+				rec := httptest.NewRecorder()
+
+				h.proxy().ServeHTTP(rec, req)
+
+				if want, got := http.StatusOK, rec.Code; want != got {
+					t.Fatalf("want rec.Code: %d; got: %d", want, got)
+				}
+
+				token, ok := strings.CutPrefix(rec.Body.String(), "Bearer ")
+				if !ok {
+					t.Fatalf("want Authorization: containing %q; got: %q", "Bearer ", rec.Body.String())
+				}
+
+				var claims struct {
+					jwt.RegisteredClaims
+
+					Role          string   `json:"role"`
+					EffectiveRole string   `json:"effective_role"`
+					Attributes    []string `json:"attributes"`
+				}
+				if _, err := jwt.ParseWithClaims(token, &claims,
+					func(*jwt.Token) (any, error) {
+						return []byte(signingKey), nil
+					},
+					jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+				); err != nil {
+					t.Fatalf("jwt.ParseWithClaims: %v", err)
+				}
+
+				if want, got := "ROLE_TEACHER", claims.Role; want != got {
+					t.Errorf("want claims.Role: %q; got: %q", want, got)
+				}
+				if want, got := "ROLE_TEACHER", claims.EffectiveRole; want != got {
+					t.Errorf("want claims.EffectiveRole: %q; got: %q", want, got)
+				}
+				// %#v tells [] from nil, which would encode as null.
+				if want, got := test.attributes, claims.Attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("want claims.Attributes: %#v; got: %#v", want, got)
 				}
 			})
 		}

@@ -57,13 +57,54 @@ func (h *Handler) proxy() http.HandlerFunc {
 			return
 		}
 
+		sess, ok := middleware.SessionFromContext(r.Context())
+		if !ok {
+			logger.Error("no session found in context")
+			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
+				Message: http.StatusText(http.StatusInternalServerError),
+			})
+			return
+		}
+
+		u, ok := sess.User()
+		if !ok {
+			logger.Error("no user found in session")
+			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
+				Message: http.StatusText(http.StatusInternalServerError),
+			})
+			return
+		}
+
+		// A user without a role or attributes has no claims that a remote app
+		// backend could act on.
+		if u.Role == "" || u.Attributes == nil {
+			logger.Error("no role or attributes found in user")
+			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
+				Message: http.StatusText(http.StatusInternalServerError),
+			})
+			return
+		}
+
 		issuedAt := now()
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		claims := struct {
+			jwt.RegisteredClaims
+
+			Role string `json:"role"`
+			// EffectiveRole duplicates Role for PG. Remove it once PG reads role.
+			EffectiveRole string   `json:"effective_role"`
+			Attributes    []string `json:"attributes"`
+		}{
 			Issuer:    "tw",
 			Audience:  jwt.ClaimStrings{b.audience},
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
-		})
+
+			Role:          u.Role,
+			EffectiveRole: u.Role,
+			Attributes:    u.Attributes,
+		}
+
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		signedToken, err := token.SignedString([]byte(b.signingKey))
 		if err != nil {
 			logger.Error("failed to sign JWT", "app", name, "err", err)
