@@ -356,40 +356,35 @@ func TestHandler_proxy(t *testing.T) {
 		}
 
 		tests := []struct {
-			name              string
-			user              session.User
-			wantHasEdupassID  bool
-			wantHasRole       bool
-			wantHasAttributes bool
+			name        string
+			user        session.User
+			wantMissing []string
 		}{
 			{
-				name:              "when the user has no Edupass ID",
-				user:              session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}},
-				wantHasEdupassID:  false,
-				wantHasRole:       true,
-				wantHasAttributes: true,
+				name:        "when the user has no Edupass ID",
+				user:        session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}},
+				wantMissing: []string{"edupass_id"},
 			},
 			{
-				name:              "when the user has no role",
-				user:              session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}},
-				wantHasEdupassID:  true,
-				wantHasRole:       false,
-				wantHasAttributes: true,
+				name:        "when the user has no role",
+				user:        session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}},
+				wantMissing: []string{"role"},
 			},
 			{
-				name:              "when the user has no attributes",
-				user:              session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"},
-				wantHasEdupassID:  true,
-				wantHasRole:       true,
-				wantHasAttributes: false,
+				name:        "when the user has no attributes",
+				user:        session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"},
+				wantMissing: []string{"attributes"},
+			},
+			{
+				name:        "when the user has no Edupass ID, role or attributes",
+				user:        session.User{Email: "teacher@example.com"},
+				wantMissing: []string{"edupass_id", "role", "attributes"},
 			},
 			{
 				// An empty list still counts as having attributes.
-				name:              "when the user has no role and an empty attributes list",
-				user:              session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{}},
-				wantHasEdupassID:  true,
-				wantHasRole:       false,
-				wantHasAttributes: true,
+				name:        "when the user has no role and an empty attributes list",
+				user:        session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{}},
+				wantMissing: []string{"role"},
 			},
 		}
 
@@ -412,11 +407,9 @@ func TestHandler_proxy(t *testing.T) {
 				}
 
 				var record struct {
-					Level         string `json:"level"`
-					Msg           string `json:"msg"`
-					HasEdupassID  bool   `json:"has_edupass_id"`
-					HasRole       bool   `json:"has_role"`
-					HasAttributes bool   `json:"has_attributes"`
+					Level   string   `json:"level"`
+					Msg     string   `json:"msg"`
+					Missing []string `json:"missing"`
 				}
 				if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
 					t.Fatalf("json.Unmarshal: %v", err)
@@ -424,17 +417,11 @@ func TestHandler_proxy(t *testing.T) {
 				if want, got := slog.LevelError.String(), record.Level; want != got {
 					t.Errorf("want record.Level: %q; got: %q", want, got)
 				}
-				if want, got := "no Edupass ID, role or attributes found in user", record.Msg; want != got {
+				if want, got := "missing claims found in user", record.Msg; want != got {
 					t.Errorf("want record.Msg: %q; got: %q", want, got)
 				}
-				if want, got := test.wantHasEdupassID, record.HasEdupassID; want != got {
-					t.Errorf("want record.HasEdupassID: %t; got: %t", want, got)
-				}
-				if want, got := test.wantHasRole, record.HasRole; want != got {
-					t.Errorf("want record.HasRole: %t; got: %t", want, got)
-				}
-				if want, got := test.wantHasAttributes, record.HasAttributes; want != got {
-					t.Errorf("want record.HasAttributes: %t; got: %t", want, got)
+				if want, got := test.wantMissing, record.Missing; !reflect.DeepEqual(want, got) {
+					t.Errorf("want record.Missing: %q; got: %q", want, got)
 				}
 			})
 		}
