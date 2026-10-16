@@ -71,7 +71,9 @@ pnpm dev
 go run ./server/cmd/tw
 ```
 
-By default the server keeps sessions in memory, so they are lost on restart and are not shared between processes. To run against a shared store instead, start the local Valkey and point the server at it:
+By default the server keeps sessions in memory, so they are lost on restart and are not shared between processes. That store holds at most 50,000 sessions and 64 MiB: past either limit it drops expired sessions first, then the least recently used. Both limits are configurable, see `.env.example`.
+
+To run against a shared store instead, start the local Valkey and point the server at it:
 
 ```bash
 docker compose up -d
