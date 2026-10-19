@@ -19,9 +19,14 @@ const tokenLength = 32
 // is not a session stored under the requested ID.
 var ErrUndecodable = errors.New("session: undecodable entry")
 
-// ErrNotFound is returned by [Save] when the entry it would replace is no
+// ErrNotFound is returned by [Commit] when the entry it would replace is no
 // longer in store.
 var ErrNotFound = errors.New("session: entry not found")
+
+// ErrSupersededNotDeleted is wrapped by the error [Commit] returns when it has
+// written a session under a new ID but cannot remove the superseded entry under
+// the session's previous ID. The session is committed regardless.
+var ErrSupersededNotDeleted = errors.New("session: superseded entry not deleted")
 
 // Session is one client's state across requests. Obtain one with New or Load;
 // the zero value is not usable. A Session is not safe for concurrent use.
@@ -32,8 +37,8 @@ type Session struct {
 	data      map[string]any
 	destroyed bool
 
-	// storedID is the ID the session was loaded or last saved under, or empty if
-	// it has never been in a store.
+	// storedID is the ID the session was last loaded or committed under, or
+	// empty if it has been neither.
 	storedID string
 }
 
@@ -66,7 +71,7 @@ func New() *Session {
 // there is none.
 //
 // It returns an error wrapping [ErrUndecodable] when the entry is not a
-// session stored under id, or the error from store.
+// session stored under id, or the error from store when store fails.
 func Load(ctx context.Context, store Store, id string) (*Session, error) {
 	data, err := store.Get(ctx, id)
 	if err != nil {
@@ -96,14 +101,28 @@ func Load(ctx context.Context, store Store, id string) (*Session, error) {
 	}, nil
 }
 
-// Save writes sess to store under its ID, to expire after ttl. Entries under
-// the session's previous IDs stay in store.
+// Commit updates store to match sess:
+//   - A destroyed session is removed.
+//   - Any other session is written under its ID, to expire after ttl. If its
+//     ID has changed since it was loaded or last committed, the superseded
+//     entry under its previous ID is then removed.
 //
-// It returns [ErrNotFound], and writes nothing, if sess was loaded or saved
-// under its current ID and that entry is no longer in store. It returns an
-// error if a value set with [Session.Set] cannot be encoded as JSON or another
-// session's entry already uses the ID, or the error from store.
-func Save(ctx context.Context, store Store, sess *Session, ttl time.Duration) error {
+// It returns these errors:
+//   - [ErrNotFound], writing nothing, if sess's ID is unchanged since it was
+//     loaded or last committed but its entry is no longer in store.
+//     A session whose ID has changed is written even then.
+//   - [ErrSupersededNotDeleted], wrapped with the store's error, if sess is
+//     written under its new ID but the superseded entry cannot be removed.
+//     sess is committed regardless, so a later Commit sees its ID as
+//     unchanged.
+//   - An error, writing nothing, if a value set with [Session.Set] cannot be
+//     encoded as JSON or sess's ID is taken by another session.
+//   - The error from store if any other store call fails.
+func Commit(ctx context.Context, store Store, sess *Session, ttl time.Duration) error {
+	if sess.destroyed {
+		return store.Delete(ctx, sess.storedID)
+	}
+
 	data, err := json.Marshal(snapshot{
 		ID:        sess.id,
 		CSRFToken: sess.csrfToken,
@@ -123,7 +142,12 @@ func Save(ctx context.Context, store Store, sess *Session, ttl time.Duration) er
 			return errors.New("session: ID already taken")
 		}
 
+		supersededID := sess.storedID
 		sess.storedID = sess.id
+
+		if err := store.Delete(ctx, supersededID); err != nil {
+			return fmt.Errorf("%w: %w", ErrSupersededNotDeleted, err)
+		}
 
 		return nil
 	}
@@ -146,8 +170,7 @@ func (s *Session) ID() string {
 }
 
 // CSRFToken returns a URL-safe CSRF token for the session. Each call returns a
-// different token, and [Session.VerifyCSRFToken] accepts all of them until
-// [Session.SetUser] is called.
+// different token.
 func (s *Session) CSRFToken() string {
 	return maskToken(s.csrfToken)
 }
@@ -217,6 +240,7 @@ func (s *Session) SetUser(u User) {
 }
 
 // Destroy ends the session, detaching its user and discarding its data.
+// [Commit] then removes it from the store.
 func (s *Session) Destroy() {
 	s.user = nil
 	clear(s.data)
