@@ -66,9 +66,8 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 			logger := LoggerFromContext(r.Context())
 
 			var id string
-			cookie, err := r.Cookie(opts.Name)
-			if err == nil {
-				id = cookie.Value
+			if c, err := r.Cookie(opts.Name); err == nil {
+				id = c.Value
 			}
 
 			sess, err := session.Load(r.Context(), store, id)
@@ -109,8 +108,7 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 						SameSite: http.SameSiteLaxMode,
 					}
 
-					switch {
-					case sess.IsDestroyed():
+					if sess.IsDestroyed() {
 						// Unlike a superseded session, a destroyed one must be gone
 						// before the response says so: a client still holding its ID
 						// would otherwise stay logged in.
@@ -122,37 +120,38 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 						// A zero MaxAge omits the attribute rather than expiring the
 						// cookie.
 						cookie.MaxAge = -1
-					default:
-						ttl := opts.DefaultTTL
-						if sess.IsAuthenticated() {
-							ttl = opts.AuthenticatedTTL
-						}
+						h.Add("Set-Cookie", cookie.String())
 
-						err := session.Save(ctx, store, sess, ttl)
-						if errors.Is(err, session.ErrNotFound) {
-							// Another request destroyed the session while this one ran, and
-							// may already have sent its own cookie. Saving or sending ours
-							// would sign the client back in.
-							return nil
-						}
-						if err != nil {
-							logger.Error("failed to save session", "err", err)
-							return err
-						}
-
-						cookie.Value = sess.ID()
-						cookie.MaxAge = int(ttl.Seconds())
-
-						// Once the ID changes, the entry under the old one is stale.
-						// Deleting it is best effort: it expires by TTL otherwise.
-						if sess.ID() != initialID {
-							if err := store.Delete(ctx, initialID); err != nil {
-								logger.Error("failed to delete superseded session", "err", err)
-							}
-						}
+						return nil
 					}
 
+					ttl := opts.DefaultTTL
+					if sess.IsAuthenticated() {
+						ttl = opts.AuthenticatedTTL
+					}
+
+					switch err := session.Save(ctx, store, sess, ttl); {
+					case errors.Is(err, session.ErrNotFound):
+						// Another request destroyed the session while this one ran, and
+						// may already have sent its own cookie. Saving or sending ours
+						// would sign the client back in.
+						return nil
+					case err != nil:
+						logger.Error("failed to save session", "err", err)
+						return err
+					}
+
+					cookie.Value = sess.ID()
+					cookie.MaxAge = int(ttl.Seconds())
 					h.Add("Set-Cookie", cookie.String())
+
+					// Once the ID changes, the entry under the old one is stale.
+					// Deleting it is best effort: it expires by TTL otherwise.
+					if sess.ID() != initialID {
+						if err := store.Delete(ctx, initialID); err != nil {
+							logger.Error("failed to delete superseded session", "err", err)
+						}
+					}
 
 					return nil
 				},
