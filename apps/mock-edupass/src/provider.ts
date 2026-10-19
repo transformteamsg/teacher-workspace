@@ -95,6 +95,30 @@ export const accounts: Account[] = [
     cesEmail: 'oscar.lee@example.com',
     groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ROLE_HOD', '5678_TW_ROLE_TEACHER'],
   },
+  {
+    id: 'staff-15',
+    name: 'Priya Nair',
+    cesEmail: 'priya.nair@example.com',
+    groups: ['6101_TW_ROLE_TEACHER', '1234_TW_ROLE_TEACHER', '1234_TW_ROLE_HOD'],
+  },
+  {
+    id: 'staff-16',
+    name: 'Quentin Ong',
+    cesEmail: 'quentin.ong@example.com',
+    groups: ['6101_XX_ROLE_TEACHER'],
+  },
+  {
+    id: 'staff-17',
+    name: 'Rachel Sim',
+    cesEmail: 'rachel.sim@example.com',
+    groups: ['6101_TW_ROLE_SUPERINTENDENT'],
+  },
+  {
+    id: 'staff-18',
+    name: 'Samuel Yeo',
+    cesEmail: 'samuel.yeo@example.com',
+    groups: ['6101_TW_ATTR_CCE'],
+  },
 ];
 
 /**

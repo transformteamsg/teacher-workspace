@@ -747,6 +747,26 @@ describe('POST /token', () => {
         title: 'two base roles at one school and a base role at another',
         groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ROLE_HOD', '5678_TW_ROLE_TEACHER'],
       },
+      {
+        account: 'staff-15',
+        title: 'a base role at an MK school and two base roles at a non-MK school',
+        groups: ['6101_TW_ROLE_TEACHER', '1234_TW_ROLE_TEACHER', '1234_TW_ROLE_HOD'],
+      },
+      {
+        account: 'staff-16',
+        title: "another application's role at an MK school",
+        groups: ['6101_XX_ROLE_TEACHER'],
+      },
+      {
+        account: 'staff-17',
+        title: 'an unrecognized role code at an MK school',
+        groups: ['6101_TW_ROLE_SUPERINTENDENT'],
+      },
+      {
+        account: 'staff-18',
+        title: 'an attribute at an MK school and no base role',
+        groups: ['6101_TW_ATTR_CCE'],
+      },
     ];
 
     for (const { account, title, groups } of groupsFixtures) {
