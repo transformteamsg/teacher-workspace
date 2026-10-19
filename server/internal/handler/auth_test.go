@@ -2820,6 +2820,7 @@ type logRecord struct {
 	EdupassID string   `json:"edupass_id"`
 	Codes     []string `json:"codes"`
 	Roles     []string `json:"roles"`
+	Missing   []string `json:"missing"`
 }
 
 // decodeLogRecords returns the records in logs, the output of a
