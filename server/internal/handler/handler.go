@@ -109,6 +109,7 @@ func (h *Handler) Routes(store session.Store) http.Handler {
 
 	app := http.NewServeMux()
 	app.HandleFunc("GET /login", h.login)
+	app.HandleFunc("POST /logout", h.logout)
 	app.HandleFunc("GET /auth/edupass", h.authEdupass)
 	app.HandleFunc("GET /auth/edupass/callback", h.authEdupassCallback)
 	app.Handle("/api/", middleware.RequireAuth(renderUnauthorized)(h.proxy()))

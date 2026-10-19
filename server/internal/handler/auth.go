@@ -46,6 +46,25 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// logout destroys the session, logging out its user if it has one, and
+// redirects to the login page.
+//
+// It responds with 500 if the request has no session.
+func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.LoggerFromContext(r.Context())
+
+	sess, ok := middleware.SessionFromContext(r.Context())
+	if !ok {
+		logger.Error("no session found in context")
+		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+		return
+	}
+
+	sess.Destroy()
+
+	httputil.Redirect(w, logger, http.StatusSeeOther, "/login")
+}
+
 const (
 	sessionKeyEdupassReturnTo     = "edupass_return_to"
 	sessionKeyEdupassState        = "edupass_state"
