@@ -77,21 +77,8 @@ func (h *Handler) proxy() http.Handler {
 
 		// A user without an Edupass ID, email, role or attributes has no claims
 		// that a remote app backend could act on.
-		var missing []string
-		if u.ID == "" {
-			missing = append(missing, "edupass_id")
-		}
-		if u.Email == "" {
-			missing = append(missing, "email")
-		}
-		if u.Role == "" {
-			missing = append(missing, "role")
-		}
-		if u.Attributes == nil {
-			missing = append(missing, "attributes")
-		}
-		if len(missing) > 0 {
-			logger.Error("missing claims found in user", "missing", missing)
+		if u.ID == "" || u.Email == "" || u.Role == "" || u.Attributes == nil {
+			logger.Error("incomplete user found in session")
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
 				Message: http.StatusText(http.StatusInternalServerError),
 			})

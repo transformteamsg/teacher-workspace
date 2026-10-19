@@ -301,10 +301,9 @@ func TestHandler_proxy(t *testing.T) {
 		}
 
 		tests := []struct {
-			name        string
-			withCtx     func(context.Context) context.Context
-			wantMsg     string
-			wantMissing []string
+			name    string
+			withCtx func(context.Context) context.Context
+			wantMsg string
 		}{
 			{
 				name:    "when the request has no session",
@@ -325,8 +324,7 @@ func TestHandler_proxy(t *testing.T) {
 					sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"edupass_id"},
+				wantMsg: "incomplete user found in session",
 			},
 			{
 				name: "when the user has no email",
@@ -335,8 +333,7 @@ func TestHandler_proxy(t *testing.T) {
 					sess.SetUser(session.User{ID: "staff-1", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"email"},
+				wantMsg: "incomplete user found in session",
 			},
 			{
 				name: "when the user has no role",
@@ -345,8 +342,7 @@ func TestHandler_proxy(t *testing.T) {
 					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"role"},
+				wantMsg: "incomplete user found in session",
 			},
 			{
 				name: "when the user has no attributes",
@@ -355,29 +351,7 @@ func TestHandler_proxy(t *testing.T) {
 					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"attributes"},
-			},
-			{
-				name: "when the user has no Edupass ID, email, role or attributes",
-				withCtx: func(ctx context.Context) context.Context {
-					sess := session.New()
-					sess.SetUser(session.User{})
-					return middleware.WithSession(ctx, sess)
-				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"edupass_id", "email", "role", "attributes"},
-			},
-			{
-				// An empty list still counts as having attributes.
-				name: "when the user has no role and an empty attributes list",
-				withCtx: func(ctx context.Context) context.Context {
-					sess := session.New()
-					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{}})
-					return middleware.WithSession(ctx, sess)
-				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"role"},
+				wantMsg: "incomplete user found in session",
 			},
 		}
 
@@ -401,9 +375,6 @@ func TestHandler_proxy(t *testing.T) {
 				}
 				if want, got := test.wantMsg, records[0].Msg; want != got {
 					t.Errorf("want records[0].Msg: %q; got: %q", want, got)
-				}
-				if want, got := test.wantMissing, records[0].Missing; !reflect.DeepEqual(want, got) {
-					t.Errorf("want records[0].Missing: %q; got: %q", want, got)
 				}
 			})
 		}
