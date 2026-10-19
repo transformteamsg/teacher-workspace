@@ -230,6 +230,14 @@ func TestHandler_proxy(t *testing.T) {
 				},
 			},
 			{
+				name: "when the user has no email",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{ID: "staff-1", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
+					return middleware.WithSession(ctx, sess)
+				},
+			},
+			{
 				name: "when the user has no role",
 				withCtx: func(ctx context.Context) context.Context {
 					sess := session.New()
@@ -321,6 +329,16 @@ func TestHandler_proxy(t *testing.T) {
 				wantMissing: []string{"edupass_id"},
 			},
 			{
+				name: "when the user has no email",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{ID: "staff-1", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg:     "missing claims found in user",
+				wantMissing: []string{"email"},
+			},
+			{
 				name: "when the user has no role",
 				withCtx: func(ctx context.Context) context.Context {
 					sess := session.New()
@@ -341,14 +359,14 @@ func TestHandler_proxy(t *testing.T) {
 				wantMissing: []string{"attributes"},
 			},
 			{
-				name: "when the user has no Edupass ID, role or attributes",
+				name: "when the user has no Edupass ID, email, role or attributes",
 				withCtx: func(ctx context.Context) context.Context {
 					sess := session.New()
-					sess.SetUser(session.User{Email: "teacher@example.com"})
+					sess.SetUser(session.User{})
 					return middleware.WithSession(ctx, sess)
 				},
 				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"edupass_id", "role", "attributes"},
+				wantMissing: []string{"edupass_id", "email", "role", "attributes"},
 			},
 			{
 				// An empty list still counts as having attributes.
@@ -484,7 +502,7 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
-	t.Run("carries the signed-in user's stored Edupass ID, role and attributes in the JWT", func(t *testing.T) {
+	t.Run("carries the signed-in user's stored Edupass ID, email, role and attributes in the JWT", func(t *testing.T) {
 		const signingKey = "posts-string-secret-at-least-256-bits-long"
 		h := &Handler{
 			cfg: &config.Config{
@@ -521,7 +539,7 @@ func TestHandler_proxy(t *testing.T) {
 				sess := session.New()
 				sess.SetUser(session.User{
 					ID:         "staff-1",
-					Email:      "teacher@example.com",
+					Email:      "john_tan@schools.gov.sg",
 					Role:       "ROLE_TEACHER",
 					Attributes: test.attributes,
 				})
@@ -546,6 +564,7 @@ func TestHandler_proxy(t *testing.T) {
 				var claims struct {
 					jwt.RegisteredClaims
 
+					Email         string   `json:"email"`
 					Role          string   `json:"role"`
 					EffectiveRole string   `json:"effective_role"`
 					Attributes    []string `json:"attributes"`
@@ -561,6 +580,9 @@ func TestHandler_proxy(t *testing.T) {
 
 				if want, got := "staff-1", claims.Subject; want != got {
 					t.Errorf("want claims.Subject: %q; got: %q", want, got)
+				}
+				if want, got := "john_tan@schools.gov.sg", claims.Email; want != got {
+					t.Errorf("want claims.Email: %q; got: %q", want, got)
 				}
 				if want, got := "ROLE_TEACHER", claims.Role; want != got {
 					t.Errorf("want claims.Role: %q; got: %q", want, got)

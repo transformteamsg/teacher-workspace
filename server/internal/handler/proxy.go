@@ -75,11 +75,14 @@ func (h *Handler) proxy() http.Handler {
 			return
 		}
 
-		// A user without an Edupass ID, role or attributes has no claims that a
-		// remote app backend could act on.
+		// A user without an Edupass ID, email, role or attributes has no claims
+		// that a remote app backend could act on.
 		var missing []string
 		if u.ID == "" {
 			missing = append(missing, "edupass_id")
+		}
+		if u.Email == "" {
+			missing = append(missing, "email")
 		}
 		if u.Role == "" {
 			missing = append(missing, "role")
@@ -99,7 +102,8 @@ func (h *Handler) proxy() http.Handler {
 		claims := struct {
 			jwt.RegisteredClaims
 
-			Role string `json:"role"`
+			Email string `json:"email"`
+			Role  string `json:"role"`
 			// EffectiveRole duplicates Role for PG. Remove it once PG reads role.
 			EffectiveRole string   `json:"effective_role"`
 			Attributes    []string `json:"attributes"`
@@ -110,6 +114,7 @@ func (h *Handler) proxy() http.Handler {
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 
+			Email:         u.Email,
 			Role:          u.Role,
 			EffectiveRole: u.Role,
 			Attributes:    u.Attributes,
