@@ -432,6 +432,8 @@ func loginURL(returnTo, errCode string) string {
 	return "/login?" + q.Encode()
 }
 
+// hasMultipleLocations reports whether locations contains more than one
+// distinct value. It is false for an empty or single-entry slice.
 func hasMultipleLocations(locations []string) bool {
 	for _, location := range locations {
 		if location != locations[0] {
@@ -527,7 +529,8 @@ func isMKSchoolCode(code string) bool {
 type edupassRole struct {
 	// location is the location code the role was granted at.
 	location string
-	// code is the role code
+	// code is the base role code with the location and app code stripped, such
+	// as "ROLE_TEACHER".
 	code string
 }
 
