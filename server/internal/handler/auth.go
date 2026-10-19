@@ -421,13 +421,10 @@ var edupassRoleLabels = map[string]string{
 }
 
 // edupassRoleLabel returns the name shown to users for an Edupass base role
-// code. It returns code itself when the code is unrecognized, so a resolved
-// role never renders blank.
+// code, or "" when the code is unrecognized. authEdupassCallback stores only
+// recognized codes, so a stored role always has a label.
 func edupassRoleLabel(code string) string {
-	if label, ok := edupassRoleLabels[code]; ok {
-		return label
-	}
-	return code
+	return edupassRoleLabels[code]
 }
 
 // isRecognizedEdupassAttribute reports whether code is an attribute Edupass

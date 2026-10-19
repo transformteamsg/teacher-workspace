@@ -2802,11 +2802,11 @@ func TestEdupassRoleLabel(t *testing.T) {
 		}
 	})
 
-	t.Run("returns the code unchanged when it is unrecognized", func(t *testing.T) {
+	t.Run("returns an empty label when the code is unrecognized", func(t *testing.T) {
 		label := edupassRoleLabel("ROLE_UNKNOWN")
 
-		if want := "ROLE_UNKNOWN"; want != label {
-			t.Errorf("want label: %q; got: %q", want, label)
+		if label != "" {
+			t.Errorf("want label: empty; got: %q", label)
 		}
 	})
 }
