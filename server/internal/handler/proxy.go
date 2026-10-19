@@ -105,10 +105,10 @@ func (h *Handler) proxy() http.Handler {
 			Attributes    []string `json:"attributes"`
 		}{
 			Issuer:    "tw",
-			Audience:  jwt.ClaimStrings{b.audience},
-			IssuedAt:  jwt.NewNumericDate(issuedAt),
-			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
 			Subject:   u.ID,
+			Audience:  jwt.ClaimStrings{b.audience},
+			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
+			IssuedAt:  jwt.NewNumericDate(issuedAt),
 
 			Role:          u.Role,
 			EffectiveRole: u.Role,
