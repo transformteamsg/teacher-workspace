@@ -46,8 +46,8 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// logout logs the user out by destroying their session, and redirects them to
-// the login page. A session with no user is left as it is.
+// logout destroys the session, logging out its user if it has one, and
+// redirects to the login page.
 //
 // It responds with 500 if the request has no session.
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
@@ -60,9 +60,7 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if sess.IsAuthenticated() {
-		sess.Destroy()
-	}
+	sess.Destroy()
 
 	httputil.Redirect(w, logger, http.StatusSeeOther, "/login")
 }

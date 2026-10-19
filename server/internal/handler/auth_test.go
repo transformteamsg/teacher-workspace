@@ -204,7 +204,7 @@ func TestHandler_logout(t *testing.T) {
 		}
 	})
 
-	t.Run("logs out and redirects to the login page when the session is authenticated", func(t *testing.T) {
+	t.Run("destroys the session and redirects to the login page when the session is authenticated", func(t *testing.T) {
 		h, err := New(newEdupassConfig())
 		if err != nil {
 			t.Fatalf("New: %v", err)
@@ -230,14 +230,13 @@ func TestHandler_logout(t *testing.T) {
 		}
 	})
 
-	t.Run("keeps the session and redirects to the login page when the session is unauthenticated", func(t *testing.T) {
+	t.Run("destroys the session and redirects to the login page when the session is unauthenticated", func(t *testing.T) {
 		h, err := New(newEdupassConfig())
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
 
 		sess := session.New()
-		sess.Set(sessionKeyEdupassState, "test-state")
 		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 		ctx = middleware.WithSession(ctx, sess)
 		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
@@ -245,11 +244,8 @@ func TestHandler_logout(t *testing.T) {
 
 		h.logout(rec, req)
 
-		if sess.IsDestroyed() {
-			t.Error("want sess.IsDestroyed(): false; got: true")
-		}
-		if _, ok := sess.Get[string](sessionKeyEdupassState); !ok {
-			t.Error("want sess.Get[string](sessionKeyEdupassState) ok: true; got: false")
+		if !sess.IsDestroyed() {
+			t.Error("want sess.IsDestroyed(): true; got: false")
 		}
 		if want, got := http.StatusSeeOther, rec.Code; want != got {
 			t.Errorf("want status: %d; got: %d", want, got)
