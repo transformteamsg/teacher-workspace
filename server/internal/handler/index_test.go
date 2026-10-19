@@ -175,6 +175,10 @@ func TestHandler_index(t *testing.T) {
 
 		h.index().ServeHTTP(rec, req)
 
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Fatalf("want status: %d; got: %d", want, got)
+		}
+
 		payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
 		var state struct {
 			User json.RawMessage `json:"user"`
