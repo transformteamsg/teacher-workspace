@@ -358,7 +358,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			"roles", roleCodes,
 			"locations", locations,
 		)
-		httputil.Redirect(w, logger, http.StatusFound, loginFailedURLWithCode(returnTo, errCode))
+		httputil.Redirect(w, logger, http.StatusFound, loginURL(returnTo, errCode))
 		return
 	}
 
@@ -378,7 +378,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 // requested URL to return to.
 func redirectToLogin(w http.ResponseWriter, r *http.Request) {
 	logger := middleware.LoggerFromContext(r.Context())
-	httputil.Redirect(w, logger, http.StatusSeeOther, loginURL(r.URL.RequestURI()))
+	httputil.Redirect(w, logger, http.StatusSeeOther, loginURL(r.URL.RequestURI(), ""))
 }
 
 // renderUnauthorized writes a 401 JSON error response.
@@ -421,10 +421,14 @@ func safeReturnTo(candidate, fallback string) string {
 	return candidate
 }
 
-// loginURL returns the login page URL, carrying returnTo.
-func loginURL(returnTo string) string {
+// loginURL returns the login page URL, carrying returnTo and, when errCode is
+// not empty, the error code.
+func loginURL(returnTo, errCode string) string {
 	q := url.Values{}
 	q.Set("return_to", returnTo)
+	if errCode != "" {
+		q.Set("error", errCode)
+	}
 	return "/login?" + q.Encode()
 }
 
@@ -440,16 +444,7 @@ func hasMultipleLocations(locations []string) bool {
 // loginFailedURL returns the login page URL for a failed login, carrying
 // returnTo and the generic [loginErrOAuth2CallbackFailed] error code.
 func loginFailedURL(returnTo string) string {
-	return loginFailedURLWithCode(returnTo, loginErrOAuth2CallbackFailed)
-}
-
-// loginFailedURLWithCode returns the login page URL for a failed login,
-// carrying errCode and returnTo.
-func loginFailedURLWithCode(returnTo, errCode string) string {
-	q := url.Values{}
-	q.Set("error", errCode)
-	q.Set("return_to", returnTo)
-	return "/login?" + q.Encode()
+	return loginURL(returnTo, loginErrOAuth2CallbackFailed)
 }
 
 const (
