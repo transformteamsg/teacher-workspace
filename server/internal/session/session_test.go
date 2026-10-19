@@ -47,7 +47,7 @@ func TestLoad(t *testing.T) {
 
 	t.Run("returns store error", func(t *testing.T) {
 		storeErr := errors.New("store unavailable")
-		store := &fakeStore{prepareErr: storeErr}
+		store := &fakeStore{getErr: storeErr}
 
 		_, err := Load(t.Context(), store, "id-1")
 
@@ -227,6 +227,123 @@ func TestSave(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a new session whose ID is already taken", func(t *testing.T) {
+		sess := New()
+		store := &fakeStore{entries: map[string][]byte{sess.ID(): []byte("other")}}
+
+		err := Save(t.Context(), store, sess, time.Hour)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if errors.Is(err, ErrNotFound) {
+			t.Errorf("want err: not %v; got: %v", ErrNotFound, err)
+		}
+		if want, got := "other", string(store.entries[sess.ID()]); want != got {
+			t.Errorf("want store entry: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("adds an entry for a loaded session given a new ID", func(t *testing.T) {
+		store := &fakeStore{}
+		saved := New()
+		if err := Save(t.Context(), store, saved, time.Hour); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, saved.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.SetUser(User{Email: "a@example.com"})
+		if want, got := saved.ID(), loaded.ID(); want == got {
+			t.Fatalf("want loaded.ID(): != %q; got: %q", want, got)
+		}
+
+		err = Save(t.Context(), store, loaded, time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if _, ok := store.entries[loaded.ID()]; !ok {
+			t.Error("want store.entries[loaded.ID()] ok: true; got: false")
+		}
+	})
+
+	t.Run("replaces the entry of a loaded session with TTL", func(t *testing.T) {
+		store := &fakeStore{}
+		saved := New()
+		if err := Save(t.Context(), store, saved, time.Hour); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, saved.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.Set("key", "new")
+
+		err = Save(t.Context(), store, loaded, 2*time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		var stored snapshot
+		if err := json.Unmarshal(store.entries[loaded.ID()], &stored); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := "new", stored.Data["key"]; want != got {
+			t.Errorf("want stored.Data[\"key\"]: %q; got: %v", want, got)
+		}
+		if want, got := 2*time.Hour, store.ttls[loaded.ID()]; want != got {
+			t.Errorf("want ttl: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("replaces the entry of a session it saved before", func(t *testing.T) {
+		store := &fakeStore{}
+		sess := New()
+		if err := Save(t.Context(), store, sess, time.Hour); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		sess.Set("key", "new")
+
+		err := Save(t.Context(), store, sess, time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		var stored snapshot
+		if err := json.Unmarshal(store.entries[sess.ID()], &stored); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := "new", stored.Data["key"]; want != got {
+			t.Errorf("want stored.Data[\"key\"]: %q; got: %v", want, got)
+		}
+	})
+
+	t.Run("rejects a loaded session whose entry is no longer in store", func(t *testing.T) {
+		store := &fakeStore{}
+		saved := New()
+		if err := Save(t.Context(), store, saved, time.Hour); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, saved.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if err := store.Delete(t.Context(), saved.ID()); err != nil {
+			t.Fatalf("store.Delete: %v", err)
+		}
+
+		err = Save(t.Context(), store, loaded, time.Hour)
+
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("want err: %v; got: %v", ErrNotFound, err)
+		}
+		if _, ok := store.entries[saved.ID()]; ok {
+			t.Error("want store.entries[saved.ID()] ok: false; got: true")
+		}
+	})
+
 	t.Run("returns error when a value cannot be encoded as JSON", func(t *testing.T) {
 		store := &fakeStore{}
 		sess := New()
@@ -239,15 +356,34 @@ func TestSave(t *testing.T) {
 		}
 	})
 
-	t.Run("returns store error", func(t *testing.T) {
-		commitErr := errors.New("store unavailable")
-		store := &fakeStore{commitErr: commitErr}
+	t.Run("returns store error when adding an entry", func(t *testing.T) {
+		createErr := errors.New("store unavailable")
+		store := &fakeStore{createErr: createErr}
 		sess := New()
 
 		err := Save(t.Context(), store, sess, time.Hour)
 
-		if !errors.Is(err, commitErr) {
-			t.Errorf("want err: %v; got: %v", commitErr, err)
+		if !errors.Is(err, createErr) {
+			t.Errorf("want err: %v; got: %v", createErr, err)
+		}
+	})
+
+	t.Run("returns store error when replacing an entry", func(t *testing.T) {
+		updateErr := errors.New("store unavailable")
+		store := &fakeStore{updateErr: updateErr}
+		saved := New()
+		if err := Save(t.Context(), store, saved, time.Hour); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, saved.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+
+		err = Save(t.Context(), store, loaded, time.Hour)
+
+		if !errors.Is(err, updateErr) {
+			t.Errorf("want err: %v; got: %v", updateErr, err)
 		}
 	})
 }
@@ -625,26 +761,30 @@ func TestSession_IsDestroyed(t *testing.T) {
 var _ Store = (*fakeStore)(nil)
 
 // fakeStore is a Store that holds entries in a map and never expires them. It
-// records the TTL of each committed entry. When prepareErr or commitErr is set,
-// Prepare or Commit returns it without touching the entries.
+// records the TTL of each stored entry. When getErr, createErr or updateErr is
+// set, Get, Create or Update returns it without touching the entries.
 type fakeStore struct {
-	entries    map[string][]byte
-	ttls       map[string]time.Duration
-	prepareErr error
-	commitErr  error
+	entries   map[string][]byte
+	ttls      map[string]time.Duration
+	getErr    error
+	createErr error
+	updateErr error
 }
 
-func (s *fakeStore) Prepare(_ context.Context, id string) ([]byte, error) {
-	if s.prepareErr != nil {
-		return nil, s.prepareErr
+func (s *fakeStore) Get(_ context.Context, id string) ([]byte, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
 	}
 
 	return s.entries[id], nil
 }
 
-func (s *fakeStore) Commit(_ context.Context, id string, data []byte, ttl time.Duration) error {
-	if s.commitErr != nil {
-		return s.commitErr
+func (s *fakeStore) Create(_ context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
+	if s.createErr != nil {
+		return false, s.createErr
+	}
+	if _, ok := s.entries[id]; ok {
+		return false, nil
 	}
 
 	if s.entries == nil {
@@ -656,10 +796,24 @@ func (s *fakeStore) Commit(_ context.Context, id string, data []byte, ttl time.D
 	s.entries[id] = data
 	s.ttls[id] = ttl
 
-	return nil
+	return true, nil
 }
 
-func (s *fakeStore) Drop(_ context.Context, id string) error {
+func (s *fakeStore) Update(_ context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
+	if s.updateErr != nil {
+		return false, s.updateErr
+	}
+	if _, ok := s.entries[id]; !ok {
+		return false, nil
+	}
+
+	s.entries[id] = data
+	s.ttls[id] = ttl
+
+	return true, nil
+}
+
+func (s *fakeStore) Delete(_ context.Context, id string) error {
 	delete(s.entries, id)
 	delete(s.ttls, id)
 

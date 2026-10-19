@@ -206,7 +206,7 @@ func TestSession(t *testing.T) {
 			id:   "id-1",
 			data: "session data",
 		})
-		store.prepareErr = errors.New("store unavailable")
+		store.getErr = errors.New("store unavailable")
 
 		opts := SessionOptions{
 			Name:             "sid",
@@ -239,9 +239,9 @@ func TestSession(t *testing.T) {
 		if got := rec.Result().Header.Values("Set-Cookie"); len(got) != 0 {
 			t.Errorf("want Set-Cookie: empty; got: %q", got)
 		}
-		data, err := store.Store.Prepare(t.Context(), "id-1")
+		data, err := store.Store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("memstore.Store.Prepare: %v", err)
+			t.Fatalf("memstore.Store.Get: %v", err)
 		}
 		if want, got := "session data", string(data); want != got {
 			t.Errorf("want string(data): %q; got: %q", want, got)
@@ -250,7 +250,7 @@ func TestSession(t *testing.T) {
 
 	t.Run("logs an error when the store fails to load the session", func(t *testing.T) {
 		store := newFakeStore(t)
-		store.prepareErr = errors.New("store unavailable")
+		store.getErr = errors.New("store unavailable")
 
 		opts := SessionOptions{
 			Name:             "sid",
@@ -332,9 +332,9 @@ func TestSession(t *testing.T) {
 		if got := rec.Result().Header.Values("Set-Cookie"); len(got) != 0 {
 			t.Errorf("want Set-Cookie: empty; got: %q", got)
 		}
-		data, err := store.Store.Prepare(t.Context(), "id-1")
+		data, err := store.Store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("memstore.Store.Prepare: %v", err)
+			t.Fatalf("memstore.Store.Get: %v", err)
 		}
 		if want, got := "session data", string(data); want != got {
 			t.Errorf("want string(data): %q; got: %q", want, got)
@@ -364,11 +364,11 @@ func TestSession(t *testing.T) {
 
 		Session(store, opts)(next).ServeHTTP(rec, req)
 
-		if len(store.commits) == 0 {
-			t.Fatal("want store.commits: non-empty; got: empty")
+		if len(store.writes) == 0 {
+			t.Fatal("want store.writes: non-empty; got: empty")
 		}
-		if want, got := opts.DefaultTTL, store.commits[len(store.commits)-1].ttl; want != got {
-			t.Errorf("want commit TTL: %v; got: %v", want, got)
+		if want, got := opts.DefaultTTL, store.writes[len(store.writes)-1].ttl; want != got {
+			t.Errorf("want write TTL: %v; got: %v", want, got)
 		}
 		cookies := rec.Result().Cookies()
 		if len(cookies) == 0 {
@@ -416,11 +416,11 @@ func TestSession(t *testing.T) {
 		if !loaded.IsAuthenticated() {
 			t.Fatal("want loaded.IsAuthenticated(): true; got: false")
 		}
-		if len(store.commits) == 0 {
-			t.Fatal("want store.commits: non-empty; got: empty")
+		if len(store.writes) == 0 {
+			t.Fatal("want store.writes: non-empty; got: empty")
 		}
-		if want, got := opts.AuthenticatedTTL, store.commits[len(store.commits)-1].ttl; want != got {
-			t.Errorf("want commit TTL: %v; got: %v", want, got)
+		if want, got := opts.AuthenticatedTTL, store.writes[len(store.writes)-1].ttl; want != got {
+			t.Errorf("want write TTL: %v; got: %v", want, got)
 		}
 		cookies := rec.Result().Cookies()
 		if len(cookies) == 0 {
@@ -464,11 +464,11 @@ func TestSession(t *testing.T) {
 		if !loaded.IsAuthenticated() {
 			t.Fatal("want loaded.IsAuthenticated(): true; got: false")
 		}
-		if len(store.commits) == 0 {
-			t.Fatal("want store.commits: non-empty; got: empty")
+		if len(store.writes) == 0 {
+			t.Fatal("want store.writes: non-empty; got: empty")
 		}
-		if want, got := opts.AuthenticatedTTL, store.commits[len(store.commits)-1].ttl; want != got {
-			t.Errorf("want commit TTL: %v; got: %v", want, got)
+		if want, got := opts.AuthenticatedTTL, store.writes[len(store.writes)-1].ttl; want != got {
+			t.Errorf("want write TTL: %v; got: %v", want, got)
 		}
 		cookies := rec.Result().Cookies()
 		if len(cookies) == 0 {
@@ -595,9 +595,9 @@ func TestSession(t *testing.T) {
 		if loaded == nil {
 			t.Fatal("want loaded: non-nil; got: nil")
 		}
-		data, err := store.Store.Prepare(t.Context(), loaded.ID())
+		data, err := store.Store.Get(t.Context(), loaded.ID())
 		if err != nil {
-			t.Fatalf("memstore.Store.Prepare: %v", err)
+			t.Fatalf("memstore.Store.Get: %v", err)
 		}
 		if data == nil {
 			t.Error("want data: non-nil; got: nil")
@@ -626,8 +626,8 @@ func TestSession(t *testing.T) {
 
 		Session(store, opts)(next).ServeHTTP(rec, req)
 
-		if want, got := 1, len(store.commits); want != got {
-			t.Errorf("want len(store.commits): %d; got: %d", want, got)
+		if want, got := 1, len(store.writes); want != got {
+			t.Errorf("want len(store.writes): %d; got: %d", want, got)
 		}
 	})
 
@@ -658,9 +658,9 @@ func TestSession(t *testing.T) {
 		if loaded == nil {
 			t.Fatal("want loaded: non-nil; got: nil")
 		}
-		data, err := store.Store.Prepare(t.Context(), loaded.ID())
+		data, err := store.Store.Get(t.Context(), loaded.ID())
 		if err != nil {
-			t.Fatalf("memstore.Store.Prepare: %v", err)
+			t.Fatalf("memstore.Store.Get: %v", err)
 		}
 		if data == nil {
 			t.Error("want data: non-nil; got: nil")
@@ -676,7 +676,7 @@ func TestSession(t *testing.T) {
 		}
 
 		store := newFakeStore(t)
-		store.commitErr = errors.New("store unavailable")
+		store.writeErr = errors.New("store unavailable")
 
 		opts := SessionOptions{
 			Name:             "sid",
@@ -720,7 +720,7 @@ func TestSession(t *testing.T) {
 
 	t.Run("logs an error when the session cannot be saved", func(t *testing.T) {
 		store := newFakeStore(t)
-		store.commitErr = errors.New("store unavailable")
+		store.writeErr = errors.New("store unavailable")
 
 		opts := SessionOptions{
 			Name:             "sid",
@@ -758,7 +758,7 @@ func TestSession(t *testing.T) {
 
 	t.Run("responds with a 500 when the handler writes nothing and the session cannot be saved", func(t *testing.T) {
 		store := newFakeStore(t)
-		store.commitErr = errors.New("store unavailable")
+		store.writeErr = errors.New("store unavailable")
 
 		opts := SessionOptions{
 			Name:             "sid",
@@ -975,9 +975,9 @@ func TestSession(t *testing.T) {
 		if want, got := seeded.ID(), loaded.ID(); want == got {
 			t.Fatalf("want loaded.ID(): != %q; got: %q", want, got)
 		}
-		newData, err := store.Store.Prepare(t.Context(), loaded.ID())
+		newData, err := store.Store.Get(t.Context(), loaded.ID())
 		if err != nil {
-			t.Fatalf("memstore.Store.Prepare: %v", err)
+			t.Fatalf("memstore.Store.Get: %v", err)
 		}
 		if newData == nil {
 			t.Error("want newData: non-nil; got: nil")
@@ -989,9 +989,9 @@ func TestSession(t *testing.T) {
 		if want, got := loaded.ID(), cookies[0].Value; want != got {
 			t.Errorf("want cookies[0].Value: %q; got: %q", want, got)
 		}
-		oldData, err := store.Store.Prepare(t.Context(), seeded.ID())
+		oldData, err := store.Store.Get(t.Context(), seeded.ID())
 		if err != nil {
-			t.Fatalf("memstore.Store.Prepare: %v", err)
+			t.Fatalf("memstore.Store.Get: %v", err)
 		}
 		if oldData != nil {
 			t.Error("want oldData: nil; got: non-nil")
@@ -1034,11 +1034,11 @@ func TestSession(t *testing.T) {
 		if want, got := seeded.ID(), loaded.ID(); want != got {
 			t.Fatalf("want loaded.ID(): %q; got: %q", want, got)
 		}
-		if len(store.commits) == 0 {
-			t.Fatal("want store.commits: non-empty; got: empty")
+		if len(store.writes) == 0 {
+			t.Fatal("want store.writes: non-empty; got: empty")
 		}
-		if want, got := seeded.ID(), store.commits[len(store.commits)-1].id; want != got {
-			t.Errorf("want commit ID: %q; got: %q", want, got)
+		if want, got := seeded.ID(), store.writes[len(store.writes)-1].id; want != got {
+			t.Errorf("want write ID: %q; got: %q", want, got)
 		}
 		cookies := rec.Result().Cookies()
 		if len(cookies) == 0 {
@@ -1047,9 +1047,9 @@ func TestSession(t *testing.T) {
 		if want, got := seeded.ID(), cookies[0].Value; want != got {
 			t.Errorf("want cookies[0].Value: %q; got: %q", want, got)
 		}
-		data, err := store.Store.Prepare(t.Context(), seeded.ID())
+		data, err := store.Store.Get(t.Context(), seeded.ID())
 		if err != nil {
-			t.Fatalf("memstore.Store.Prepare: %v", err)
+			t.Fatalf("memstore.Store.Get: %v", err)
 		}
 		if data == nil {
 			t.Error("want data: non-nil; got: nil")
@@ -1058,7 +1058,7 @@ func TestSession(t *testing.T) {
 
 	t.Run("completes the request when the store fails to remove the session under the old ID", func(t *testing.T) {
 		store := newFakeStore(t)
-		store.dropErr = errors.New("store unavailable")
+		store.deleteErr = errors.New("store unavailable")
 		seeded := session.New()
 		if err := session.Save(t.Context(), store.Store, seeded, time.Hour); err != nil {
 			t.Fatalf("session.Save: %v", err)
@@ -1112,7 +1112,7 @@ func TestSession(t *testing.T) {
 
 	t.Run("logs an error when the store fails to remove the session under the old ID", func(t *testing.T) {
 		store := newFakeStore(t)
-		store.dropErr = errors.New("store unavailable")
+		store.deleteErr = errors.New("store unavailable")
 		seeded := session.New()
 		if err := session.Save(t.Context(), store.Store, seeded, time.Hour); err != nil {
 			t.Fatalf("session.Save: %v", err)
@@ -1161,7 +1161,7 @@ func TestSession(t *testing.T) {
 		if want, got := slog.LevelError.String(), records[0].Level; want != got {
 			t.Errorf("want records[0].Level: %q; got: %q", want, got)
 		}
-		if want, got := "failed to drop superseded session", records[0].Msg; want != got {
+		if want, got := "failed to delete superseded session", records[0].Msg; want != got {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
 		if want, got := "store unavailable", records[0].Err; !strings.Contains(got, want) {
@@ -1203,9 +1203,9 @@ func TestSession(t *testing.T) {
 
 		Session(store, opts)(next).ServeHTTP(rec, req)
 
-		data, err := store.Store.Prepare(t.Context(), seeded.ID())
+		data, err := store.Store.Get(t.Context(), seeded.ID())
 		if err != nil {
-			t.Fatalf("memstore.Store.Prepare: %v", err)
+			t.Fatalf("memstore.Store.Get: %v", err)
 		}
 		if data != nil {
 			t.Error("want data: nil; got: non-nil")
@@ -1237,8 +1237,8 @@ func TestSession(t *testing.T) {
 
 		Session(store, opts)(next).ServeHTTP(rec, req)
 
-		if got := store.commits; len(got) != 0 {
-			t.Errorf("want store.commits: empty; got: %v", got)
+		if got := store.writes; len(got) != 0 {
+			t.Errorf("want store.writes: empty; got: %v", got)
 		}
 	})
 
@@ -1287,7 +1287,7 @@ func TestSession(t *testing.T) {
 
 	t.Run("replaces the handler's response with a 500 when the destroyed session cannot be removed", func(t *testing.T) {
 		store := newFakeStore(t)
-		store.dropErr = errors.New("store unavailable")
+		store.deleteErr = errors.New("store unavailable")
 
 		opts := SessionOptions{
 			Name:             "sid",
@@ -1326,7 +1326,7 @@ func TestSession(t *testing.T) {
 
 	t.Run("logs an error when the destroyed session cannot be removed", func(t *testing.T) {
 		store := newFakeStore(t)
-		store.dropErr = errors.New("store unavailable")
+		store.deleteErr = errors.New("store unavailable")
 
 		opts := SessionOptions{
 			Name:             "sid",
@@ -1359,11 +1359,174 @@ func TestSession(t *testing.T) {
 		if want, got := slog.LevelError.String(), records[0].Level; want != got {
 			t.Errorf("want records[0].Level: %q; got: %q", want, got)
 		}
-		if want, got := "failed to drop destroyed session", records[0].Msg; want != got {
+		if want, got := "failed to delete destroyed session", records[0].Msg; want != got {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
 		if want, got := "store unavailable", records[0].Err; !strings.Contains(got, want) {
 			t.Errorf("want records[0].Err: containing %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not save a session that is no longer in the store", func(t *testing.T) {
+		store := newFakeStore(t)
+		seeded := session.New()
+		seeded.SetUser(session.User{Email: "teacher@example.com"})
+		if err := session.Save(t.Context(), store.Store, seeded, time.Hour); err != nil {
+			t.Fatalf("session.Save: %v", err)
+		}
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+		}
+
+		// Deleting the entry mid-request stands in for another request
+		// destroying the session.
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if err := store.Store.Delete(r.Context(), seeded.ID()); err != nil {
+				t.Errorf("memstore.Store.Delete: %v", err)
+			}
+			_, _ = w.Write([]byte("ok"))
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		req.AddCookie(&http.Cookie{
+			Name:  opts.Name,
+			Value: seeded.ID(),
+		})
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		data, err := store.Store.Get(t.Context(), seeded.ID())
+		if err != nil {
+			t.Fatalf("memstore.Store.Get: %v", err)
+		}
+		if data != nil {
+			t.Error("want data: nil; got: non-nil")
+		}
+	})
+
+	t.Run("does not set the session cookie when the session is no longer in the store", func(t *testing.T) {
+		store := newFakeStore(t)
+		seeded := session.New()
+		seeded.SetUser(session.User{Email: "teacher@example.com"})
+		if err := session.Save(t.Context(), store.Store, seeded, time.Hour); err != nil {
+			t.Fatalf("session.Save: %v", err)
+		}
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+		}
+
+		// Deleting the entry mid-request stands in for another request
+		// destroying the session.
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if err := store.Store.Delete(r.Context(), seeded.ID()); err != nil {
+				t.Errorf("memstore.Store.Delete: %v", err)
+			}
+			_, _ = w.Write([]byte("ok"))
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		req.AddCookie(&http.Cookie{
+			Name:  opts.Name,
+			Value: seeded.ID(),
+		})
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		if got := rec.Result().Header.Values("Set-Cookie"); len(got) != 0 {
+			t.Errorf("want Set-Cookie: empty; got: %q", got)
+		}
+	})
+
+	t.Run("keeps the handler's response when the session is no longer in the store", func(t *testing.T) {
+		store := newFakeStore(t)
+		seeded := session.New()
+		if err := session.Save(t.Context(), store.Store, seeded, time.Hour); err != nil {
+			t.Fatalf("session.Save: %v", err)
+		}
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+		}
+
+		// Deleting the entry mid-request stands in for another request
+		// destroying the session.
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if err := store.Store.Delete(r.Context(), seeded.ID()); err != nil {
+				t.Errorf("memstore.Store.Delete: %v", err)
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte("hello, world"))
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		req.AddCookie(&http.Cookie{
+			Name:  opts.Name,
+			Value: seeded.ID(),
+		})
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		if want, got := http.StatusCreated, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+		if want, got := "hello, world", rec.Body.String(); want != got {
+			t.Errorf("want rec.Body: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("sets Cache-Control to no-store when the session is no longer in the store", func(t *testing.T) {
+		store := newFakeStore(t)
+		seeded := session.New()
+		if err := session.Save(t.Context(), store.Store, seeded, time.Hour); err != nil {
+			t.Fatalf("session.Save: %v", err)
+		}
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+		}
+
+		// Deleting the entry mid-request stands in for another request
+		// destroying the session.
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if err := store.Store.Delete(r.Context(), seeded.ID()); err != nil {
+				t.Errorf("memstore.Store.Delete: %v", err)
+			}
+			w.Header().Set("Cache-Control", "public, max-age=60")
+			_, _ = w.Write([]byte("ok"))
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		req.AddCookie(&http.Cookie{
+			Name:  opts.Name,
+			Value: seeded.ID(),
+		})
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		if want, got := []string{"no-store"}, rec.Result().Header.Values("Cache-Control"); !slices.Equal(want, got) {
+			t.Errorf("want Cache-Control: %q; got: %q", want, got)
 		}
 	})
 
@@ -1712,20 +1875,21 @@ func TestSessionResponseWriter_Hijack(t *testing.T) {
 var _ session.Store = (*fakeStore)(nil)
 
 // fakeStore is a session.Store backed by a memstore.Store. It records every
-// Commit call. When prepareErr, commitErr, or dropErr is set, the matching
-// method returns it without touching the entries.
+// Create and Update call. When getErr is set, Get returns it; when writeErr is
+// set, Create and Update return it; when deleteErr is set, Delete returns it.
+// None of them touches the entries when returning an error.
 type fakeStore struct {
 	*memstore.Store
 
-	prepareErr error
-	commitErr  error
-	dropErr    error
+	getErr    error
+	writeErr  error
+	deleteErr error
 
-	commits []commitCall
+	writes []writeCall
 }
 
-// commitCall represents one fakeStore.Commit call.
-type commitCall struct {
+// writeCall represents one fakeStore.Create or fakeStore.Update call.
+type writeCall struct {
 	id  string
 	ttl time.Duration
 }
@@ -1742,40 +1906,52 @@ func newFakeStore(t *testing.T, seeds ...entry) *fakeStore {
 
 	store := &fakeStore{Store: memstore.New()}
 	for _, e := range seeds {
-		if err := store.Store.Commit(t.Context(), e.id, []byte(e.data), time.Hour); err != nil {
-			t.Fatalf("memstore.Store.Commit: %v", err)
+		if _, err := store.Store.Create(t.Context(), e.id, []byte(e.data), time.Hour); err != nil {
+			t.Fatalf("memstore.Store.Create: %v", err)
 		}
 	}
 
 	return store
 }
 
-func (s *fakeStore) Prepare(ctx context.Context, id string) ([]byte, error) {
-	if s.prepareErr != nil {
-		return nil, s.prepareErr
+func (s *fakeStore) Get(ctx context.Context, id string) ([]byte, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
 	}
 
-	return s.Store.Prepare(ctx, id)
+	return s.Store.Get(ctx, id)
 }
 
-func (s *fakeStore) Commit(ctx context.Context, id string, data []byte, ttl time.Duration) error {
-	s.commits = append(s.commits, commitCall{
+func (s *fakeStore) Create(ctx context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
+	s.writes = append(s.writes, writeCall{
 		id:  id,
 		ttl: ttl,
 	})
-	if s.commitErr != nil {
-		return s.commitErr
+	if s.writeErr != nil {
+		return false, s.writeErr
 	}
 
-	return s.Store.Commit(ctx, id, data, ttl)
+	return s.Store.Create(ctx, id, data, ttl)
 }
 
-func (s *fakeStore) Drop(ctx context.Context, id string) error {
-	if s.dropErr != nil {
-		return s.dropErr
+func (s *fakeStore) Update(ctx context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
+	s.writes = append(s.writes, writeCall{
+		id:  id,
+		ttl: ttl,
+	})
+	if s.writeErr != nil {
+		return false, s.writeErr
 	}
 
-	return s.Store.Drop(ctx, id)
+	return s.Store.Update(ctx, id, data, ttl)
+}
+
+func (s *fakeStore) Delete(ctx context.Context, id string) error {
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+
+	return s.Store.Delete(ctx, id)
 }
 
 // statusRecordingWriter is an [httptest.ResponseRecorder] that records every

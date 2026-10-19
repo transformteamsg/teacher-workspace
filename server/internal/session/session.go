@@ -11,25 +11,6 @@ import (
 	"github.com/transformteamsg/teacher-workspace/server/pkg/random"
 )
 
-// Store persists encoded sessions by ID until their TTL elapses.
-// Implementations must be safe for concurrent use. If the context is already
-// done when a method is called, the method returns an error wrapping the
-// context's error and leaves the entries unchanged.
-type Store interface {
-	// Prepare returns the bytes last committed under id, or (nil, nil) when id
-	// is empty, has no entry, or its entry has expired.
-	Prepare(ctx context.Context, id string) ([]byte, error)
-
-	// Commit stores data under id for ttl, replacing any existing entry. When id
-	// is empty or ttl is not positive, it returns an error and leaves the entries
-	// unchanged.
-	Commit(ctx context.Context, id string, data []byte, ttl time.Duration) error
-
-	// Drop removes the entry under id. It is a no-op when id is empty or has no
-	// entry.
-	Drop(ctx context.Context, id string) error
-}
-
 // tokenLength is the length, in characters, of session IDs and of CSRF tokens
 // before masking.
 const tokenLength = 32
@@ -37,6 +18,10 @@ const tokenLength = 32
 // ErrUndecodable is wrapped by the error [Load] returns when the entry it reads
 // is not a session stored under the requested ID.
 var ErrUndecodable = errors.New("session: undecodable entry")
+
+// ErrNotFound is returned by [Save] when the entry it would replace is no
+// longer in store.
+var ErrNotFound = errors.New("session: entry not found")
 
 // Session is one client's state across requests. Obtain one with New or Load;
 // the zero value is not usable. A Session is not safe for concurrent use.
@@ -46,6 +31,10 @@ type Session struct {
 	user      *User
 	data      map[string]any
 	destroyed bool
+
+	// storedID is the ID the session was loaded or last saved under, or empty if
+	// it has never been in a store.
+	storedID string
 }
 
 // snapshot is the stored form of a Session.
@@ -79,7 +68,7 @@ func New() *Session {
 // It returns an error wrapping [ErrUndecodable] when the entry is not a
 // session stored under id, or the error from store.
 func Load(ctx context.Context, store Store, id string) (*Session, error) {
-	data, err := store.Prepare(ctx, id)
+	data, err := store.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -92,10 +81,10 @@ func Load(ctx context.Context, store Store, id string) (*Session, error) {
 		return nil, fmt.Errorf("%w: %w", ErrUndecodable, err)
 	}
 	if snap.ID != id {
-		return nil, fmt.Errorf("%w: ID mismatch", ErrUndecodable)
+		return nil, fmt.Errorf("%w: holds a different session ID", ErrUndecodable)
 	}
 	if snap.CSRFToken == "" {
-		return nil, fmt.Errorf("%w: no CSRF token", ErrUndecodable)
+		return nil, fmt.Errorf("%w: missing CSRF token", ErrUndecodable)
 	}
 
 	return &Session{
@@ -103,15 +92,17 @@ func Load(ctx context.Context, store Store, id string) (*Session, error) {
 		csrfToken: snap.CSRFToken,
 		user:      snap.User,
 		data:      snap.Data,
+		storedID:  snap.ID,
 	}, nil
 }
 
-// Save writes sess to store under its ID, to expire after ttl. An entry stored
-// under an ID the session had before [Session.SetUser] stays in store until it
-// expires or is dropped.
+// Save writes sess to store under its ID, to expire after ttl. Entries under
+// the session's previous IDs stay in store.
 //
-// It returns an error when a value set with [Session.Set] cannot be encoded as
-// JSON, or the error from store.
+// It returns [ErrNotFound], and writes nothing, if sess was loaded or saved
+// under its current ID and that entry is no longer in store. It returns an
+// error if a value set with [Session.Set] cannot be encoded as JSON or another
+// session's entry already uses the ID, or the error from store.
 func Save(ctx context.Context, store Store, sess *Session, ttl time.Duration) error {
 	data, err := json.Marshal(snapshot{
 		ID:        sess.id,
@@ -120,10 +111,32 @@ func Save(ctx context.Context, store Store, sess *Session, ttl time.Duration) er
 		Data:      sess.data,
 	})
 	if err != nil {
-		return fmt.Errorf("session: encode: %w", err)
+		return fmt.Errorf("session: unencodable value: %w", err)
 	}
 
-	return store.Commit(ctx, sess.id, data, ttl)
+	if sess.id != sess.storedID {
+		created, err := store.Create(ctx, sess.id, data, ttl)
+		if err != nil {
+			return err
+		}
+		if !created {
+			return errors.New("session: ID already taken")
+		}
+
+		sess.storedID = sess.id
+
+		return nil
+	}
+
+	updated, err := store.Update(ctx, sess.id, data, ttl)
+	if err != nil {
+		return err
+	}
+	if !updated {
+		return ErrNotFound
+	}
+
+	return nil
 }
 
 // ID returns the session's opaque identifier, used as the session cookie value
