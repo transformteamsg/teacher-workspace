@@ -382,16 +382,6 @@ const (
 	edupassAttrInfix = "_ATTR_"
 )
 
-// isRecognizedEdupassRole reports whether code is a base role Edupass
-// issues. A staff member is meant to hold exactly one for a location, but
-// Edupass enforces nothing: resolveEdupassGroups reports every one it sees
-// and leaves the "more than one" case to the caller, rather than guessing
-// which was meant. The recognized codes are the keys of edupassRoleLabels.
-func isRecognizedEdupassRole(code string) bool {
-	_, ok := edupassRoleLabels[code]
-	return ok
-}
-
 // edupassRoleLabels maps every Edupass base role code the server recognizes
 // to the name shown to users, as Edupass registers it. Recognizing a new code
 // means adding it here.
@@ -517,7 +507,7 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 			location, _, _ := strings.Cut(entry, "_")
 			if !hasEdupassAppCode(entry, edupassRoleInfix, appCode) || isMKSchoolCode(location) {
 				unrecognized = append(unrecognized, entry)
-			} else if isRecognizedEdupassRole(code) {
+			} else if _, ok := edupassRoleLabels[code]; ok {
 				roles = append(roles, code)
 			} else {
 				unrecognized = append(unrecognized, entry)
