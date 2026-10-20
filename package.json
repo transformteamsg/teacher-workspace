@@ -8,7 +8,7 @@
     "build": "pnpm --filter @teacher-workspace/host build",
     "preview": "pnpm --filter @teacher-workspace/host preview",
     "lint": "oxlint",
-    "format": "oxfmt \"**/*.{js,jsx,ts,tsx,md,html,css,json,jsonc,yaml,toml}\"",
+    "format": "oxfmt \"**/*.{js,jsx,ts,tsx,md,html,css,json,jsonc,yaml,yml,toml}\"",
     "prepare": "lefthook install"
   },
   "devDependencies": {
