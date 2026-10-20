@@ -150,8 +150,7 @@ type User struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 
-	// Role is the resolved role's display label, such as "Teacher", not its
-	// Edupass code.
+	// Role is the resolved role's display label, such as "Teacher".
 	Role string `json:"role"`
 }
 
