@@ -80,6 +80,10 @@ const (
 // The return_to query parameter is the path the user lands on after logging in.
 // If it is missing or unsafe (see [safeReturnTo]), the user lands on "/".
 //
+// In the development environment, the account query parameter is passed on to
+// Edupass with prompt=login, so the mock Edupass signs the user in as that
+// account. In production it is ignored.
+//
 // It responds with 500 if the request has no session.
 func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 	logger := middleware.LoggerFromContext(r.Context()).With("provider", "edupass")
@@ -100,11 +104,24 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 	sess.Set(sessionKeyEdupassNonce, nonce)
 	sess.Set(sessionKeyEdupassCodeVerifier, codeVerifier)
 
-	authURL := h.edupassOAuth2Config.AuthCodeURL(
-		state,
+	authOpts := []oauth2.AuthCodeOption{
 		oauth2.SetAuthURLParam("nonce", nonce),
 		oauth2.S256ChallengeOption(codeVerifier),
-	)
+	}
+
+	// Only the mock Edupass understands "account". Forwarding it in production
+	// would hand a caller-controlled parameter to the real Edupass.
+	if h.cfg.Env == config.EnvDevelopment {
+		if account := r.URL.Query().Get("account"); account != "" {
+			// prompt=login stops the mock Edupass reusing the account from an earlier sign-in.
+			authOpts = append(authOpts,
+				oauth2.SetAuthURLParam("account", account),
+				oauth2.SetAuthURLParam("prompt", "login"),
+			)
+		}
+	}
+
+	authURL := h.edupassOAuth2Config.AuthCodeURL(state, authOpts...)
 
 	httputil.Redirect(w, logger, http.StatusFound, authURL)
 }
