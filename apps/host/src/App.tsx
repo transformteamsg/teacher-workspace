@@ -66,8 +66,8 @@ export default function App() {
                 </ErrorBoundary>
               }
             />
-            <Route path="*" element={<NotFoundView />} />
           </Route>
+          <Route path="*" element={<NotFoundView />} />
         </Routes>
       </TooltipProvider>
     </BrowserRouter>
