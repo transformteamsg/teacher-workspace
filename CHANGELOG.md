@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.0.4 (2026-10-21)
+
+Adds a profile menu in the top right corner that shows the signed-in teacher's name, email and role, and carries the teacher's email to remote app backends as an `email` claim in the TW JWT. No configuration changes.
+
+Versions stay in the `0.0.x` series while the host shell is pre-release, so this is a patch bump despite the features below.
+
+### Features ✨
+
+- feat: show the teacher's name, email and role in a profile menu ([#221](https://github.com/transformteamsg/teacher-workspace/pull/221)) ([0ce6d7b](https://github.com/transformteamsg/teacher-workspace/commit/0ce6d7b))
+- feat(`server/proxy`): add `email` claim to the TW JWT ([#225](https://github.com/transformteamsg/teacher-workspace/pull/225)) ([d03cbd3](https://github.com/transformteamsg/teacher-workspace/commit/d03cbd3))
+
+### Refactors ♻️
+
+- refactor(`server/proxy`): log an incomplete session user with one check ([#229](https://github.com/transformteamsg/teacher-workspace/pull/229)) ([076dcda](https://github.com/transformteamsg/teacher-workspace/commit/076dcda))
+
+### Chores 🧹
+
+- chore(`deps`): bump `oxfmt` from `0.54.0` to `0.72.0` ([#232](https://github.com/transformteamsg/teacher-workspace/pull/232)) ([7c65ca5](https://github.com/transformteamsg/teacher-workspace/commit/7c65ca5))
+- chore(`deps`): bump `oxlint` from `1.69.0` to `1.87.0` ([#231](https://github.com/transformteamsg/teacher-workspace/pull/231)) ([c2d6f9c](https://github.com/transformteamsg/teacher-workspace/commit/c2d6f9c))
+- chore(`deps`): bump `lefthook` from `2.1.9` to `2.2.1` ([#230](https://github.com/transformteamsg/teacher-workspace/pull/230)) ([70278a0](https://github.com/transformteamsg/teacher-workspace/commit/70278a0))
+
 ## 0.0.3 (2026-10-19)
 
 Completes Edupass sign-in end to end: `private_key_jwt` client authentication, ID token claim validation, role resolution into the session, a sign-in gate that sends signed-out page loads to `/login`, and sign-out. The proxied TW JWT now carries `sub` and role claims, and the session package is reworked to carry a CSRF token.
