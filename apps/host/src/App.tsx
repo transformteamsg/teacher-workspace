@@ -10,8 +10,16 @@ import { NotFoundView } from '~/containers/NotFoundView';
 const LoginView = React.lazy(() => import('~/containers/LoginView'));
 const RootLayout = React.lazy(() => import('~/containers/RootLayout'));
 const HomeView = React.lazy(() => import('~/containers/HomeView'));
-const StudentsView = React.lazy(() => import('~/containers/StudentsView'));
 const RemoteLoadFallbackView = React.lazy(() => import('~/containers/RemoteLoadFallbackView'));
+
+const RemoteStudentInsightsView = React.lazy(async () => {
+  const module = await loadRemote<{ default: React.ComponentType }>('student_insights/App');
+  if (!module) {
+    throw new Error('Failed to load remote module');
+  }
+
+  return module;
+});
 
 const RemotePostsView = React.lazy(async () => {
   const module = await loadRemote<{ default: React.ComponentType }>('pg/Posts');
@@ -41,7 +49,18 @@ export default function App() {
           <Route path="/login" element={<LoginView />} />
           <Route element={<RootLayout />}>
             <Route path="/" element={<HomeView />} />
-            <Route path="/students/*" element={<StudentsView />} />
+            <Route
+              path="/students/*"
+              element={
+                <ErrorBoundary
+                  fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
+                >
+                  <React.Suspense fallback={null}>
+                    <RemoteStudentInsightsView />
+                  </React.Suspense>
+                </ErrorBoundary>
+              }
+            />
             <Route
               path="/posts/*"
               element={

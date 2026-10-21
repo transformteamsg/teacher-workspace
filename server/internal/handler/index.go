@@ -17,7 +17,7 @@ func (h *Handler) index() http.Handler {
 		remotes = append(remotes, Remote{Name: "pg", Entry: h.cfg.RemoteApps.PostsManifestURL.String()})
 	}
 	if h.cfg.RemoteApps.IsStudentInsightsRegistered() {
-		remotes = append(remotes, Remote{Name: "si", Entry: h.cfg.RemoteApps.StudentInsightsManifestURL.String()})
+		remotes = append(remotes, Remote{Name: "student_insights", Entry: h.cfg.RemoteApps.StudentInsightsManifestURL.String()})
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
