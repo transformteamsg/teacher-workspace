@@ -8,12 +8,12 @@
     "build": "pnpm --filter @teacher-workspace/host build",
     "preview": "pnpm --filter @teacher-workspace/host preview",
     "lint": "oxlint",
-    "format": "oxfmt \"**/*.{js,jsx,ts,tsx,md,html,css,json,jsonc,yaml,toml}\"",
+    "format": "oxfmt \"**/*.{js,jsx,ts,tsx,md,html,css,json,jsonc,yaml,yml,toml}\"",
     "prepare": "lefthook install"
   },
   "devDependencies": {
     "lefthook": "^2.2.1",
-    "oxfmt": "0.54.0",
+    "oxfmt": "0.72.0",
     "oxlint": "1.87.0"
   },
   "engines": {
