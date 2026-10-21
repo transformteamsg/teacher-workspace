@@ -401,39 +401,39 @@ const (
 	edupassAttrInfix = "_ATTR_"
 )
 
-// isRecognizedEdupassRole reports whether code is a base role Edupass
-// issues. A staff member is meant to hold exactly one for a location, but
-// Edupass enforces nothing: resolveEdupassGroups reports every one it sees
-// and leaves the "more than one" case to the caller, rather than guessing
-// which was meant. Add new codes here as they're recognized.
-func isRecognizedEdupassRole(code string) bool {
-	switch code {
-	case "ROLE_PRINCIPAL",
-		"ROLE_VICE_PRINCIPAL",
-		"ROLE_VICE_PRINCIPAL_ADMINISTRATION",
-		"ROLE_ADMIN_MANAGER",
-		"ROLE_ADMIN_SUPPORT",
-		"ROLE_YEAR_HEAD",
-		"ROLE_ASST_YEAR_HEAD",
-		"ROLE_HOD",
-		"ROLE_SUBJECT_HEAD",
-		"ROLE_LEVEL_HEAD",
-		"ROLE_SSD",
-		"ROLE_LEAD_TEACHER",
-		"ROLE_SNR_TEACHER",
-		"ROLE_TEACHER",
-		"ROLE_SNR_COUNSELLOR",
-		"ROLE_COUNSELLOR",
-		"ROLE_SNR_SEN_OFFICER",
-		"ROLE_SEN_OFFICER",
-		"ROLE_SNR_SWO",
-		"ROLE_SWO",
-		"ROLE_AED_TL",
-		"ROLE_ICT_MANAGER":
-		return true
-	default:
-		return false
-	}
+// edupassRoleLabels maps every Edupass base role code the server recognizes
+// to the name shown to users, as Edupass registers it. Recognizing a new code
+// means adding it here.
+var edupassRoleLabels = map[string]string{
+	"ROLE_PRINCIPAL":                     "Principal",
+	"ROLE_VICE_PRINCIPAL":                "Vice Principal",
+	"ROLE_VICE_PRINCIPAL_ADMINISTRATION": "Vice Principal (Administration)",
+	"ROLE_ADMIN_MANAGER":                 "Administration Manager",
+	"ROLE_ADMIN_SUPPORT":                 "Administrative Support Staff",
+	"ROLE_YEAR_HEAD":                     "Year Head",
+	"ROLE_ASST_YEAR_HEAD":                "Assistant Year Head",
+	"ROLE_HOD":                           "Head of Department",
+	"ROLE_SUBJECT_HEAD":                  "Subject Head",
+	"ROLE_LEVEL_HEAD":                    "Level Head",
+	"ROLE_SSD":                           "School Staff Developer",
+	"ROLE_LEAD_TEACHER":                  "Lead Teacher",
+	"ROLE_SNR_TEACHER":                   "Senior Teacher",
+	"ROLE_TEACHER":                       "Teacher",
+	"ROLE_SNR_COUNSELLOR":                "Senior School Counsellor",
+	"ROLE_COUNSELLOR":                    "School Counsellor",
+	"ROLE_SNR_SEN_OFFICER":               "Senior SEN Officer",
+	"ROLE_SEN_OFFICER":                   "SEN Officer",
+	"ROLE_SNR_SWO":                       "Senior Student Welfare Officer",
+	"ROLE_SWO":                           "Student Welfare Officer",
+	"ROLE_AED_TL":                        "Allied Educator (T&L)",
+	"ROLE_ICT_MANAGER":                   "ICT Manager",
+}
+
+// edupassRoleLabel returns the name shown to users for an Edupass base role
+// code, or "" when the code is unrecognized. authEdupassCallback stores only
+// recognized codes, so a stored role always has a label.
+func edupassRoleLabel(code string) string {
+	return edupassRoleLabels[code]
 }
 
 // isRecognizedEdupassAttribute reports whether code is an attribute Edupass
@@ -526,7 +526,7 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 			location, _, _ := strings.Cut(entry, "_")
 			if !hasEdupassAppCode(entry, edupassRoleInfix, appCode) || isMKSchoolCode(location) {
 				unrecognized = append(unrecognized, entry)
-			} else if isRecognizedEdupassRole(code) {
+			} else if _, ok := edupassRoleLabels[code]; ok {
 				roles = append(roles, code)
 			} else {
 				unrecognized = append(unrecognized, entry)

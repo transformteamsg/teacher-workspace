@@ -30,10 +30,19 @@ func (h *Handler) index() http.Handler {
 			return
 		}
 
-		h.renderIndexTemplate(w, r, &PreloadedState{
+		state := &PreloadedState{
 			CSRFToken: sess.CSRFToken(),
 			Remotes:   remotes,
-		})
+		}
+		if user, ok := sess.User(); ok {
+			state.User = &User{
+				Name:  user.Name,
+				Email: user.Email,
+				Role:  edupassRoleLabel(user.Role),
+			}
+		}
+
+		h.renderIndexTemplate(w, r, state)
 	})
 }
 
