@@ -104,7 +104,7 @@ func TestHandler_index(t *testing.T) {
 					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
 					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
 				},
-				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"si","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
 			},
 			{
 				name: "posts remote only",
@@ -122,7 +122,7 @@ func TestHandler_index(t *testing.T) {
 					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
 					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
 				},
-				want: `[{"name":"si","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				want: `[{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
 			},
 			{
 				name:       "no remotes configured",
