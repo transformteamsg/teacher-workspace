@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## 0.0.4 (2026-10-21)
 
-Adds a profile menu in the top right corner that shows the signed-in teacher's name, email and role, and carries the teacher's email to remote app backends as an `email` claim in the TW JWT. No configuration changes: environments running 0.0.3 deploy this version as is.
+Adds a profile menu in the top right corner that shows the signed-in teacher's name, email and role, and carries the teacher's email to remote app backends as an `email` claim in the TW JWT. No configuration changes.
 
 Versions stay in the `0.0.x` series while the host shell is pre-release, so this is a patch bump despite the features below.
 
