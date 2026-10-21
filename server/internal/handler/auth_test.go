@@ -2254,6 +2254,31 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("logs the user in with their base role at a school when their ID token also carries one at a global location", func(t *testing.T) {
+		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
+			"cesEmail": "john.smith@example.com",
+			"groups":   []string{"1234_TW_ROLE_TEACHER", "X_TW_ROLE_PRINCIPAL"},
+		})
+
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		user, ok := sess.User()
+		if !ok {
+			t.Fatal("want sess.User() ok: true; got: false")
+		}
+		if want, got := "ROLE_TEACHER", user.Role; want != got {
+			t.Errorf("want user.Role: %q; got: %q", want, got)
+		}
+	})
+
 	t.Run("logs a warning when the ID token carries unrecognized Edupass codes", func(t *testing.T) {
 		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
 			"cesEmail": "john.smith@example.com",
@@ -2342,6 +2367,11 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				name:         "unsupported_school_mk when the only base role is at an MK school",
 				groups:       []string{"6101_TW_ROLE_TEACHER"},
 				wantLocation: "/login?error=unsupported_school_mk&return_to=%2Fposts",
+			},
+			{
+				name:         "no_role when the only base role is at a global location",
+				groups:       []string{"X_TW_ROLE_TEACHER"},
+				wantLocation: "/login?error=no_role&return_to=%2Fposts",
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
@@ -2761,6 +2791,9 @@ func TestResolveEdupassGroups(t *testing.T) {
 		if want, got := []string{}, resolved.attributes; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
 		}
+		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
 	})
 
 	t.Run("splits roles and attributes and strips the app code", func(t *testing.T) {
@@ -2845,6 +2878,70 @@ func TestResolveEdupassGroups(t *testing.T) {
 			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
 		}
 		if want, got := []string{"6101_TW_ROLE_HOD"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("reports a base role whose location is not four digits as unrecognized", func(t *testing.T) {
+		for _, test := range []struct {
+			name  string
+			entry string
+		}{
+			{
+				name:  "when the location is the global X",
+				entry: "X_TW_ROLE_TEACHER",
+			},
+			{
+				name:  "when the location is three digits",
+				entry: "123_TW_ROLE_TEACHER",
+			},
+			{
+				name:  "when the location is five digits",
+				entry: "12345_TW_ROLE_TEACHER",
+			},
+			{
+				name:  "when the location is letters",
+				entry: "ABCD_TW_ROLE_TEACHER",
+			},
+			{
+				name:  "when the location is four digits mixed with a letter",
+				entry: "123A_TW_ROLE_TEACHER",
+			},
+			{
+				name:  "when the location is full-width digits",
+				entry: "\uFF11\uFF12\uFF13\uFF14_TW_ROLE_TEACHER",
+			},
+			{
+				name:  "when the location is four bytes long with a non-ASCII digit",
+				entry: "12\u0663_TW_ROLE_TEACHER",
+			},
+			{
+				name:  "when the location is missing",
+				entry: "_TW_ROLE_TEACHER",
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups([]string{test.entry}, config.EdupassAppCodeTW)
+
+				want := edupassGroups{
+					roles:        []edupassRole{},
+					attributes:   []string{},
+					unrecognized: []string{test.entry},
+				}
+				if !reflect.DeepEqual(want, resolved) {
+					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
+				}
+			})
+		}
+	})
+
+	t.Run("reports a base role at a global location without affecting a valid one", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "X_TW_ROLE_PRINCIPAL"}, config.EdupassAppCodeTW)
+
+		if want, got := []edupassRole{{location: "1234", code: "ROLE_TEACHER"}}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		}
+		if want, got := []string{"X_TW_ROLE_PRINCIPAL"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
 		}
 	})

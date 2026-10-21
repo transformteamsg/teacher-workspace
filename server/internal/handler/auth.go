@@ -496,6 +496,20 @@ func isRecognizedEdupassAttribute(code string) bool {
 	}
 }
 
+// isEdupassLocationCode reports whether code is a school's location code:
+// exactly four ASCII digits.
+func isEdupassLocationCode(code string) bool {
+	if len(code) != 4 {
+		return false
+	}
+	for i := 0; i < len(code); i++ {
+		if code[i] < '0' || code[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // isMKSchoolCode reports whether code is the location code of a MOE
 // Kindergarten (MK) school. The cases are the full list of known MK school
 // codes; add new codes here as they're assigned.
@@ -534,8 +548,8 @@ type edupassGroups struct {
 	attributes []string
 	// unrecognized contains every raw entry that didn't split into a
 	// recognized base role or attribute, verbatim, for logging. A base role
-	// at a MOE Kindergarten (MK) school is reported here too, even though
-	// its role code is recognized.
+	// at a MOE Kindergarten (MK) school, or at a location that is not four
+	// digits, is reported here too, even though its role code is recognized.
 	unrecognized []string
 	// removedMKRole reports whether a base role at an MK school was dropped.
 	removedMKRole bool
@@ -565,7 +579,9 @@ type edupassGroups struct {
 // attribute at an MK school still resolves into attributes, because sign-in is
 // granted by a base role alone, so dropping MK base roles is enough to keep
 // MK staff out. removedMKRole reports that one was dropped, counting only an
-// entry that would otherwise have resolved into roles.
+// entry that would otherwise have resolved into roles. A base role whose
+// location code is not four digits, such as the global X, is reported in
+// unrecognized too, since every Teacher Workspace role is tied to a school.
 // resolveEdupassGroups doesn't decide whether sign-in proceeds; the caller
 // refuses unless roles holds exactly one entry.
 func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
@@ -581,7 +597,9 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 			location, _, _ := strings.Cut(entry, "_")
 			_, recognized := edupassRoleLabels[code]
 			switch {
-			case !hasEdupassAppCode(entry, edupassRoleInfix, appCode) || !recognized:
+			case !hasEdupassAppCode(entry, edupassRoleInfix, appCode) ||
+				!recognized ||
+				!isEdupassLocationCode(location):
 				unrecognized = append(unrecognized, entry)
 			case isMKSchoolCode(location):
 				unrecognized = append(unrecognized, entry)
