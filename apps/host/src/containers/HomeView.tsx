@@ -1,200 +1,159 @@
-import AllEars from '~/assets/logos/allears.svg';
-import Allocate from '~/assets/logos/allocate.svg';
-import Appraiser from '~/assets/logos/appraiser.svg';
-import Connectogram from '~/assets/logos/connectogram.svg';
-import Glow from '~/assets/logos/glow.svg';
-import Heytalia from '~/assets/logos/heytalia.svg';
-import Hrp from '~/assets/logos/hrp.svg';
-import Langbuddy from '~/assets/logos/langbuddy.svg';
-import Mysei from '~/assets/logos/mysei.svg';
-import Opal from '~/assets/logos/opal.svg';
-import SchoolCockpit from '~/assets/logos/schoolcockpit.svg';
-import ScMobile from '~/assets/logos/scmobile.svg';
-import Sdis from '~/assets/logos/sdis.svg';
-import Sls from '~/assets/logos/sls.svg';
-import Students from '~/assets/logos/students.svg';
-import Workpal from '~/assets/logos/workpal.svg';
-import { AppCard, type AppCardProps } from '~/components/AppCard';
+import AllEars from '~/assets/logos/allears.svg?react';
+import Allocate from '~/assets/logos/allocate.svg?react';
+import Appraiser from '~/assets/logos/appraiser.svg?react';
+import Connectogram from '~/assets/logos/connectogram.svg?react';
+import Glow from '~/assets/logos/glow.svg?react';
+import Hrp from '~/assets/logos/hrp.svg?react';
+import Langbuddy from '~/assets/logos/langbuddy.svg?react';
+import Mysei from '~/assets/logos/mysei.svg?react';
+import Opal from '~/assets/logos/opal.svg?react';
+import SchoolCockpit from '~/assets/logos/schoolcockpit.svg?react';
+import ScMobile from '~/assets/logos/scmobile.svg?react';
+import Sdis from '~/assets/logos/sdis.svg?react';
+import Sls from '~/assets/logos/sls.svg?react';
+import Students from '~/assets/logos/students.svg?react';
+import Workpal from '~/assets/logos/workpal.svg?react';
+import { type App, FeaturedAppCard } from '~/components/AppCard';
 import { AppSection, type AppSectionProps } from '~/components/AppSection';
 
-type AppSectionData = Pick<AppSectionProps, 'title' | 'description' | 'isFeatured'> & {
-  cards: AppCardProps[];
+const FEATURED_APP: App = {
+  name: 'Student Insights',
+  description: 'Holistic insights that help every student thrive',
+  icon: Students,
+  href: '/students',
+  badge: 'Beta',
 };
 
-const APP_SECTIONS: AppSectionData[] = [
-  {
-    title: 'Featured',
-    isFeatured: true,
-    cards: [
-      {
-        title: 'Student Insights',
-        description: 'Holistic insights that help every student thrive',
-        icon: Students,
-        color: 'purple',
-        href: '/students',
-        badge: 'Beta',
-      },
-    ],
-  },
+const APP_SECTIONS: AppSectionProps[] = [
   {
     title: 'Frequently Used',
-    description: 'Your most frequently used daily tools',
-    cards: [
+    apps: [
       {
-        title: 'School Cockpit',
+        name: 'School Cockpit',
         description: 'Your central hub for school management and daily operations',
         icon: SchoolCockpit,
-        color: 'blue',
         href: 'https://schoolcockpit.moe.gov.sg',
       },
       {
-        title: 'SC Mobile',
+        name: 'SC Mobile',
         description: 'Streamlined attendance management on the go',
         icon: ScMobile,
-        color: 'blue',
         href: 'https://scmobile.moe.edu.sg/login',
       },
       {
-        title: 'SLS',
+        name: 'SLS',
         description: 'Teaching and learning platform for curriculum aligned resources',
         icon: Sls,
-        color: 'green',
         href: 'https://vle.learning.moe.edu.sg/login',
       },
     ],
   },
   {
     title: 'Student Information',
-    description: 'Access and manage student data and records',
-    cards: [
+    apps: [
       {
-        title: 'All Ears',
+        name: 'All Ears',
         description: 'Personalised forms for students, staff, and parents',
         icon: AllEars,
-        color: 'pink',
         href: 'https://forms.moe.edu.sg',
       },
       {
-        title: 'Student Insights',
+        name: 'Student Insights',
         description: 'Holistic insights that help every student thrive',
         icon: Students,
-        color: 'blue',
         href: '/students',
       },
       {
-        title: 'Allocate',
+        name: 'Allocate',
         description: 'Simplify your Full SBB class allocation',
         icon: Allocate,
-        color: 'blue',
         href: 'https://allocate.digital.moe.gov.sg',
       },
       {
-        title: 'SDIS',
+        name: 'SDIS',
         description:
-          'One-stop platform for National School Games, Singapore Youth Festival, Outdoor Adventure Learning Centre, and MOE OBS Challenge',
+          'One-stop platform for National School Games, Singapore Youth Festival, Outdoor Adventure Learning Centre, and MOE OBS Challenge.',
         icon: Sdis,
-        color: 'blue',
         href: 'https://www.sdis.moe.gov.sg/oalc/s/login',
       },
     ],
   },
   {
     title: 'Social-Emotional & Mental Wellbeing (SEConnect)',
-    description: 'Tools for social-emotional learning and student wellbeing',
-    cards: [
+    apps: [
       {
-        title: 'MySEI',
-        description: "Holistic insights for students' social-emotional growth & well-being",
+        name: 'MySEI',
+        description: 'Holistic insights for students’ social-emotional growth & wellbeing',
         icon: Mysei,
-        color: 'blue',
         href: 'https://mysei.digital.moe.gov.sg',
       },
       {
-        title: 'Connecto-gram',
+        name: 'Connecto-gram',
         description: 'Social network analysis for student connectedness and peer relationships',
         icon: Connectogram,
-        color: 'blue',
         href: 'https://forms.moe.edu.sg/sna/manage/forms',
       },
       {
-        title: 'Termly Check-In',
-        description: 'Regular well-being check-ins to support student mental health',
+        name: 'Termly Check-In',
+        description: 'Regular wellbeing check-ins to support student mental health',
         icon: AllEars,
-        color: 'blue',
         href: 'https://forms.moe.edu.sg/dashboards',
       },
     ],
   },
   {
     title: 'AI Productivity Tools',
-    description: 'AI-powered tools to boost your productivity',
-    cards: [
+    apps: [
       {
-        title: 'HeyTalia',
-        description: 'AI-assistant for drafting clear, parent-friendly school communications',
-        icon: Heytalia,
-        color: 'purple',
-        href: 'https://pg.moe.edu.sg',
-      },
-      {
-        title: 'Appraiser',
+        name: 'Appraiser',
         description: 'AI-generated draft student testimonials in seconds',
         icon: Appraiser,
-        color: 'blue',
         href: 'https://smartcompose.gov.sg',
       },
     ],
   },
   {
     title: 'Teaching & Learning',
-    description: 'Tools for teaching, assessment, and learning support',
-    cards: [
+    apps: [
       {
-        title: 'LangBuddy',
+        name: 'LangBuddy',
         description:
           'AI conversational chatbot for Mother Tongue Language learning for Secondary Schools',
         icon: Langbuddy,
-        color: 'blue',
         href: 'https://langbuddy.moe.edu.sg',
       },
     ],
   },
   {
     title: 'Admin',
-    description: 'Administrative and school management tools',
-    cards: [
+    apps: [
       {
-        title: 'Workpal',
+        name: 'Workpal',
         description: 'Your workplace management companion',
         icon: Workpal,
-        color: 'blue',
         href: 'https://app.workpal.gov.sg',
       },
       {
-        title: 'HR and Payroll portal (HRP)',
+        name: 'HR and Payroll Portal (HRP)',
         description: 'One-stop platform for staff to manage leave, claims, and HR admin tasks',
         icon: Hrp,
-        color: 'blue',
         href: 'https://www.hrp.gov.sg',
       },
     ],
   },
   {
     title: 'Professional Development',
-    description: 'Professional growth and learning platforms',
-    cards: [
+    apps: [
       {
-        title: 'OPAL 2.0',
+        name: 'OPAL 2.0',
         description: 'One-stop portal for professional learning',
         icon: Opal,
-        color: 'blue',
         href: 'https://idm.opal2.moe.edu.sg',
       },
       {
-        title: 'Glow',
+        name: 'Glow',
         description: 'Bite-sized daily learning in just 5 minutes',
         icon: Glow,
-        color: 'blue',
         href: 'https://glow.digital.moe.gov.sg/home',
       },
     ],
@@ -210,17 +169,18 @@ function getGreeting(): string {
 
 export default function HomeView() {
   return (
-    <main className="tw:mx-auto tw:flex tw:max-w-3xl tw:flex-col tw:gap-8 tw:px-4 tw:py-8">
-      <h1 className="tw:text-center tw:text-2xl tw:font-semibold tw:text-foreground">
+    <main className="tw:mx-auto tw:flex tw:max-w-page tw:flex-col tw:gap-8 tw:px-4 tw:py-4.5">
+      <h1 className="tw:py-0 tw:text-center tw:text-2xl tw:font-semibold tw:text-foreground">
         {getGreeting()}
       </h1>
 
-      {APP_SECTIONS.map(({ title, description, cards, isFeatured }) => (
-        <AppSection key={title} title={title} description={description} isFeatured={isFeatured}>
-          {cards.map((card) => (
-            <AppCard key={card.title} isFeatured={isFeatured} {...card} />
-          ))}
-        </AppSection>
+      <section className="tw:flex tw:flex-col tw:gap-4">
+        <h2 className="tw:text-lg tw:font-semibold tw:text-foreground">Featured</h2>
+        <FeaturedAppCard {...FEATURED_APP} />
+      </section>
+
+      {APP_SECTIONS.map((section) => (
+        <AppSection key={section.title} {...section} />
       ))}
     </main>
   );
