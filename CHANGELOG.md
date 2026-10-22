@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.0.5 (2026-10-22)
+
+Loads Student Insights from its remote app at `/students`, in place of the placeholder page, and shows a helpful 404 page for unknown URLs. No configuration changes: the Student Insights remote is registered as `student_insights` and must expose `./App`.
+
+Versions stay in the `0.0.x` series while the host shell is pre-release, so this is a patch bump despite the features below.
+
+### Features ✨
+
+- feat(`host`): show a helpful 404 page for unknown URLs ([#253](https://github.com/transformteamsg/teacher-workspace/pull/253)) ([198cb71](https://github.com/transformteamsg/teacher-workspace/commit/198cb71))
+- feat: load Student Insights from its remote app at `/students` ([#251](https://github.com/transformteamsg/teacher-workspace/pull/251)) ([a5f6fb5](https://github.com/transformteamsg/teacher-workspace/commit/a5f6fb5))
+
+### Chores 🧹
+
+- chore(`deps`): bump `go` from `1.27.1` to `1.27.3` ([#257](https://github.com/transformteamsg/teacher-workspace/pull/257)) ([07620f6](https://github.com/transformteamsg/teacher-workspace/commit/07620f6))
+- chore(`deps`): bump `tailwindcss` from `4.3.0` to `4.3.3` and `@rsbuild/plugin-tailwindcss` from `2.0.2` to `2.0.3` ([#245](https://github.com/transformteamsg/teacher-workspace/pull/245)) ([996d61e](https://github.com/transformteamsg/teacher-workspace/commit/996d61e))
+- chore(`deps`): bump `@module-federation/enhanced` and `@module-federation/rsbuild-plugin` from `2.5.1` to `2.9.2` ([#242](https://github.com/transformteamsg/teacher-workspace/pull/242)) ([2c9e9c2](https://github.com/transformteamsg/teacher-workspace/commit/2c9e9c2))
+- chore(`deps`): bump `@rsbuild/core` from `2.0.15` to `2.2.13` and `@rsbuild/plugin-react` from `2.0.1` to `2.1.1` ([#241](https://github.com/transformteamsg/teacher-workspace/pull/241)) ([5f9d217](https://github.com/transformteamsg/teacher-workspace/commit/5f9d217))
+
 ## 0.0.4 (2026-10-21)
 
 Adds a profile menu in the top right corner that shows the signed-in teacher's name, email and role, and carries the teacher's email to remote app backends as an `email` claim in the TW JWT. No configuration changes.
