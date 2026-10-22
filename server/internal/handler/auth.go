@@ -331,13 +331,6 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 	if len(resolved.roles) != 1 {
-		roleCodes := make([]string, 0, len(resolved.roles))
-		locations := make([]string, 0, len(resolved.roles))
-		for _, role := range resolved.roles {
-			roleCodes = append(roleCodes, role.code)
-			locations = append(locations, role.location)
-		}
-
 		errCode := loginErrNoRole
 		switch {
 		case len(resolved.roles) > 1:
@@ -347,8 +340,14 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		}
 
 		reason := errCode
-		if hasMultipleLocations(locations) {
-			reason = logReasonMultipleLocations
+		roleCodes := make([]string, 0, len(resolved.roles))
+		locations := make([]string, 0, len(resolved.roles))
+		for _, role := range resolved.roles {
+			roleCodes = append(roleCodes, role.code)
+			locations = append(locations, role.location)
+			if role.location != resolved.roles[0].location {
+				reason = logReasonMultipleLocations
+			}
 		}
 
 		logger.Warn(
@@ -430,17 +429,6 @@ func loginURL(returnTo, errCode string) string {
 		q.Set("error", errCode)
 	}
 	return "/login?" + q.Encode()
-}
-
-// hasMultipleLocations reports whether locations contains more than one
-// distinct value. It is false for an empty or single-entry slice.
-func hasMultipleLocations(locations []string) bool {
-	for _, location := range locations {
-		if location != locations[0] {
-			return true
-		}
-	}
-	return false
 }
 
 // loginFailedURL returns the login page URL for a failed login, carrying
