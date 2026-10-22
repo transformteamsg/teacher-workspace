@@ -60,6 +60,7 @@
 
 @theme inline {
   --font-sans: 'Inter Variable', sans-serif;
+  --container-page: 760px;
 
   --color-slate-1: var(--slate-1);
   --color-slate-2: var(--slate-2);

@@ -1,22 +1,18 @@
-import React from 'react';
+import { type App, AppCard } from '~/components/AppCard';
 
-import { cn } from '~/helpers/cn';
-
-export interface AppSectionProps extends React.PropsWithChildren {
+export interface AppSectionProps {
   title: string;
-  description?: string;
-  isFeatured?: boolean;
+  apps: App[];
 }
 
-export function AppSection({ title, description, isFeatured, children }: AppSectionProps) {
+export function AppSection({ title, apps }: AppSectionProps) {
   return (
     <section className="tw:flex tw:flex-col tw:gap-4">
-      <div className="tw:flex tw:flex-col tw:gap-1">
-        <h2 className="tw:text-lg tw:font-semibold tw:text-foreground">{title}</h2>
-        {description && <p className="tw:text-sm tw:text-muted-foreground">{description}</p>}
-      </div>
-      <div className={cn('tw:grid tw:grid-cols-1 tw:gap-4', !isFeatured && 'tw:sm:grid-cols-3')}>
-        {children}
+      <h2 className="tw:text-lg tw:font-semibold tw:text-foreground">{title}</h2>
+      <div className="tw:grid tw:grid-cols-1 tw:gap-4 tw:rounded-2xl tw:sm:grid-cols-3">
+        {apps.map((app) => (
+          <AppCard key={app.name} {...app} />
+        ))}
       </div>
     </section>
   );
