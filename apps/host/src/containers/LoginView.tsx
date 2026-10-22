@@ -32,7 +32,7 @@ const loginErrors: Record<LoginErrorCode, { title: string; description: string }
   oauth2_callback_failed: {
     title: "We couldn't sign you in with Edupass.",
     description:
-      'Choose Sign in with Edupass to try again. If it keeps failing, ask your Edupass (MIMS) Local Administrator.',
+      'Choose Sign in with Edupass to try again. If it keeps failing, ask the SSoE Administrator.',
   },
 };
 
