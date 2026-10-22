@@ -1,11 +1,13 @@
 import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
 import { defineConfig } from '@rsbuild/core';
 import { pluginReact } from '@rsbuild/plugin-react';
+import { pluginSvgr } from '@rsbuild/plugin-svgr';
 import { pluginTailwindcss } from '@rsbuild/plugin-tailwindcss';
 
 export default defineConfig({
   plugins: [
     pluginReact(),
+    pluginSvgr(),
     pluginTailwindcss(),
     pluginModuleFederation({
       name: 'teacher_workspace',
