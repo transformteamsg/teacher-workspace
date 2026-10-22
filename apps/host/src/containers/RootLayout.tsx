@@ -11,9 +11,11 @@ export default function RootLayout() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="tw:flex tw:h-14 tw:items-center tw:px-4">
-          <SidebarTrigger className="tw:md:hidden" />
-          <div className="tw:ml-auto">
+        <header className="tw:sticky tw:top-0 tw:z-30 tw:flex tw:h-14 tw:items-center tw:justify-between tw:bg-background tw:px-2">
+          <div className="tw:flex tw:items-center tw:gap-2">
+            <SidebarTrigger />
+          </div>
+          <div className="tw:flex tw:items-center tw:gap-2">
             <ProfileMenu />
           </div>
         </header>
