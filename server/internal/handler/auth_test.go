@@ -432,6 +432,7 @@ func TestHandler_authEdupass(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
+		// New would load index.html in production, so flip Env after construction: the handler reads h.cfg.Env on each request.
 		cfg.Env = config.EnvProduction
 
 		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
@@ -464,7 +465,7 @@ func TestHandler_authEdupass(t *testing.T) {
 		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 		ctx = middleware.WithSession(ctx, session.New())
 
-		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass?account=", nil)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass", nil)
 		rec := httptest.NewRecorder()
 
 		h.authEdupass(rec, req)
