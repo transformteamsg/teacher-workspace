@@ -1,12 +1,14 @@
 'use client';
 
 import { mergeProps } from '@base-ui/react/merge-props';
+import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip';
 import { useRender } from '@base-ui/react/use-render';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { PanelLeftIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '~/components/ui/button';
+import { DrawerHostProvider } from '~/components/ui/drawer';
 import { Input } from '~/components/ui/input';
 import { Separator } from '~/components/ui/separator';
 import {
@@ -17,15 +19,20 @@ import {
   SheetTitle,
 } from '~/components/ui/sheet';
 import { Skeleton } from '~/components/ui/skeleton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
+import { TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
 import { cn } from '~/helpers/cn';
-import { useIsMobile } from '~/hooks/use-mobile';
+import { useIsPhone, useIsTablet } from '~/hooks/use-mobile';
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state';
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_TABLET_COOKIE_NAME = 'sidebar_tablet_state';
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = '16rem';
 const SIDEBAR_WIDTH_MOBILE = '18rem';
-const SIDEBAR_WIDTH_ICON = '4.5rem';
+// The rail is exactly as wide as an expanded icon plus its padding: the group's
+// 0.5rem, the menu button's 0.5rem, the 1rem icon, and the same padding back
+// out. Collapsing therefore trims the labels and leaves every icon where it
+// already was.
+const SIDEBAR_WIDTH_ICON = '3rem';
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b';
 
 interface SidebarContextProps {
@@ -36,6 +43,20 @@ interface SidebarContextProps {
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
+}
+
+// Only 'true' and 'false' count. Anything else, such as a truncated cookie or
+// an absent one, is null: no preference, which the caller answers with its
+// own default rather than by guessing.
+function readSidebarCookie(name: string): boolean | null {
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  if (match?.[1] === 'true') return true;
+  if (match?.[1] === 'false') return false;
+  return null;
+}
+
+function writeSidebarCookie(name: string, value: boolean) {
+  document.cookie = `${name}=${value}; path=/; samesite=lax; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
@@ -51,6 +72,7 @@ function useSidebar() {
 
 function SidebarProvider({
   defaultOpen = true,
+  defaultTabletExpanded = false,
   open: openProp,
   onOpenChange: setOpenProp,
   className,
@@ -59,15 +81,36 @@ function SidebarProvider({
   ...props
 }: React.ComponentProps<'div'> & {
   defaultOpen?: boolean;
+  defaultTabletExpanded?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const isMobile = useIsMobile();
+  // Off-canvas drawer on phones only; tablets get the collapsed icon rail.
+  const isMobile = useIsPhone();
+  const isTablet = useIsTablet();
   const [openMobile, setOpenMobile] = React.useState(false);
+
+  // Tablet shows the icon rail by default but can be expanded on demand. The
+  // expand choice is persisted, so once expanded it is remembered across
+  // reloads, like the desktop open/closed preference, and never silently
+  // reverts to the rail.
+  const [tabletExpanded, _setTabletExpanded] = React.useState(
+    () => readSidebarCookie(SIDEBAR_TABLET_COOKIE_NAME) ?? defaultTabletExpanded,
+  );
+  const setTabletExpanded = React.useCallback(
+    (value: boolean | ((value: boolean) => boolean)) => {
+      const next = typeof value === 'function' ? value(tabletExpanded) : value;
+      _setTabletExpanded(next);
+      writeSidebarCookie(SIDEBAR_TABLET_COOKIE_NAME, next);
+    },
+    [tabletExpanded],
+  );
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen);
+  const [_open, _setOpen] = React.useState(
+    () => readSidebarCookie(SIDEBAR_COOKIE_NAME) ?? defaultOpen,
+  );
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -78,16 +121,17 @@ function SidebarProvider({
         _setOpen(openState);
       }
 
-      // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+      writeSidebarCookie(SIDEBAR_COOKIE_NAME, openState);
     },
     [setOpenProp, open],
   );
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
-  }, [isMobile, setOpen, setOpenMobile]);
+    if (isMobile) return setOpenMobile((open) => !open);
+    if (isTablet) return setTabletExpanded((expanded) => !expanded);
+    return setOpen((open) => !open);
+  }, [isMobile, isTablet, setOpen, setOpenMobile, setTabletExpanded]);
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
@@ -104,40 +148,82 @@ function SidebarProvider({
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
-  const state = open ? 'expanded' : 'collapsed';
+  // Tablet uses its own expand state (defaults to the collapsed icon rail);
+  // desktop uses the persisted open/closed preference.
+  const effectiveOpen = isTablet ? tabletExpanded : open;
+  const state = effectiveOpen ? 'expanded' : 'collapsed';
 
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
       state,
-      open,
+      open: effectiveOpen,
       setOpen,
       isMobile,
       openMobile,
       setOpenMobile,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+    [state, effectiveOpen, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
   );
+
+  // A docked drawer takes width from the page, so the first one to open
+  // collapses an expanded sidebar and the last one to close expands it again.
+  // A sidebar the teacher had already collapsed is left collapsed. On phones
+  // the drawer covers the page instead, so it only closes the off-canvas
+  // sidebar.
+  const dockedCount = React.useRef(0);
+  const dockedCollapsedSidebar = React.useRef(false);
+  const dockedSidebarState = React.useRef(state);
+  const dockedSetOpen = React.useRef(setOpen);
+  // A layout effect, so the refs are current before any drawer's passive
+  // effect reports a docked open or close.
+  React.useLayoutEffect(() => {
+    dockedSidebarState.current = state;
+    dockedSetOpen.current = setOpen;
+  });
+  const onDockedOpenChange = React.useCallback((active: boolean, drawerIsMobile: boolean) => {
+    if (!active) return;
+    if (drawerIsMobile) {
+      setOpenMobile(false);
+      return;
+    }
+    dockedCount.current += 1;
+    if (dockedSidebarState.current === 'expanded' && !dockedCollapsedSidebar.current) {
+      dockedCollapsedSidebar.current = true;
+      dockedSetOpen.current(false);
+    }
+    return () => {
+      dockedCount.current -= 1;
+      if (dockedCount.current === 0 && dockedCollapsedSidebar.current) {
+        dockedCollapsedSidebar.current = false;
+        dockedSetOpen.current(true);
+      }
+    };
+  }, []);
 
   return (
     <SidebarContext.Provider value={contextValue}>
-      <div
-        data-slot="sidebar-wrapper"
-        style={
-          {
-            '--sidebar-width': SIDEBAR_WIDTH,
-            '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
-            ...style,
-          } as React.CSSProperties
-        }
-        className={cn(
-          'tw:group/sidebar-wrapper tw:flex tw:min-h-svh tw:w-full tw:has-data-[variant=inset]:bg-sidebar',
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </div>
+      <DrawerHostProvider value={onDockedOpenChange}>
+        <TooltipPrimitive.Provider>
+          <div
+            data-slot="sidebar-wrapper"
+            style={
+              {
+                '--sidebar-width': SIDEBAR_WIDTH,
+                '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
+                ...style,
+              } as React.CSSProperties
+            }
+            className={cn(
+              'tw:group/sidebar-wrapper tw:flex tw:min-h-svh tw:w-full tw:has-data-[variant=inset]:bg-sidebar',
+              className,
+            )}
+            {...props}
+          >
+            {children}
+          </div>
+        </TooltipPrimitive.Provider>
+      </DrawerHostProvider>
     </SidebarContext.Provider>
   );
 }
@@ -211,7 +297,7 @@ function Sidebar({
       <div
         data-slot="sidebar-gap"
         className={cn(
-          'tw:relative tw:w-(--sidebar-width) tw:bg-transparent tw:transition-[width] tw:duration-200 tw:ease-linear',
+          'tw:relative tw:w-(--sidebar-width) tw:bg-transparent tw:transition-[width] tw:duration-(--duration-sidebar) tw:ease-in-out tw:motion-reduce:transition-none',
           'tw:group-data-[collapsible=offcanvas]:w-0',
           'tw:group-data-[side=right]:rotate-180',
           variant === 'floating' || variant === 'inset'
@@ -223,7 +309,7 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          'tw:fixed tw:inset-y-0 tw:z-10 tw:hidden tw:h-svh tw:w-(--sidebar-width) tw:transition-[left,right,width] tw:duration-200 tw:ease-linear tw:data-[side=left]:left-0 tw:data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] tw:data-[side=right]:right-0 tw:data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] tw:md:flex',
+          'tw:fixed tw:inset-y-0 tw:z-10 tw:hidden tw:h-svh tw:w-(--sidebar-width) tw:transition-[left,right,width] tw:duration-(--duration-sidebar) tw:ease-in-out tw:data-[side=left]:left-0 tw:data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] tw:data-[side=right]:right-0 tw:data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] tw:motion-reduce:transition-none tw:md:flex',
           // Adjust the padding for floating and inset variants.
           variant === 'floating' || variant === 'inset'
             ? 'tw:p-2 tw:group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
@@ -235,7 +321,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="tw:flex tw:size-full tw:flex-col tw:bg-sidebar tw:group-data-[variant=floating]:rounded-lg tw:group-data-[variant=floating]:shadow-sm tw:group-data-[variant=floating]:ring-1 tw:group-data-[variant=floating]:ring-sidebar-border"
+          className="tw:flex tw:size-full tw:flex-col tw:gap-2 tw:bg-sidebar tw:group-data-[variant=floating]:rounded-lg tw:group-data-[variant=floating]:shadow-sm tw:group-data-[variant=floating]:ring-1 tw:group-data-[variant=floating]:ring-sidebar-border"
         >
           {children}
         </div>
@@ -354,7 +440,7 @@ function SidebarContent({ className, ...props }: React.ComponentProps<'div'>) {
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(
-        'tw:no-scrollbar tw:flex tw:min-h-0 tw:flex-1 tw:flex-col tw:gap-0 tw:overflow-auto tw:group-data-[collapsible=icon]:overflow-hidden',
+        'tw:no-scrollbar tw:flex tw:min-h-0 tw:flex-1 tw:flex-col tw:gap-2 tw:overflow-auto tw:transition-[gap] tw:duration-(--duration-sidebar) tw:ease-in-out tw:group-data-[collapsible=icon]:gap-1 tw:group-data-[collapsible=icon]:overflow-hidden tw:motion-reduce:transition-none',
         className,
       )}
       {...props}
@@ -362,12 +448,19 @@ function SidebarContent({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
+// Collapsed, a group drops its bottom padding, and a labelled group its top
+// padding too: the label hides, so the space it sat in closes. An unlabelled
+// group keeps its top padding. Nothing above its first icon collapses, so that
+// icon must not move: Home, first in the rail, would otherwise rise 8px.
 function SidebarGroup({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="sidebar-group"
       data-sidebar="group"
-      className={cn('tw:relative tw:flex tw:w-full tw:min-w-0 tw:flex-col tw:p-2', className)}
+      className={cn(
+        'tw:relative tw:flex tw:w-full tw:min-w-0 tw:flex-col tw:p-2 tw:transition-[padding,margin] tw:duration-(--duration-sidebar) tw:ease-in-out tw:group-data-[collapsible=icon]:pb-0 tw:group-data-[collapsible=icon]:has-[[data-sidebar=group-label]]:mt-2 tw:group-data-[collapsible=icon]:has-[[data-sidebar=group-label]]:pt-0 tw:motion-reduce:transition-none',
+        className,
+      )}
       {...props}
     />
   );
@@ -383,7 +476,7 @@ function SidebarGroupLabel({
     props: mergeProps<'div'>(
       {
         className: cn(
-          'tw:flex tw:h-8 tw:shrink-0 tw:items-center tw:rounded-md tw:px-2 tw:text-xs tw:font-medium tw:text-sidebar-foreground/70 tw:ring-sidebar-ring tw:outline-hidden tw:transition-[margin,opacity] tw:duration-200 tw:ease-linear tw:group-data-[collapsible=icon]:-mt-8 tw:group-data-[collapsible=icon]:opacity-0 tw:focus-visible:ring-2 tw:[&>svg]:size-4 tw:[&>svg]:shrink-0',
+          'tw:flex tw:h-8 tw:shrink-0 tw:items-center tw:rounded-md tw:px-2 tw:text-xs tw:font-medium tw:text-sidebar-foreground/70 tw:ring-sidebar-ring/50 tw:outline-hidden tw:[transition:margin_var(--duration-sidebar)_var(--ease-in-out),opacity_150ms_ease-out_75ms,filter_150ms_ease-out_75ms] tw:group-data-[collapsible=icon]:pointer-events-none tw:group-data-[collapsible=icon]:-mt-8 tw:group-data-[collapsible=icon]:opacity-0 tw:group-data-[collapsible=icon]:blur-sm tw:group-data-[collapsible=icon]:[transition:margin_var(--duration-sidebar)_var(--ease-in-out),opacity_100ms_ease-out,filter_100ms_ease-out] tw:focus-visible:ring-[3px] tw:motion-reduce:[transition:opacity_100ms_ease-out] tw:motion-reduce:group-data-[collapsible=icon]:blur-none tw:[&>svg]:size-4 tw:[&>svg]:shrink-0',
           className,
         ),
       },
@@ -407,7 +500,7 @@ function SidebarGroupAction({
     props: mergeProps<'button'>(
       {
         className: cn(
-          'tw:absolute tw:top-3.5 tw:right-3 tw:flex tw:aspect-square tw:w-5 tw:items-center tw:justify-center tw:rounded-md tw:p-0 tw:text-sidebar-foreground tw:ring-sidebar-ring tw:outline-hidden tw:transition-transform tw:group-data-[collapsible=icon]:hidden tw:after:absolute tw:after:-inset-2 tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-2 tw:md:after:hidden tw:[&>svg]:size-4 tw:[&>svg]:shrink-0',
+          'tw:absolute tw:top-3.5 tw:right-3 tw:flex tw:aspect-square tw:w-5 tw:items-center tw:justify-center tw:rounded-md tw:p-0 tw:text-sidebar-foreground tw:ring-sidebar-ring/50 tw:outline-hidden tw:transition-transform tw:group-data-[collapsible=icon]:hidden tw:after:absolute tw:after:-inset-2 tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-[3px] tw:md:after:hidden tw:[&>svg]:size-4 tw:[&>svg]:shrink-0',
           className,
         ),
       },
@@ -448,17 +541,22 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
     <li
       data-slot="sidebar-menu-item"
       data-sidebar="menu-item"
-      className={cn(
-        'tw:group/menu-item tw:relative tw:group-data-[collapsible=icon]:flex tw:group-data-[collapsible=icon]:justify-center',
-        className,
-      )}
+      className={cn('tw:group/menu-item tw:relative', className)}
       {...props}
     />
   );
 }
 
+// Collapsed, the 32px button is centred in the rail by animating margin-left
+// (rail width minus the group's 1rem of padding minus the 2rem button, halved).
+// justify-content on the item cannot transition, so it made the icon overshoot
+// on collapse and snap on expand while the width was still moving.
+//
+// my-0.5 keeps the collapsed row at the expanded button's 36px: 32px of button
+// plus 2px either side, so each icon's centre holds its height through the
+// collapse instead of rising 2px per row.
 const sidebarMenuButtonVariants = cva(
-  'tw:peer/menu-button tw:group/menu-button tw:flex tw:w-full tw:cursor-pointer tw:items-center tw:gap-2 tw:overflow-hidden tw:rounded-md tw:p-2 tw:text-left tw:text-sm tw:ring-sidebar-ring tw:outline-hidden tw:transition-[width,height,padding] tw:group-has-data-[sidebar=menu-action]/menu-item:pr-8 tw:group-data-[collapsible=icon]:size-8! tw:group-data-[collapsible=icon]:p-2! tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-2 tw:active:bg-sidebar-accent tw:active:text-sidebar-accent-foreground tw:disabled:pointer-events-none tw:disabled:opacity-50 tw:aria-disabled:pointer-events-none tw:aria-disabled:opacity-50 tw:data-open:hover:bg-sidebar-accent tw:data-open:hover:text-sidebar-accent-foreground tw:data-active:bg-sidebar-accent tw:data-active:font-medium tw:data-active:text-sidebar-accent-foreground tw:[&_svg]:size-4 tw:[&_svg]:shrink-0 tw:[&>span:last-child]:truncate',
+  'tw:peer/menu-button tw:group/menu-button tw:flex tw:w-full tw:cursor-pointer tw:items-center tw:gap-3 tw:overflow-hidden tw:rounded-[var(--radius-input)] tw:p-2 tw:text-left tw:text-sm tw:ring-sidebar-ring/50 tw:outline-hidden tw:transition-[width,height,padding,margin] tw:duration-(--duration-sidebar) tw:ease-in-out tw:motion-reduce:transition-none tw:group-has-data-[sidebar=menu-action]/menu-item:pr-8 tw:group-data-[collapsible=icon]:my-0.5 tw:group-data-[collapsible=icon]:ml-[calc((var(--sidebar-width-icon)-3rem)/2)] tw:group-data-[collapsible=icon]:size-8! tw:group-data-[collapsible=icon]:p-2! tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-[3px] tw:active:bg-sidebar-accent tw:active:text-sidebar-accent-foreground tw:disabled:pointer-events-none tw:disabled:opacity-50 tw:aria-disabled:pointer-events-none tw:aria-disabled:opacity-50 tw:data-open:hover:bg-sidebar-accent tw:data-open:hover:text-sidebar-accent-foreground tw:data-active:bg-sidebar-accent tw:data-active:font-medium tw:data-active:text-sidebar-accent-foreground tw:[&_svg]:size-4 tw:[&_svg]:shrink-0 tw:[&>span:last-child]:truncate',
   {
     variants: {
       variant: {
@@ -467,9 +565,9 @@ const sidebarMenuButtonVariants = cva(
           'tw:bg-background tw:shadow-[0_0_0_1px_var(--sidebar-border)] tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:hover:shadow-[0_0_0_1px_var(--sidebar-accent)]',
       },
       size: {
-        default: 'tw:h-8 tw:text-sm',
-        sm: 'tw:h-7 tw:text-xs',
-        lg: 'tw:h-12 tw:text-sm tw:group-data-[collapsible=icon]:p-0!',
+        default: 'tw:h-9 tw:text-sm',
+        sm: 'tw:h-8 tw:text-xs',
+        lg: 'tw:h-12 tw:text-sm',
       },
     },
     defaultVariants: {
@@ -501,7 +599,7 @@ function SidebarMenuButton({
       },
       props,
     ),
-    render: !tooltip ? render : <TooltipTrigger render={render} />,
+    render,
     state: {
       slot: 'sidebar-menu-button',
       sidebar: 'menu-button',
@@ -521,15 +619,15 @@ function SidebarMenuButton({
   }
 
   return (
-    <Tooltip>
-      {comp}
+    <TooltipPrimitive.Root>
+      <TooltipTrigger render={comp} />
       <TooltipContent
         side="right"
         align="center"
         hidden={state !== 'collapsed' || isMobile}
         {...tooltip}
       />
-    </Tooltip>
+    </TooltipPrimitive.Root>
   );
 }
 
@@ -547,9 +645,9 @@ function SidebarMenuAction({
     props: mergeProps<'button'>(
       {
         className: cn(
-          'tw:absolute tw:top-1.5 tw:right-1 tw:flex tw:aspect-square tw:w-5 tw:items-center tw:justify-center tw:rounded-md tw:p-0 tw:text-sidebar-foreground tw:ring-sidebar-ring tw:outline-hidden tw:transition-transform tw:group-data-[collapsible=icon]:hidden tw:peer-hover/menu-button:text-sidebar-accent-foreground tw:peer-data-[size=default]/menu-button:top-1.5 tw:peer-data-[size=lg]/menu-button:top-2.5 tw:peer-data-[size=sm]/menu-button:top-1 tw:after:absolute tw:after:-inset-2 tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-2 tw:md:after:hidden tw:[&>svg]:size-4 tw:[&>svg]:shrink-0',
+          'tw:absolute tw:top-1.5 tw:right-1 tw:flex tw:aspect-square tw:w-5 tw:items-center tw:justify-center tw:rounded-md tw:p-0 tw:text-sidebar-foreground tw:ring-sidebar-ring/50 tw:outline-hidden tw:transition-transform tw:group-data-[collapsible=icon]:hidden tw:peer-hover/menu-button:text-sidebar-accent-foreground tw:peer-data-[size=default]/menu-button:top-2 tw:peer-data-[size=lg]/menu-button:top-2.5 tw:peer-data-[size=sm]/menu-button:top-1 tw:after:absolute tw:after:-inset-2 tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-[3px] tw:md:after:hidden tw:[&>svg]:size-4 tw:[&>svg]:shrink-0',
           showOnHover &&
-            'group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground aria-expanded:opacity-100 md:opacity-0',
+            'tw:group-focus-within/menu-item:opacity-100 tw:group-hover/menu-item:opacity-100 tw:peer-data-active/menu-button:text-sidebar-accent-foreground tw:aria-expanded:opacity-100 tw:md:opacity-0',
           className,
         ),
       },
@@ -569,7 +667,7 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<'div'>) 
       data-slot="sidebar-menu-badge"
       data-sidebar="menu-badge"
       className={cn(
-        'tw:pointer-events-none tw:absolute tw:right-1 tw:flex tw:h-5 tw:min-w-5 tw:items-center tw:justify-center tw:rounded-md tw:px-1 tw:text-xs tw:font-medium tw:text-sidebar-foreground tw:tabular-nums tw:select-none tw:group-data-[collapsible=icon]:hidden tw:peer-hover/menu-button:text-sidebar-accent-foreground tw:peer-data-active/menu-button:text-sidebar-accent-foreground tw:peer-data-[size=default]/menu-button:top-1.5 tw:peer-data-[size=lg]/menu-button:top-2.5 tw:peer-data-[size=sm]/menu-button:top-1',
+        'tw:pointer-events-none tw:absolute tw:top-1/2 tw:right-1 tw:flex tw:h-5 tw:min-w-5 tw:-translate-y-1/2 tw:items-center tw:justify-center tw:rounded-md tw:px-1 tw:text-xs tw:font-medium tw:text-sidebar-foreground tw:tabular-nums tw:select-none tw:group-data-[collapsible=icon]:hidden tw:peer-hover/menu-button:text-sidebar-accent-foreground tw:peer-data-active/menu-button:text-sidebar-accent-foreground',
         className,
       )}
       {...props}
@@ -653,7 +751,7 @@ function SidebarMenuSubButton({
     props: mergeProps<'a'>(
       {
         className: cn(
-          'tw:flex tw:h-7 tw:min-w-0 tw:-translate-x-px tw:items-center tw:gap-2 tw:overflow-hidden tw:rounded-md tw:px-2 tw:text-sidebar-foreground tw:ring-sidebar-ring tw:outline-hidden tw:group-data-[collapsible=icon]:hidden tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-2 tw:active:bg-sidebar-accent tw:active:text-sidebar-accent-foreground tw:disabled:pointer-events-none tw:disabled:opacity-50 tw:aria-disabled:pointer-events-none tw:aria-disabled:opacity-50 tw:data-active:bg-sidebar-accent tw:data-active:text-sidebar-accent-foreground tw:data-[size=md]:text-sm tw:data-[size=sm]:text-xs tw:[&>span:last-child]:truncate tw:[&>svg]:size-4 tw:[&>svg]:shrink-0 tw:[&>svg]:text-sidebar-accent-foreground',
+          'tw:flex tw:h-7 tw:min-w-0 tw:-translate-x-px tw:items-center tw:gap-2 tw:overflow-hidden tw:rounded-md tw:px-2 tw:text-sidebar-foreground tw:ring-sidebar-ring/50 tw:outline-hidden tw:group-data-[collapsible=icon]:hidden tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-[3px] tw:active:bg-sidebar-accent tw:active:text-sidebar-accent-foreground tw:disabled:pointer-events-none tw:disabled:opacity-50 tw:aria-disabled:pointer-events-none tw:aria-disabled:opacity-50 tw:data-[size=md]:text-sm tw:data-[size=sm]:text-xs tw:data-active:bg-sidebar-accent tw:data-active:text-sidebar-accent-foreground tw:[&>span:last-child]:truncate tw:[&>svg]:size-4 tw:[&>svg]:shrink-0 tw:[&>svg]:text-sidebar-accent-foreground',
           className,
         ),
       },
