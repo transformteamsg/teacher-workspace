@@ -52,7 +52,7 @@ export const accounts: Account[] = [
     id: 'staff-7',
     name: 'Jane Doe',
     cesEmail: 'jane.doe@example.com',
-    groups: ['X_TW_ROLE_TEACHER', 'X_XX_ROLE_COUNSELLOR'],
+    groups: ['0001_TW_ROLE_TEACHER', '0001_XX_ROLE_COUNSELLOR'],
   },
   {
     id: 'staff-8',
