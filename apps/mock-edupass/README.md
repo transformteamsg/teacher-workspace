@@ -41,13 +41,13 @@ Configure your relying party with these values:
 | --- | --- | --- | --- | --- | --- |
 | `staff-1` | John Smith | john.smith@example.com | `0001_TW_ROLE_TEACHER`, `0001_TW_ATTR_PG_ADMIN` | **Default.** Location-scoped role and attribute | Signs in as `ROLE_TEACHER` |
 | `staff-2` | Alice Tan | alice.tan@example.com | `1234_TW_ROLE_TEACHER` | Single location-scoped role | Signs in as `ROLE_TEACHER` |
-| `staff-3` | Bob Chen | bob.chen@example.com | `X_TW_ROLE_TEACHER`, `X_TW_ATTR_PG_ADMIN` | Global role (location=X) and attribute; for non-four-digit location rejection testing | Refused: the base role's location is not four digits, so no base role resolves |
+| `staff-3` | Bob Chen | bob.chen@example.com | `X_TW_ROLE_TEACHER`, `X_TW_ATTR_PG_ADMIN` | Global role (location=X) and attribute; for non-four-digit location testing | Refused: the base role's location is not four digits, so no base role resolves |
 | `staff-4` | Carol Lim | carol.lim@example.com | `0001_TW_ROLE_TEACHER`, `0001_TW_ROLE_HOD` | **Conflict fixture:** two TW roles at same location | Refused: two base roles resolve, and exactly one is required |
 | `staff-5` | David Ng | david.ng@example.com | `0001_TWSTG_ROLE_TEACHER` | Pre-prod TWSTG app code | Refused: the app code is not `TW`, unless Teacher Workspace sets `TW_EDUPASS_APP_CODE=TWSTG` |
 | `staff-6` | Elena Foo | elena.foo@example.com | `0001_TW_ROLE_TEACHER`, `1001_TW_ROLE_HOD` | Different roles at different schools | Refused: two base roles resolve, and exactly one is required |
-| `staff-7` | Jane Doe | jane.doe@example.com | `0001_TW_ROLE_TEACHER`, `0001_XX_ROLE_COUNSELLOR` | Non-TW role alongside a valid TW role; for unknown-role rejection testing | Signs in as `ROLE_TEACHER`: the `XX` role is discarded |
+| `staff-7` | Jane Doe | jane.doe@example.com | `0001_TW_ROLE_TEACHER`, `0001_XX_ROLE_COUNSELLOR` | Non-TW role alongside a valid TW role; for unknown-role testing | Signs in as `ROLE_TEACHER`: the `XX` role is discarded |
 | `staff-8` | Ivan Koh | _(absent)_ | `[]` | Empty groups and missing CES email | Refused: no CES email (the empty groups would also be refused) |
-| `staff-9` | Mary Koh | mk.only@example.com | `6101_TW_ROLE_TEACHER` | Only role is at an MOE Kindergarten (MK) school (location `6101`); for MK-filter rejection testing | Refused: the MK role is discarded, so no base role resolves |
+| `staff-9` | Mary Koh | mk.only@example.com | `6101_TW_ROLE_TEACHER` | Only role is at an MOE Kindergarten (MK) school (location `6101`); for MK-filter testing | Refused: the MK role is discarded, so no base role resolves |
 | `staff-10` | Meng Keat | mk.mixed@example.com | `6101_TW_ROLE_HOD`, `1234_TW_ROLE_TEACHER` | MK-anchored role alongside a role at a non-MK school | Signs in as `ROLE_TEACHER`: the MK role is discarded |
 | `staff-11` | Grace Lee | grace.lee@example.com | `0001_TW_ROLE_PRINCIPAL` | Single non-teacher role | Signs in as `ROLE_PRINCIPAL` |
 | `staff-12` | Henry Wong | henry.wong@example.com | `1234_TW_ROLE_VICE_PRINCIPAL_ADMINISTRATION` | Single non-teacher role with the longest display name | Signs in as `ROLE_VICE_PRINCIPAL_ADMINISTRATION` |
