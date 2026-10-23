@@ -735,7 +735,7 @@ describe('POST /token', () => {
       {
         account: 'staff-7',
         title: 'non-TW role alongside TW role',
-        groups: ['X_TW_ROLE_TEACHER', 'X_XX_ROLE_COUNSELLOR'],
+        groups: ['0001_TW_ROLE_TEACHER', '0001_XX_ROLE_COUNSELLOR'],
       },
       {
         account: 'staff-13',
