@@ -51,6 +51,12 @@ Configure your relying party with these values:
 | `staff-10` | Meng Keat | mk.mixed@example.com | `6101_TW_ROLE_HOD`, `1234_TW_ROLE_TEACHER` | MK-anchored role alongside a role at a non-MK school; signs in as `ROLE_TEACHER` |
 | `staff-11` | Grace Lee | grace.lee@example.com | `0001_TW_ROLE_PRINCIPAL` | Single non-teacher role; signs in as `ROLE_PRINCIPAL` |
 | `staff-12` | Henry Wong | henry.wong@example.com | `1234_TW_ROLE_VICE_PRINCIPAL_ADMINISTRATION` | Single non-teacher role with the longest display name; signs in as `ROLE_VICE_PRINCIPAL_ADMINISTRATION` |
+| `staff-13` | Nora Teo | nora.teo@example.com | `1234_TW_ATTR_CCE` | An attribute and no base role |
+| `staff-14` | Oscar Lee | oscar.lee@example.com | `1234_TW_ROLE_TEACHER`, `1234_TW_ROLE_HOD`, `5678_TW_ROLE_TEACHER` | **Conflict fixture:** two roles at one school and a role at another; for `multiple_roles` testing where both conflicts apply |
+| `staff-15` | Priya Nair | priya.nair@example.com | `6101_TW_ROLE_TEACHER`, `1234_TW_ROLE_TEACHER`, `1234_TW_ROLE_HOD` | **Conflict fixture:** a role at an MK school does not count, but two roles at a non-MK school still give `multiple_roles` |
+| `staff-16` | Quentin Ong | quentin.ong@example.com | `6101_XX_ROLE_TEACHER` | Another application's role at an MK school; gives `no_role`, not `unsupported_school_mk` |
+| `staff-17` | Rachel Sim | rachel.sim@example.com | `6101_TW_ROLE_SUPERINTENDENT` | Unrecognized role code at an MK school; gives `no_role`, not `unsupported_school_mk` |
+| `staff-18` | Samuel Yeo | samuel.yeo@example.com | `6101_TW_ATTR_CCE` | An attribute at an MK school and no base role; gives `no_role`, and the attribute is kept |
 
 ## How It Works
 

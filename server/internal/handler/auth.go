@@ -72,6 +72,18 @@ const (
 	sessionKeyEdupassCodeVerifier = "edupass_code_verifier"
 )
 
+const (
+	loginErrNoRole               = "no_role"
+	loginErrMultipleRoles        = "multiple_roles"
+	loginErrUnsupportedSchoolMK  = "unsupported_school_mk"
+	loginErrOAuth2CallbackFailed = "oauth2_callback_failed"
+)
+
+// logReasonMultipleLocations is the log reason for roles spread across more
+// than one location. It has no login error code: staff see the
+// [loginErrMultipleRoles] error.
+const logReasonMultipleLocations = "multiple_locations"
+
 // authEdupass starts logging the user in with Edupass. It records a pending
 // login in the session for [Handler.authEdupassCallback] to complete, and
 // redirects the user to Edupass to log in. Calling it again on the same session
@@ -117,12 +129,16 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 // they asked to return to.
 //
 // On failure, it redirects the user to the login page, which reports the
-// failure and keeps the path they asked to return to. It fails if:
+// failure and keeps the path they asked to return to. The error query
+// parameter says why: [loginErrNoRole], [loginErrMultipleRoles] or
+// [loginErrUnsupportedSchoolMK] for the role refusals below, and
+// [loginErrOAuth2CallbackFailed] for every other failure. It fails if:
 //   - the session has no pending login
 //   - the callback does not belong to the pending login
 //   - Edupass reports an error
 //   - Edupass does not issue a valid ID token with the claims the session needs
-//   - the ID token's groups claim does not hold exactly one recognized base role
+//   - the ID token's groups claim holds no recognized base role, or more than
+//     one, once base roles at MOE Kindergarten (MK) schools are set aside
 //
 // Either way, it clears the pending login from the session, so a repeated
 // callback fails because there is no pending login.
@@ -315,12 +331,33 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 	if len(resolved.roles) != 1 {
+		errCode := loginErrNoRole
+		switch {
+		case len(resolved.roles) > 1:
+			errCode = loginErrMultipleRoles
+		case resolved.removedMKRole:
+			errCode = loginErrUnsupportedSchoolMK
+		}
+
+		reason := errCode
+		roleCodes := make([]string, 0, len(resolved.roles))
+		locations := make([]string, 0, len(resolved.roles))
+		for _, role := range resolved.roles {
+			roleCodes = append(roleCodes, role.code)
+			locations = append(locations, role.location)
+			if role.location != resolved.roles[0].location {
+				reason = logReasonMultipleLocations
+			}
+		}
+
 		logger.Warn(
 			"staff does not have exactly one recognized base role",
+			"reason", reason,
 			"edupass_id", claims.ID,
-			"roles", resolved.roles,
+			"roles", roleCodes,
+			"locations", locations,
 		)
-		httputil.Redirect(w, logger, http.StatusFound, loginFailedURL(returnTo))
+		httputil.Redirect(w, logger, http.StatusFound, loginURL(returnTo, errCode))
 		return
 	}
 
@@ -328,7 +365,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		ID:         claims.ID,
 		Name:       claims.Name,
 		Email:      claims.CESEmail,
-		Role:       resolved.roles[0],
+		Role:       resolved.roles[0].code,
 		Attributes: resolved.attributes,
 	})
 
@@ -340,7 +377,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 // requested URL to return to.
 func redirectToLogin(w http.ResponseWriter, r *http.Request) {
 	logger := middleware.LoggerFromContext(r.Context())
-	httputil.Redirect(w, logger, http.StatusSeeOther, loginURL(r.URL.RequestURI()))
+	httputil.Redirect(w, logger, http.StatusSeeOther, loginURL(r.URL.RequestURI(), ""))
 }
 
 // renderUnauthorized writes a 401 JSON error response.
@@ -383,17 +420,21 @@ func safeReturnTo(candidate, fallback string) string {
 	return candidate
 }
 
-// loginURL returns the login page URL, carrying returnTo.
-func loginURL(returnTo string) string {
+// loginURL returns the login page URL, carrying returnTo and, when errCode is
+// not empty, the error code.
+func loginURL(returnTo, errCode string) string {
 	q := url.Values{}
 	q.Set("return_to", returnTo)
+	if errCode != "" {
+		q.Set("error", errCode)
+	}
 	return "/login?" + q.Encode()
 }
 
 // loginFailedURL returns the login page URL for a failed login, carrying
-// returnTo.
+// returnTo and the generic [loginErrOAuth2CallbackFailed] error code.
 func loginFailedURL(returnTo string) string {
-	return loginURL(returnTo) + "&error=oauth2_callback_failed"
+	return loginURL(returnTo, loginErrOAuth2CallbackFailed)
 }
 
 const (
@@ -472,14 +513,22 @@ func isMKSchoolCode(code string) bool {
 	}
 }
 
+// edupassRole is a base role resolved from one Edupass `groups` entry.
+type edupassRole struct {
+	// location is the location code the role was granted at.
+	location string
+	// code is the base role code with the location and app code stripped, such
+	// as "ROLE_TEACHER".
+	code string
+}
+
 // edupassGroups is the outcome of resolving one staff member's Edupass
 // `groups` claim.
 type edupassGroups struct {
-	// roles contains every recognized base role, stripped of its location
-	// code and app code, in arrival order. More than one entry means
-	// Edupass returned conflicting base roles, whether for one location or
-	// spread across several.
-	roles []string
+	// roles contains every recognized base role in arrival order. More than
+	// one entry means Edupass returned conflicting base roles, whether for
+	// one location or spread across several.
+	roles []edupassRole
 	// attributes contains every recognized attribute, stripped of its
 	// location code and app code, unranked and in arrival order.
 	attributes []string
@@ -488,11 +537,15 @@ type edupassGroups struct {
 	// at a MOE Kindergarten (MK) school is reported here too, even though
 	// its role code is recognized.
 	unrecognized []string
+	// removedMKRole reports whether a base role at an MK school was dropped.
+	removedMKRole bool
 }
 
 // resolveEdupassGroups splits raw (an Edupass `groups` claim) into recognized
-// base roles and attributes, stripping the location code and app code from
-// each. Every slice in the result is non-nil, even when empty.
+// base roles and attributes, stripping the app code from each. A base role
+// keeps the location code it was granted at, so a caller can tell roles at one
+// location from roles spread across several. An attribute drops its location
+// code. Every slice in the result is non-nil, even when empty.
 //
 // Each entry is an Edupass app role, named
 // `<location_code>_<app_code>_<tw_role_code>`. app_code is Teacher Workspace's
@@ -511,25 +564,30 @@ type edupassGroups struct {
 // Workspace doesn't support MK staff. The MK check covers base roles only: an
 // attribute at an MK school still resolves into attributes, because sign-in is
 // granted by a base role alone, so dropping MK base roles is enough to keep
-// MK staff out.
+// MK staff out. removedMKRole reports that one was dropped, counting only an
+// entry that would otherwise have resolved into roles.
 // resolveEdupassGroups doesn't decide whether sign-in proceeds; the caller
 // refuses unless roles holds exactly one entry.
 func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
-	roles := []string{}
+	roles := []edupassRole{}
 	attributes := []string{}
 	unrecognized := []string{}
+	removedMKRole := false
 
 	for _, entry := range raw {
 		switch {
 		case strings.Contains(entry, edupassRoleInfix):
 			code := codeAfterInfix(entry, edupassRoleInfix)
 			location, _, _ := strings.Cut(entry, "_")
-			if !hasEdupassAppCode(entry, edupassRoleInfix, appCode) || isMKSchoolCode(location) {
+			_, recognized := edupassRoleLabels[code]
+			switch {
+			case !hasEdupassAppCode(entry, edupassRoleInfix, appCode) || !recognized:
 				unrecognized = append(unrecognized, entry)
-			} else if _, ok := edupassRoleLabels[code]; ok {
-				roles = append(roles, code)
-			} else {
+			case isMKSchoolCode(location):
 				unrecognized = append(unrecognized, entry)
+				removedMKRole = true
+			default:
+				roles = append(roles, edupassRole{location: location, code: code})
 			}
 		case strings.Contains(entry, edupassAttrInfix):
 			code := codeAfterInfix(entry, edupassAttrInfix)
@@ -546,9 +604,10 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 	}
 
 	return edupassGroups{
-		roles:        roles,
-		attributes:   attributes,
-		unrecognized: unrecognized,
+		roles:         roles,
+		attributes:    attributes,
+		unrecognized:  unrecognized,
+		removedMKRole: removedMKRole,
 	}
 }
 
