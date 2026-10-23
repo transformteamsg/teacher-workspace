@@ -399,6 +399,117 @@ func TestHandler_authEdupass(t *testing.T) {
 		}
 	})
 
+	t.Run("forwards the account to Edupass with prompt=login in development", func(t *testing.T) {
+		h, err := New(newEdupassConfig())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass?account=staff-13", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		location, err := rec.Result().Location()
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		query := location.Query()
+		if want, got := "staff-13", query.Get("account"); want != got {
+			t.Errorf("want account: %q; got: %q", want, got)
+		}
+		if want, got := "login", query.Get("prompt"); want != got {
+			t.Errorf("want prompt: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not forward the account to Edupass in production", func(t *testing.T) {
+		cfg := newEdupassConfig()
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		// New would load index.html in production, so flip Env after construction: the handler reads h.cfg.Env on each request.
+		cfg.Env = config.EnvProduction
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass?account=staff-13", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		location, err := rec.Result().Location()
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		query := location.Query()
+		if got := query.Get("account"); got != "" {
+			t.Errorf("want account: empty; got: %q", got)
+		}
+		if got := query.Get("prompt"); got != "" {
+			t.Errorf("want prompt: empty; got: %q", got)
+		}
+	})
+
+	t.Run("does not add account or prompt when the request has no account", func(t *testing.T) {
+		h, err := New(newEdupassConfig())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		location, err := rec.Result().Location()
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		query := location.Query()
+		if query.Has("account") {
+			t.Error("want account: absent; got: present")
+		}
+		if query.Has("prompt") {
+			t.Error("want prompt: absent; got: present")
+		}
+	})
+
+	t.Run("encodes the account so it cannot add authorization parameters", func(t *testing.T) {
+		h, err := New(newEdupassConfig())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass?account=staff-1%26prompt%3Dnone", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		location, err := rec.Result().Location()
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		query := location.Query()
+		if want, got := "staff-1&prompt=none", query.Get("account"); want != got {
+			t.Errorf("want account: %q; got: %q", want, got)
+		}
+		if want, got := "login", query.Get("prompt"); want != got {
+			t.Errorf("want prompt: %q; got: %q", want, got)
+		}
+	})
+
 	t.Run("records the state it sends to Edupass in the session", func(t *testing.T) {
 		h, err := New(newEdupassConfig())
 		if err != nil {
