@@ -19,7 +19,145 @@ import (
 // Asserts at compile time that *Store satisfies session.Store.
 var _ session.Store = (*Store)(nil)
 
-func TestStore_Prepare(t *testing.T) {
+func TestWithPrefix(t *testing.T) {
+	t.Parallel()
+
+	t.Run("makes Get read only under the prefix", func(t *testing.T) {
+		t.Parallel()
+
+		// Seeded under both prefixes with different values, so the data shows which key was read.
+		client := newValkeyClient(t,
+			entry{
+				key:   "session:id-1",
+				value: "default",
+			},
+			entry{
+				key:   "test:id-1",
+				value: "payload",
+			},
+		)
+		store := New(client, WithPrefix("test:"))
+
+		data, err := store.Get(t.Context(), "id-1")
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if want, got := "payload", string(data); want != got {
+			t.Errorf("want data: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("makes Create store data only under the prefix", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t)
+		store := New(client, WithPrefix("test:"))
+
+		_, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+
+		written, err := client.Get(t.Context(), "test:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if want, got := "payload", written.Value(); want != got {
+			t.Errorf("want written.Value(): %q; got: %q", want, got)
+		}
+
+		// Written under the default prefix only if Create ignores the option.
+		unwritten, err := client.Get(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if !unwritten.IsNil() {
+			t.Error("want unwritten.IsNil(): true; got: false")
+		}
+	})
+
+	t.Run("makes Update store data only under the prefix", func(t *testing.T) {
+		t.Parallel()
+
+		// Seeded under both prefixes, so the entry left unchanged shows which key was written.
+		client := newValkeyClient(t,
+			entry{
+				key:   "session:id-1",
+				value: "old",
+			},
+			entry{
+				key:   "test:id-1",
+				value: "old",
+			},
+		)
+		store := New(client, WithPrefix("test:"))
+
+		_, err := store.Update(t.Context(), "id-1", []byte("new"), time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+
+		written, err := client.Get(t.Context(), "test:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if want, got := "new", written.Value(); want != got {
+			t.Errorf("want written.Value(): %q; got: %q", want, got)
+		}
+
+		kept, err := client.Get(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if want, got := "old", kept.Value(); want != got {
+			t.Errorf("want kept.Value(): %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("makes Delete remove only under the prefix", func(t *testing.T) {
+		t.Parallel()
+
+		// Seeded under both prefixes, so the entry left behind shows which key was deleted.
+		client := newValkeyClient(t,
+			entry{
+				key:   "session:id-1",
+				value: "payload",
+			},
+			entry{
+				key:   "test:id-1",
+				value: "payload",
+			},
+		)
+		store := New(client, WithPrefix("test:"))
+
+		err := store.Delete(t.Context(), "id-1")
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+
+		deleted, err := client.Get(t.Context(), "test:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if !deleted.IsNil() {
+			t.Error("want deleted.IsNil(): true; got: false")
+		}
+
+		kept, err := client.Get(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if kept.IsNil() {
+			t.Error("want kept.IsNil(): false; got: true")
+		}
+	})
+}
+
+func TestStore_Get(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns (nil, nil) when the ID has no entry", func(t *testing.T) {
@@ -31,7 +169,7 @@ func TestStore_Prepare(t *testing.T) {
 		})
 		store := New(client)
 
-		data, err := store.Prepare(t.Context(), "missing")
+		data, err := store.Get(t.Context(), "missing")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -51,7 +189,7 @@ func TestStore_Prepare(t *testing.T) {
 		})
 		store := New(client)
 
-		data, err := store.Prepare(t.Context(), "")
+		data, err := store.Get(t.Context(), "")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -61,7 +199,7 @@ func TestStore_Prepare(t *testing.T) {
 		}
 	})
 
-	t.Run("returns the bytes last committed under the ID", func(t *testing.T) {
+	t.Run("returns the data stored under the ID", func(t *testing.T) {
 		t.Parallel()
 
 		client := newValkeyClient(t, entry{
@@ -70,33 +208,7 @@ func TestStore_Prepare(t *testing.T) {
 		})
 		store := New(client)
 
-		data, err := store.Prepare(t.Context(), "id-1")
-
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-		if want, got := "payload", string(data); want != got {
-			t.Errorf("want data: %q; got: %q", want, got)
-		}
-	})
-
-	t.Run("reads only under its own prefix", func(t *testing.T) {
-		t.Parallel()
-
-		// Seeded under both prefixes with different values, so the data shows which key was read.
-		client := newValkeyClient(t,
-			entry{
-				key:   "session:id-1",
-				value: "default",
-			},
-			entry{
-				key:   "test:id-1",
-				value: "payload",
-			},
-		)
-		store := New(client, WithPrefix("test:"))
-
-		data, err := store.Prepare(t.Context(), "id-1")
+		data, err := store.Get(t.Context(), "id-1")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -113,17 +225,17 @@ func TestStore_Prepare(t *testing.T) {
 		store := New(client)
 		client.Close()
 
-		_, err := store.Prepare(t.Context(), "id-1")
+		_, err := store.Get(t.Context(), "id-1")
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		if want := "prepare session"; !strings.Contains(err.Error(), want) {
+		if want := "valkeystore: get"; !strings.Contains(err.Error(), want) {
 			t.Errorf("want err: containing %q; got: %q", want, err)
 		}
 	})
 
-	t.Run("returns the context's error when the context is already done", func(t *testing.T) {
+	t.Run("rejects the call when the context is already done", func(t *testing.T) {
 		t.Parallel()
 
 		client := newValkeyClient(t)
@@ -132,14 +244,14 @@ func TestStore_Prepare(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		_, err := store.Prepare(ctx, "id-1")
+		_, err := store.Get(ctx, "id-1")
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)
 		}
 	})
 
-	t.Run("returns the context's error when the ID is empty and the context is already done", func(t *testing.T) {
+	t.Run("rejects the call when the ID is empty and the context is already done", func(t *testing.T) {
 		t.Parallel()
 
 		client := newValkeyClient(t)
@@ -148,7 +260,7 @@ func TestStore_Prepare(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		_, err := store.Prepare(ctx, "")
+		_, err := store.Get(ctx, "")
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)
@@ -156,7 +268,7 @@ func TestStore_Prepare(t *testing.T) {
 	})
 }
 
-func TestStore_Commit(t *testing.T) {
+func TestStore_Create(t *testing.T) {
 	t.Parallel()
 
 	t.Run("stores data under the ID for the TTL", func(t *testing.T) {
@@ -165,10 +277,13 @@ func TestStore_Commit(t *testing.T) {
 		client := newValkeyClient(t)
 		store := New(client)
 
-		err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute)
+		created, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if !created {
+			t.Error("want created: true; got: false")
 		}
 
 		stored, err := client.Get(t.Context(), "session:id-1")
@@ -186,41 +301,36 @@ func TestStore_Commit(t *testing.T) {
 		if want, got := time.Minute, time.Duration(ttl)*time.Millisecond; want < got {
 			t.Errorf("want TTL: <= %v; got: %v", want, got)
 		}
+		// Allows for the TTL counting down while Create and PTTL run.
 		if want, got := 50*time.Second, time.Duration(ttl)*time.Millisecond; want >= got {
 			t.Errorf("want TTL: > %v; got: %v", want, got)
 		}
 	})
 
-	t.Run("replaces an existing entry", func(t *testing.T) {
+	t.Run("does not replace an existing entry", func(t *testing.T) {
 		t.Parallel()
 
 		client := newValkeyClient(t, entry{
 			key:   "session:id-1",
 			value: "old",
-			ttl:   10 * time.Second,
 		})
 		store := New(client)
 
-		err := store.Commit(t.Context(), "id-1", []byte("new"), time.Minute)
+		created, err := store.Create(t.Context(), "id-1", []byte("new"), time.Minute)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if created {
+			t.Error("want created: false; got: true")
 		}
 
 		stored, err := client.Get(t.Context(), "session:id-1")
 		if err != nil {
 			t.Fatalf("client.Get: %v", err)
 		}
-		if want, got := "new", stored.Value(); want != got {
+		if want, got := "old", stored.Value(); want != got {
 			t.Errorf("want stored.Value(): %q; got: %q", want, got)
-		}
-
-		ttl, err := client.PTTL(t.Context(), "session:id-1")
-		if err != nil {
-			t.Fatalf("client.PTTL: %v", err)
-		}
-		if want, got := 10*time.Second, time.Duration(ttl)*time.Millisecond; want >= got {
-			t.Errorf("want TTL: > %v; got: %v", want, got)
 		}
 	})
 
@@ -233,7 +343,7 @@ func TestStore_Commit(t *testing.T) {
 		// must reach Valkey unchanged.
 		data := []byte{0x00, 0xff, 'a', 0xfe}
 
-		err := store.Commit(t.Context(), "id-1", data, time.Minute)
+		_, err := store.Create(t.Context(), "id-1", data, time.Minute)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -248,23 +358,302 @@ func TestStore_Commit(t *testing.T) {
 		}
 	})
 
-	t.Run("stores data under its own prefix", func(t *testing.T) {
+	t.Run("rejects an empty ID", func(t *testing.T) {
 		t.Parallel()
 
 		client := newValkeyClient(t)
-		store := New(client, WithPrefix("test:"))
+		store := New(client)
 
-		err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute)
+		_, err := store.Create(t.Context(), "", []byte("payload"), time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := "id must be non-empty"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+
+		// Written at the bare prefix only if an empty id reaches Valkey.
+		stored, err := client.Get(t.Context(), "session:")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if !stored.IsNil() {
+			t.Error("want stored.IsNil(): true; got: false")
+		}
+	})
+
+	t.Run("rejects empty data", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t)
+		store := New(client)
+
+		_, err := store.Create(t.Context(), "id-1", []byte{}, time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := "data must be non-empty"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+
+		stored, err := client.Get(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if !stored.IsNil() {
+			t.Error("want stored.IsNil(): true; got: false")
+		}
+	})
+
+	t.Run("rejects a TTL that is", func(t *testing.T) {
+		t.Parallel()
+
+		for _, test := range []struct {
+			name string
+			ttl  time.Duration
+		}{
+			{
+				name: "zero",
+				ttl:  0,
+			},
+			{
+				name: "negative",
+				ttl:  -time.Second,
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				t.Parallel()
+
+				client := newValkeyClient(t)
+				store := New(client)
+
+				_, err := store.Create(t.Context(), "id-1", []byte("payload"), test.ttl)
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if want := "ttl must be positive"; !strings.Contains(err.Error(), want) {
+					t.Errorf("want err: containing %q; got: %q", want, err)
+				}
+
+				stored, err := client.Get(t.Context(), "session:id-1")
+				if err != nil {
+					t.Fatalf("client.Get: %v", err)
+				}
+				if !stored.IsNil() {
+					t.Error("want stored.IsNil(): true; got: false")
+				}
+			})
+		}
+	})
+
+	t.Run("returns an error when the client is closed", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t)
+		store := New(client)
+		client.Close()
+
+		_, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := "valkeystore: create"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+	})
+
+	t.Run("rejects the call when the context is already done", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t)
+		store := New(client)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Create(ctx, "id-1", []byte("payload"), time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+
+		stored, err := client.Get(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if !stored.IsNil() {
+			t.Error("want stored.IsNil(): true; got: false")
+		}
+	})
+
+	t.Run("rejects the call when the ID is empty and the context is already done", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t)
+		store := New(client)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Create(ctx, "", []byte("payload"), time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+
+		// Written at the bare prefix only if an empty id reaches Valkey.
+		stored, err := client.Get(t.Context(), "session:")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if !stored.IsNil() {
+			t.Error("want stored.IsNil(): true; got: false")
+		}
+	})
+
+	t.Run("rejects the call when the data is empty and the context is already done", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t)
+		store := New(client)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Create(ctx, "id-1", []byte{}, time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+
+		stored, err := client.Get(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if !stored.IsNil() {
+			t.Error("want stored.IsNil(): true; got: false")
+		}
+	})
+
+	t.Run("rejects the call when the TTL is not positive and the context is already done", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t)
+		store := New(client)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Create(ctx, "id-1", []byte("payload"), 0)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+
+		stored, err := client.Get(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if !stored.IsNil() {
+			t.Error("want stored.IsNil(): true; got: false")
+		}
+	})
+}
+
+func TestStore_Update(t *testing.T) {
+	t.Parallel()
+
+	t.Run("replaces an existing entry for the TTL", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t, entry{
+			key:   "session:id-1",
+			value: "old",
+			ttl:   10 * time.Second,
+		})
+		store := New(client)
+
+		updated, err := store.Update(t.Context(), "id-1", []byte("new"), time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if !updated {
+			t.Error("want updated: true; got: false")
+		}
+
+		stored, err := client.Get(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if want, got := "new", stored.Value(); want != got {
+			t.Errorf("want stored.Value(): %q; got: %q", want, got)
+		}
+
+		ttl, err := client.PTTL(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.PTTL: %v", err)
+		}
+		if want, got := time.Minute, time.Duration(ttl)*time.Millisecond; want < got {
+			t.Errorf("want TTL: <= %v; got: %v", want, got)
+		}
+		// Above the seeded entry's TTL, so it passes only if the TTL was replaced.
+		if want, got := 50*time.Second, time.Duration(ttl)*time.Millisecond; want >= got {
+			t.Errorf("want TTL: > %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("does not create an entry when the ID has no entry", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t)
+		store := New(client)
+
+		updated, err := store.Update(t.Context(), "id-1", []byte("new"), time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if updated {
+			t.Error("want updated: false; got: true")
+		}
+
+		stored, err := client.Get(t.Context(), "session:id-1")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if !stored.IsNil() {
+			t.Error("want stored.IsNil(): true; got: false")
+		}
+	})
+
+	t.Run("stores data containing NUL and invalid UTF-8 bytes unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t, entry{
+			key:   "session:id-1",
+			value: "old",
+		})
+		store := New(client)
+		// Values are opaque bytes, so a NUL byte and invalid UTF-8 (0xff, 0xfe)
+		// must reach Valkey unchanged.
+		data := []byte{0x00, 0xff, 'a', 0xfe}
+
+		_, err := store.Update(t.Context(), "id-1", data, time.Minute)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
 
-		stored, err := client.Get(t.Context(), "test:id-1")
+		stored, err := client.Get(t.Context(), "session:id-1")
 		if err != nil {
 			t.Fatalf("client.Get: %v", err)
 		}
-		if want, got := "payload", stored.Value(); want != got {
+		if want, got := string(data), stored.Value(); want != got {
 			t.Errorf("want stored.Value(): %q; got: %q", want, got)
 		}
 	})
@@ -279,7 +668,7 @@ func TestStore_Commit(t *testing.T) {
 		})
 		store := New(client)
 
-		err := store.Commit(t.Context(), "", []byte("payload"), time.Minute)
+		_, err := store.Update(t.Context(), "", []byte("new"), time.Minute)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
@@ -289,6 +678,33 @@ func TestStore_Commit(t *testing.T) {
 		}
 
 		stored, err := client.Get(t.Context(), "session:")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if want, got := "old", stored.Value(); want != got {
+			t.Errorf("want stored.Value(): %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("rejects empty data", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t, entry{
+			key:   "session:id-1",
+			value: "old",
+		})
+		store := New(client)
+
+		_, err := store.Update(t.Context(), "id-1", []byte{}, time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := "data must be non-empty"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+
+		stored, err := client.Get(t.Context(), "session:id-1")
 		if err != nil {
 			t.Fatalf("client.Get: %v", err)
 		}
@@ -322,7 +738,7 @@ func TestStore_Commit(t *testing.T) {
 				})
 				store := New(client)
 
-				err := store.Commit(t.Context(), "id-1", []byte("payload"), test.ttl)
+				_, err := store.Update(t.Context(), "id-1", []byte("new"), test.ttl)
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
@@ -349,12 +765,12 @@ func TestStore_Commit(t *testing.T) {
 		store := New(client)
 		client.Close()
 
-		err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute)
+		_, err := store.Update(t.Context(), "id-1", []byte("new"), time.Minute)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		if want := "commit session"; !strings.Contains(err.Error(), want) {
+		if want := "valkeystore: update"; !strings.Contains(err.Error(), want) {
 			t.Errorf("want err: containing %q; got: %q", want, err)
 		}
 	})
@@ -371,7 +787,7 @@ func TestStore_Commit(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		err := store.Commit(ctx, "id-1", []byte("new"), time.Minute)
+		_, err := store.Update(ctx, "id-1", []byte("new"), time.Minute)
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)
@@ -399,13 +815,40 @@ func TestStore_Commit(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		err := store.Commit(ctx, "", []byte("new"), time.Minute)
+		_, err := store.Update(ctx, "", []byte("new"), time.Minute)
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)
 		}
 
 		stored, err := client.Get(t.Context(), "session:")
+		if err != nil {
+			t.Fatalf("client.Get: %v", err)
+		}
+		if want, got := "old", stored.Value(); want != got {
+			t.Errorf("want stored.Value(): %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("rejects the call when the data is empty and the context is already done", func(t *testing.T) {
+		t.Parallel()
+
+		client := newValkeyClient(t, entry{
+			key:   "session:id-1",
+			value: "old",
+		})
+		store := New(client)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Update(ctx, "id-1", []byte{}, time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+
+		stored, err := client.Get(t.Context(), "session:id-1")
 		if err != nil {
 			t.Fatalf("client.Get: %v", err)
 		}
@@ -426,7 +869,7 @@ func TestStore_Commit(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		err := store.Commit(ctx, "id-1", []byte("new"), 0)
+		_, err := store.Update(ctx, "id-1", []byte("new"), 0)
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)
@@ -442,7 +885,7 @@ func TestStore_Commit(t *testing.T) {
 	})
 }
 
-func TestStore_Drop(t *testing.T) {
+func TestStore_Delete(t *testing.T) {
 	t.Parallel()
 
 	t.Run("removes the entry under the ID", func(t *testing.T) {
@@ -454,7 +897,7 @@ func TestStore_Drop(t *testing.T) {
 		})
 		store := New(client)
 
-		err := store.Drop(t.Context(), "id-1")
+		err := store.Delete(t.Context(), "id-1")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -478,7 +921,7 @@ func TestStore_Drop(t *testing.T) {
 		})
 		store := New(client)
 
-		err := store.Drop(t.Context(), "missing")
+		err := store.Delete(t.Context(), "missing")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -503,7 +946,7 @@ func TestStore_Drop(t *testing.T) {
 		})
 		store := New(client)
 
-		err := store.Drop(t.Context(), "")
+		err := store.Delete(t.Context(), "")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -518,45 +961,6 @@ func TestStore_Drop(t *testing.T) {
 		}
 	})
 
-	t.Run("removes only under its own prefix", func(t *testing.T) {
-		t.Parallel()
-
-		// Seeded under both prefixes, so the entry left behind shows which key was deleted.
-		client := newValkeyClient(t,
-			entry{
-				key:   "session:id-1",
-				value: "payload",
-			},
-			entry{
-				key:   "test:id-1",
-				value: "payload",
-			},
-		)
-		store := New(client, WithPrefix("test:"))
-
-		err := store.Drop(t.Context(), "id-1")
-
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-
-		dropped, err := client.Get(t.Context(), "test:id-1")
-		if err != nil {
-			t.Fatalf("client.Get: %v", err)
-		}
-		if !dropped.IsNil() {
-			t.Error("want dropped.IsNil(): true; got: false")
-		}
-
-		kept, err := client.Get(t.Context(), "session:id-1")
-		if err != nil {
-			t.Fatalf("client.Get: %v", err)
-		}
-		if kept.IsNil() {
-			t.Error("want kept.IsNil(): false; got: true")
-		}
-	})
-
 	t.Run("returns an error when the client is closed", func(t *testing.T) {
 		t.Parallel()
 
@@ -564,12 +968,12 @@ func TestStore_Drop(t *testing.T) {
 		store := New(client)
 		client.Close()
 
-		err := store.Drop(t.Context(), "id-1")
+		err := store.Delete(t.Context(), "id-1")
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		if want := "drop session"; !strings.Contains(err.Error(), want) {
+		if want := "valkeystore: delete"; !strings.Contains(err.Error(), want) {
 			t.Errorf("want err: containing %q; got: %q", want, err)
 		}
 	})
@@ -586,7 +990,7 @@ func TestStore_Drop(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		err := store.Drop(ctx, "id-1")
+		err := store.Delete(ctx, "id-1")
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)
@@ -614,7 +1018,7 @@ func TestStore_Drop(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		err := store.Drop(ctx, "")
+		err := store.Delete(ctx, "")
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)

@@ -42,31 +42,34 @@ type SessionOptions struct {
 // session is created when the cookie is missing, names no stored session, or
 // names one that cannot be decoded.
 //
-// The store is updated before the first write of the response, or once the
-// request is handled if nothing is written, so the session must be changed
-// before the first write: changes made after it are lost. The store is updated
-// even if the client disconnects while the request is handled:
+// The store is updated just before the response is first written, or after the
+// handler returns if it writes nothing, so changes made to the session after
+// the first write are lost. The update goes ahead even if the client has
+// disconnected:
 //   - A destroyed session is removed, and the session cookie is expired.
+//   - A session that is no longer in the store, such as one destroyed by
+//     another request, is not saved, and the session cookie is left as it is,
+//     unless the request changed its ID.
 //   - Any other session is saved to expire after [SessionOptions.DefaultTTL],
 //     or [SessionOptions.AuthenticatedTTL] when a user is attached, and the
 //     session cookie carries its ID for as long. If its ID has changed, the
-//     session under the old ID is removed on a best-effort basis.
+//     superseded entry under its previous ID is removed on a best-effort basis.
 //
-// Every response carries Cache-Control: no-store.
+// The handler's response carries Cache-Control: no-store, replacing any value
+// the handler set.
 //
 // If the store fails to load the session, the request goes no further and the
 // response is a 500. If the session cannot be saved, or a destroyed session
-// cannot be removed, the response is replaced with a 500. If the client
-// disconnects before the session loads, nothing is written.
+// cannot be removed, the handler's response is replaced with a 500. If the
+// client disconnects before the session loads, nothing is written.
 func Session(store session.Store, opts SessionOptions) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger := LoggerFromContext(r.Context())
 
 			var id string
-			cookie, err := r.Cookie(opts.Name)
-			if err == nil {
-				id = cookie.Value
+			if c, err := r.Cookie(opts.Name); err == nil {
+				id = c.Value
 			}
 
 			sess, err := session.Load(r.Context(), store, id)
@@ -86,16 +89,40 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 				}
 			}
 
-			initialID := sess.ID()
-
 			sw := &sessionResponseWriter{
 				ResponseWriter: w,
 				initialHeader:  w.Header().Clone(),
 				logger:         logger,
 				finalise: func(h http.Header) error {
-					// Update the store even if the client disconnects: the request has
-					// already been handled, and the store must reflect it.
+					// Finalise without cancellation: the store must reflect the handled
+					// request even if the client disconnects.
 					ctx := context.WithoutCancel(r.Context())
+
+					h.Set("Cache-Control", "no-store")
+
+					ttl := opts.DefaultTTL
+					if sess.IsAuthenticated() {
+						ttl = opts.AuthenticatedTTL
+					}
+
+					switch err := session.Commit(ctx, store, sess, ttl); {
+					case errors.Is(err, session.ErrNotFound):
+						// Another request destroyed the session while this one ran, and
+						// may already have sent its own cookie. Saving the session would
+						// sign the client back in, and any cookie sent here, even an
+						// expired one, would replace a cookie that a later request may
+						// have set since.
+						return nil
+					case errors.Is(err, session.ErrSupersededNotDeleted):
+						// The session is committed, and the superseded entry expires by
+						// TTL. A destroyed session gets no such leeway: a client still
+						// holding its ID would stay logged in, so failing to remove it
+						// fails the request.
+						logger.Error("failed to delete superseded session", "err", err)
+					case err != nil:
+						logger.Error("failed to commit session", "err", err)
+						return err
+					}
 
 					cookie := &http.Cookie{
 						Name:     opts.Name,
@@ -104,44 +131,15 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 						HttpOnly: true,
 						SameSite: http.SameSiteLaxMode,
 					}
-
-					switch {
-					case sess.IsDestroyed():
-						// Unlike a superseded session, a destroyed one must be gone
-						// before the response says so: a client still holding its ID
-						// would otherwise stay logged in.
-						if err := store.Drop(ctx, initialID); err != nil {
-							logger.Error("failed to drop destroyed session", "err", err)
-							return err
-						}
-
+					if sess.IsDestroyed() {
 						// A zero MaxAge omits the attribute rather than expiring the
 						// cookie.
 						cookie.MaxAge = -1
-					default:
-						ttl := opts.DefaultTTL
-						if sess.IsAuthenticated() {
-							ttl = opts.AuthenticatedTTL
-						}
-
-						if err := session.Save(ctx, store, sess, ttl); err != nil {
-							logger.Error("failed to save session", "err", err)
-							return err
-						}
-
+					} else {
 						cookie.Value = sess.ID()
 						cookie.MaxAge = int(ttl.Seconds())
-
-						// Once the ID changes, the entry under the old one is stale.
-						// Dropping it is best effort: it expires by TTL otherwise.
-						if sess.ID() != initialID {
-							if err := store.Drop(ctx, initialID); err != nil {
-								logger.Error("failed to drop superseded session", "err", err)
-							}
-						}
 					}
 
-					h.Set("Cache-Control", "no-store")
 					h.Add("Set-Cookie", cookie.String())
 
 					return nil
