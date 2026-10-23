@@ -109,8 +109,8 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 		oauth2.S256ChallengeOption(codeVerifier),
 	}
 
-	// Only the mock Edupass understands "account". Forwarding it in production
-	// would hand a caller-controlled parameter to the real Edupass.
+	// account is a mock Edupass parameter. Send it in development only, so a caller
+	// can't pass their own parameter through to the real Edupass.
 	if h.cfg.Env == config.EnvDevelopment {
 		if account := r.URL.Query().Get("account"); account != "" {
 			// prompt=login stops the mock Edupass reusing the account from an earlier sign-in.
