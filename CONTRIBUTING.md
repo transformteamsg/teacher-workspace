@@ -8,7 +8,7 @@ Teacher Workspace is a unified platform that consolidates teacher-facing applica
 
 - **[mise](https://mise.jdx.dev/installing-mise.html)** 2026.10.19 or newer, which installs and pins the tools below
   - **Go** 1.27.3
-  - **Node.js** 24.19.0
+  - **Node.js** 24.22.1
   - **pnpm** 11.22.0
   - **golangci-lint** 2.14.0
 - **Docker**, for the local Valkey and for the session store tests

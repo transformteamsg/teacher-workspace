@@ -11,7 +11,7 @@ run = "golangci-lint run"
 [tools]
 "github:golangci/golangci-lint" = "2.14.0"
 go = "1.27.3"
-node = "24.19.0"
+node = "24.22.1"
 "npm:pnpm" = "11.22.0"
 
 [settings]
