@@ -107,11 +107,11 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 
 					switch err := session.Commit(ctx, store, sess, ttl); {
 					case errors.Is(err, session.ErrNotFound):
-						// Another request destroyed the session while this one ran, and
-						// may already have sent its own cookie. Saving the session would
-						// sign the client back in, and any cookie sent here, even an
-						// expired one, would replace a cookie that a later request may
-						// have set since.
+						// The session's entry is gone: another request destroyed it while
+						// this one ran (and may already have sent its own cookie), or it
+						// expired. Saving the session would sign the client back in, and any
+						// cookie sent here, even an expired one, would replace a cookie that
+						// a later request may have set since.
 						return nil
 					case errors.Is(err, session.ErrSupersededNotDeleted):
 						// The session is committed, and the superseded entry expires by
