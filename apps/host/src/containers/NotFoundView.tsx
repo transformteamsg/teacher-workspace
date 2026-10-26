@@ -19,7 +19,7 @@ export function NotFoundView() {
           The page you were looking for doesn&apos;t exist, or it may have moved. Check the URL, or
           head back to a familiar place.
         </p>
-        <Button className="tw:mt-8" nativeButton={false} render={<Link to="/" />}>
+        <Button className="tw:mt-8" render={<Link to="/" />}>
           Back to home
         </Button>
         <div className="tw:mt-10">

@@ -93,7 +93,7 @@ export function ProfileMenu() {
                 {/* `-mx-3` cancels the label's padding so the card's edges line
                     up with the menu items'. The school name goes in here above
                     the email once the session carries it (follow-up to #161). */}
-                <div className="tw:-mx-3 tw:mt-2 tw:flex tw:min-w-0 tw:flex-col tw:rounded-xl tw:bg-muted tw:px-3 tw:py-2">
+                <div className="tw:-mx-3 tw:mt-2 tw:flex tw:min-w-0 tw:flex-col tw:rounded-[var(--radius-card)] tw:bg-muted tw:px-3 tw:py-2">
                   <TruncatedText text={user.email} />
                 </div>
               </div>

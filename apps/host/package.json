@@ -21,8 +21,10 @@
   },
   "devDependencies": {
     "@module-federation/rsbuild-plugin": "^2.9.2",
+    "@radix-ui/colors": "^3.0.0",
     "@rsbuild/core": "^2.2.13",
     "@rsbuild/plugin-react": "^2.1.1",
+    "@rsbuild/plugin-svgr": "^2.0.5",
     "@rsbuild/plugin-tailwindcss": "^2.0.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
