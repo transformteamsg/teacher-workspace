@@ -3,7 +3,7 @@
 # ----------------------------------------
 # TW Host build stage
 # ----------------------------------------
-FROM node:24.19.0-trixie AS tw-host-build
+FROM node:24.22.1-trixie AS tw-host-build
 
 ENV NODE_ENV=production
 
