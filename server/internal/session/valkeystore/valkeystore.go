@@ -5,10 +5,12 @@ package valkeystore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	glide "github.com/valkey-io/valkey-glide/go/v2"
+	glideconstants "github.com/valkey-io/valkey-glide/go/v2/constants"
 	glideopts "github.com/valkey-io/valkey-glide/go/v2/options"
 )
 
@@ -42,10 +44,10 @@ func New(client *glide.Client, opts ...Option) *Store {
 	return s
 }
 
-// Prepare implements [session.Store.Prepare].
-func (s *Store) Prepare(ctx context.Context, id string) ([]byte, error) {
+// Get implements [session.Store.Get].
+func (s *Store) Get(ctx context.Context, id string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("valkeystore: prepare session: %w", err)
+		return nil, fmt.Errorf("valkeystore: get: %w", err)
 	}
 	if id == "" {
 		return nil, nil
@@ -53,7 +55,7 @@ func (s *Store) Prepare(ctx context.Context, id string) ([]byte, error) {
 
 	result, err := s.client.Get(ctx, s.prefix+id)
 	if err != nil {
-		return nil, fmt.Errorf("valkeystore: prepare session: %w", err)
+		return nil, fmt.Errorf("valkeystore: get: %w", err)
 	}
 	// A key that has passed its TTL reads as absent.
 	if result.IsNil() {
@@ -63,38 +65,71 @@ func (s *Store) Prepare(ctx context.Context, id string) ([]byte, error) {
 	return []byte(result.Value()), nil
 }
 
-// Commit implements [session.Store.Commit].
-func (s *Store) Commit(ctx context.Context, id string, data []byte, ttl time.Duration) error {
+// Create implements [session.Store.Create].
+func (s *Store) Create(ctx context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("valkeystore: commit session: %w", err)
+		return false, fmt.Errorf("valkeystore: create: %w", err)
 	}
 	if id == "" {
-		return fmt.Errorf("valkeystore: id must be non-empty")
+		return false, errors.New("valkeystore: create: id must be non-empty")
+	}
+	if len(data) == 0 {
+		return false, errors.New("valkeystore: create: data must be non-empty")
 	}
 	if ttl <= 0 {
-		return fmt.Errorf("valkeystore: ttl must be positive, got %v", ttl)
+		return false, fmt.Errorf("valkeystore: create: ttl must be positive; got %v", ttl)
 	}
 
-	if _, err := s.client.SetWithOptions(ctx, s.prefix+id, string(data), glideopts.SetOptions{
-		Expiry: glideopts.NewExpiryIn(ttl),
-	}); err != nil {
-		return fmt.Errorf("valkeystore: commit session: %w", err)
+	result, err := s.client.SetWithOptions(ctx, s.prefix+id, string(data), glideopts.SetOptions{
+		ConditionalSet: glideconstants.OnlyIfDoesNotExist,
+		Expiry:         glideopts.NewExpiryIn(ttl),
+	})
+	if err != nil {
+		return false, fmt.Errorf("valkeystore: create: %w", err)
 	}
 
-	return nil
+	// SET replies nil when its condition stops the write.
+	return !result.IsNil(), nil
 }
 
-// Drop implements [session.Store.Drop].
-func (s *Store) Drop(ctx context.Context, id string) error {
+// Update implements [session.Store.Update].
+func (s *Store) Update(ctx context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("valkeystore: drop session: %w", err)
+		return false, fmt.Errorf("valkeystore: update: %w", err)
+	}
+	if id == "" {
+		return false, errors.New("valkeystore: update: id must be non-empty")
+	}
+	if len(data) == 0 {
+		return false, errors.New("valkeystore: update: data must be non-empty")
+	}
+	if ttl <= 0 {
+		return false, fmt.Errorf("valkeystore: update: ttl must be positive; got %v", ttl)
+	}
+
+	result, err := s.client.SetWithOptions(ctx, s.prefix+id, string(data), glideopts.SetOptions{
+		ConditionalSet: glideconstants.OnlyIfExists,
+		Expiry:         glideopts.NewExpiryIn(ttl),
+	})
+	if err != nil {
+		return false, fmt.Errorf("valkeystore: update: %w", err)
+	}
+
+	// SET replies nil when its condition stops the write.
+	return !result.IsNil(), nil
+}
+
+// Delete implements [session.Store.Delete].
+func (s *Store) Delete(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("valkeystore: delete: %w", err)
 	}
 	if id == "" {
 		return nil
 	}
 
 	if _, err := s.client.Del(ctx, []string{s.prefix + id}); err != nil {
-		return fmt.Errorf("valkeystore: drop session: %w", err)
+		return fmt.Errorf("valkeystore: delete: %w", err)
 	}
 
 	return nil

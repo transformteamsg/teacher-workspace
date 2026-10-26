@@ -2,11 +2,12 @@ package session
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/transformteamsg/teacher-workspace/server/internal/session/memstore"
 )
 
 func TestNew(t *testing.T) {
@@ -19,7 +20,7 @@ func TestNew(t *testing.T) {
 		}
 	})
 
-	t.Run("returns unauthenticated session", func(t *testing.T) {
+	t.Run("returns an unauthenticated session", func(t *testing.T) {
 		sess := New()
 
 		if sess.IsAuthenticated() {
@@ -29,8 +30,8 @@ func TestNew(t *testing.T) {
 }
 
 func TestLoad(t *testing.T) {
-	t.Run("returns new session when store has no entry", func(t *testing.T) {
-		store := &fakeStore{}
+	t.Run("returns a new session when the store has no entry under the ID", func(t *testing.T) {
+		store := newFakeStore(t)
 
 		sess, err := Load(t.Context(), store, "id-1")
 
@@ -45,133 +46,101 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
-	t.Run("returns store error", func(t *testing.T) {
-		storeErr := errors.New("store unavailable")
-		store := &fakeStore{prepareErr: storeErr}
+	t.Run("returns the error from store when store fails", func(t *testing.T) {
+		store := newFakeStore(t)
+		getErr := errors.New("store unavailable")
+		store.getErr = getErr
 
 		_, err := Load(t.Context(), store, "id-1")
 
-		if !errors.Is(err, storeErr) {
-			t.Errorf("want err: %v; got: %v", storeErr, err)
+		if !errors.Is(err, getErr) {
+			t.Errorf("want err: %v; got: %v", getErr, err)
 		}
 	})
 
-	t.Run("returns session stored under ID with a user", func(t *testing.T) {
-		store := &fakeStore{}
-		saved := New()
-		saved.SetUser(User{Email: "a@example.com"})
-		saved.Set("key", "value")
-		token := saved.CSRFToken()
-		if err := Save(t.Context(), store, saved, time.Hour); err != nil {
-			t.Fatalf("Save: %v", err)
+	t.Run("returns the session stored under the ID with a user", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		committed.SetUser(User{ID: "123456789012"})
+		committed.Set("key", "value")
+		token := committed.CSRFToken()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
 		}
 
-		sess, err := Load(t.Context(), store, saved.ID())
+		loaded, err := Load(t.Context(), store, committed.ID())
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
-		if want, got := saved.ID(), sess.ID(); want != got {
-			t.Errorf("want sess.ID(): %q; got: %q", want, got)
+		if want, got := committed.ID(), loaded.ID(); want != got {
+			t.Errorf("want loaded.ID(): %q; got: %q", want, got)
 		}
-		if !sess.VerifyCSRFToken(token) {
-			t.Error("want sess.VerifyCSRFToken(token): true; got: false")
+		if !loaded.VerifyCSRFToken(token) {
+			t.Error("want loaded.VerifyCSRFToken(token): true; got: false")
 		}
-		user, ok := sess.User()
+		user, ok := loaded.User()
 		if !ok {
-			t.Fatal("want sess.User() ok: true; got: false")
+			t.Fatal("want loaded.User() ok: true; got: false")
 		}
-		if want := (User{Email: "a@example.com"}); !reflect.DeepEqual(want, user) {
+		if want := (User{ID: "123456789012"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
-		val, ok := sess.Get[string]("key")
+		val, ok := loaded.Get[string]("key")
 		if !ok {
-			t.Fatal("want sess.Get[string](\"key\") ok: true; got: false")
+			t.Fatal("want loaded.Get[string](\"key\") ok: true; got: false")
 		}
 		if want := "value"; want != val {
 			t.Errorf("want val: %q; got: %q", want, val)
 		}
 	})
 
-	t.Run("returns session stored under ID without a user", func(t *testing.T) {
-		store := &fakeStore{}
-		saved := New()
-		if err := Save(t.Context(), store, saved, time.Hour); err != nil {
-			t.Fatalf("Save: %v", err)
+	t.Run("returns the session stored under the ID without a user", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
 		}
 
-		sess, err := Load(t.Context(), store, saved.ID())
+		loaded, err := Load(t.Context(), store, committed.ID())
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
 		// A fresh session from New would also be unauthenticated.
-		if want, got := saved.ID(), sess.ID(); want != got {
-			t.Fatalf("want sess.ID(): %q; got: %q", want, got)
+		if want, got := committed.ID(), loaded.ID(); want != got {
+			t.Fatalf("want loaded.ID(): %q; got: %q", want, got)
 		}
-		if sess.IsAuthenticated() {
-			t.Error("want sess.IsAuthenticated(): false; got: true")
-		}
-	})
-
-	t.Run("returns numbers as float64", func(t *testing.T) {
-		store := &fakeStore{}
-		saved := New()
-		saved.Set("key", 1)
-		if err := Save(t.Context(), store, saved, time.Hour); err != nil {
-			t.Fatalf("Save: %v", err)
-		}
-
-		sess, err := Load(t.Context(), store, saved.ID())
-
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-		if _, ok := sess.Get[float64]("key"); !ok {
-			t.Error("want sess.Get[float64](\"key\") ok: true; got: false")
+		if loaded.IsAuthenticated() {
+			t.Error("want loaded.IsAuthenticated(): false; got: true")
 		}
 	})
 
-	t.Run("returns structs as map[string]any", func(t *testing.T) {
-		store := &fakeStore{}
-		saved := New()
-		saved.Set("key", struct{ Name string }{Name: "a"})
-		if err := Save(t.Context(), store, saved, time.Hour); err != nil {
-			t.Fatalf("Save: %v", err)
-		}
-
-		sess, err := Load(t.Context(), store, saved.ID())
-
-		if err != nil {
-			t.Fatalf("want err: nil; got: %v", err)
-		}
-		if _, ok := sess.Get[map[string]any]("key"); !ok {
-			t.Error("want sess.Get[map[string]any](\"key\") ok: true; got: false")
-		}
-	})
-
-	t.Run("returns error wrapping ErrUndecodable", func(t *testing.T) {
+	t.Run("returns an error wrapping ErrUndecodable", func(t *testing.T) {
 		cases := []struct {
 			name  string
-			entry []byte
+			entry string
 		}{
 			{
-				name:  "for invalid JSON",
-				entry: []byte(`{`),
+				name:  "for an entry that is not JSON",
+				entry: `{`,
 			},
 			{
-				name:  "for entry stored under another ID",
-				entry: []byte(`{"id":"id-2","csrf_token":"csrf-1"}`),
+				name:  "for an entry holding another ID",
+				entry: `{"id":"id-2","csrf_token":"csrf-1"}`,
 			},
 			{
-				name:  "for entry without CSRF token",
-				entry: []byte(`{"id":"id-1"}`),
+				name:  "for an entry without a CSRF token",
+				entry: `{"id":"id-1"}`,
 			},
 		}
 
 		for _, test := range cases {
 			t.Run(test.name, func(t *testing.T) {
-				store := &fakeStore{entries: map[string][]byte{"id-1": test.entry}}
+				store := newFakeStore(t, seed{
+					id:   "id-1",
+					data: test.entry,
+				})
 
 				_, err := Load(t.Context(), store, "id-1")
 
@@ -183,77 +152,491 @@ func TestLoad(t *testing.T) {
 	})
 }
 
-func TestSave(t *testing.T) {
-	t.Run("writes session under its ID with TTL", func(t *testing.T) {
-		store := &fakeStore{}
+func TestCommit(t *testing.T) {
+	t.Run("writes a new session under its ID", func(t *testing.T) {
+		store := newFakeStore(t)
 		sess := New()
-		sess.SetUser(User{ID: "123456789012", Name: "John Smith", Email: "a@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
+		sess.SetUser(User{
+			ID:         "123456789012",
+			Name:       "John Smith",
+			Email:      "a@example.com",
+			Role:       "ROLE_TEACHER",
+			Attributes: []string{"ATTR_CCE"},
+		})
 		sess.Set("key", "value")
+		token := sess.CSRFToken()
 
-		err := Save(t.Context(), store, sess, time.Hour)
+		err := Commit(t.Context(), store, sess, 2*time.Hour)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
-		want := map[string]any{
-			"id":         sess.ID(),
-			"csrf_token": sess.csrfToken,
-			"user": map[string]any{
-				"id":         "123456789012",
-				"name":       "John Smith",
-				"email":      "a@example.com",
-				"role":       "ROLE_TEACHER",
-				"attributes": []any{"ATTR_CCE"},
-			},
-			"data": map[string]any{"key": "value"},
+		loaded, err := Load(t.Context(), store, sess.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
 		}
-		entry, ok := store.entries[sess.ID()]
+		if want, got := sess.ID(), loaded.ID(); want != got {
+			t.Fatalf("want loaded.ID(): %q; got: %q", want, got)
+		}
+		if !loaded.VerifyCSRFToken(token) {
+			t.Error("want loaded.VerifyCSRFToken(token): true; got: false")
+		}
+		user, ok := loaded.User()
 		if !ok {
-			t.Fatal("want store.entries[sess.ID()] ok: true; got: false")
+			t.Fatal("want loaded.User() ok: true; got: false")
 		}
-		var stored map[string]any
-		if err := json.Unmarshal(entry, &stored); err != nil {
-			t.Fatalf("json.Unmarshal: %v", err)
+		if want := (User{
+			ID:         "123456789012",
+			Name:       "John Smith",
+			Email:      "a@example.com",
+			Role:       "ROLE_TEACHER",
+			Attributes: []string{"ATTR_CCE"},
+		}); !reflect.DeepEqual(want, user) {
+			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
-		if !reflect.DeepEqual(want, stored) {
-			t.Errorf("want store entry: %v; got: %v", want, stored)
+		val, ok := loaded.Get[string]("key")
+		if !ok {
+			t.Fatal("want loaded.Get[string](\"key\") ok: true; got: false")
+		}
+		if want := "value"; want != val {
+			t.Errorf("want val: %q; got: %q", want, val)
 		}
 		ttl, ok := store.ttls[sess.ID()]
 		if !ok {
 			t.Fatal("want store.ttls[sess.ID()] ok: true; got: false")
 		}
-		if want := time.Hour; want != ttl {
+		if want := 2 * time.Hour; want != ttl {
 			t.Errorf("want ttl: %v; got: %v", want, ttl)
 		}
 	})
 
-	t.Run("returns error when a value cannot be encoded as JSON", func(t *testing.T) {
-		store := &fakeStore{}
+	t.Run("rejects a session whose ID is taken by another session", func(t *testing.T) {
+		sess := New()
+		store := newFakeStore(t, seed{
+			id:   sess.ID(),
+			data: "other",
+		})
+
+		err := Commit(t.Context(), store, sess, time.Hour)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if errors.Is(err, ErrNotFound) {
+			t.Errorf("want err: not %v; got: %v", ErrNotFound, err)
+		}
+		if errors.Is(err, ErrSupersededNotDeleted) {
+			t.Errorf("want err: not %v; got: %v", ErrSupersededNotDeleted, err)
+		}
+		entry, err := store.Get(t.Context(), sess.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if want, got := "other", string(entry); want != got {
+			t.Errorf("want entry: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("rejects a session with a value that cannot be encoded as JSON", func(t *testing.T) {
+		store := newFakeStore(t)
 		sess := New()
 		sess.Set("key", make(chan int))
 
-		err := Save(t.Context(), store, sess, time.Hour)
+		err := Commit(t.Context(), store, sess, time.Hour)
 
 		if err == nil {
 			t.Error("want err: non-nil; got: nil")
 		}
+		entry, err := store.Get(t.Context(), sess.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if entry != nil {
+			t.Error("want entry: nil; got: non-nil")
+		}
 	})
 
-	t.Run("returns store error", func(t *testing.T) {
-		commitErr := errors.New("store unavailable")
-		store := &fakeStore{commitErr: commitErr}
+	t.Run("returns the error from store when it cannot write a new session", func(t *testing.T) {
+		store := newFakeStore(t)
+		createErr := errors.New("store unavailable")
+		store.createErr = createErr
 		sess := New()
 
-		err := Save(t.Context(), store, sess, time.Hour)
+		err := Commit(t.Context(), store, sess, time.Hour)
 
-		if !errors.Is(err, commitErr) {
-			t.Errorf("want err: %v; got: %v", commitErr, err)
+		if !errors.Is(err, createErr) {
+			t.Errorf("want err: %v; got: %v", createErr, err)
+		}
+	})
+
+	t.Run("writes the session under its new ID after the session's ID changes", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.SetUser(User{Email: "a@example.com"})
+		if loaded.ID() == committed.ID() {
+			t.Fatal("loaded.SetUser: ID unchanged")
+		}
+
+		err = Commit(t.Context(), store, loaded, 2*time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		entry, err := store.Get(t.Context(), loaded.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if entry == nil {
+			t.Error("want entry: non-nil; got: nil")
+		}
+		ttl, ok := store.ttls[loaded.ID()]
+		if !ok {
+			t.Fatal("want store.ttls[loaded.ID()] ok: true; got: false")
+		}
+		if want := 2 * time.Hour; want != ttl {
+			t.Errorf("want ttl: %v; got: %v", want, ttl)
+		}
+	})
+
+	t.Run("removes the superseded entry after the session's ID changes", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.SetUser(User{Email: "a@example.com"})
+
+		err = Commit(t.Context(), store, loaded, time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		entry, err := store.Get(t.Context(), committed.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if entry != nil {
+			t.Error("want entry: nil; got: non-nil")
+		}
+	})
+
+	t.Run("returns ErrSupersededNotDeleted wrapped with the store's error when the superseded entry cannot be removed", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.SetUser(User{Email: "a@example.com"})
+		deleteErr := errors.New("store unavailable")
+		store.deleteErr = deleteErr
+
+		err = Commit(t.Context(), store, loaded, time.Hour)
+
+		if !errors.Is(err, ErrSupersededNotDeleted) {
+			t.Errorf("want err: %v; got: %v", ErrSupersededNotDeleted, err)
+		}
+		if !errors.Is(err, deleteErr) {
+			t.Errorf("want err: %v; got: %v", deleteErr, err)
+		}
+	})
+
+	t.Run("writes the session under its new ID when the superseded entry cannot be removed", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.SetUser(User{Email: "a@example.com"})
+		if loaded.ID() == committed.ID() {
+			t.Fatal("loaded.SetUser: ID unchanged")
+		}
+		store.deleteErr = errors.New("store unavailable")
+
+		_ = Commit(t.Context(), store, loaded, time.Hour)
+
+		entry, err := store.Get(t.Context(), loaded.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if entry == nil {
+			t.Error("want entry: non-nil; got: nil")
+		}
+	})
+
+	t.Run("writes the session under its new ID even if the superseded entry is no longer in store", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if err := store.Delete(t.Context(), committed.ID()); err != nil {
+			t.Fatalf("store.Delete: %v", err)
+		}
+		superseded, err := store.Get(t.Context(), committed.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if superseded != nil {
+			t.Fatal("store.Delete: entry still in store")
+		}
+		loaded.SetUser(User{Email: "a@example.com"})
+
+		err = Commit(t.Context(), store, loaded, time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		entry, err := store.Get(t.Context(), loaded.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if entry == nil {
+			t.Error("want entry: non-nil; got: nil")
+		}
+	})
+
+	t.Run("writes the session under its ID when its ID is unchanged since it was loaded", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.Set("key", "new")
+
+		err = Commit(t.Context(), store, loaded, 2*time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		reloaded, err := Load(t.Context(), store, loaded.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		val, ok := reloaded.Get[string]("key")
+		if !ok {
+			t.Fatal("want reloaded.Get[string](\"key\") ok: true; got: false")
+		}
+		if want := "new"; want != val {
+			t.Errorf("want val: %q; got: %q", want, val)
+		}
+		ttl, ok := store.ttls[loaded.ID()]
+		if !ok {
+			t.Fatal("want store.ttls[loaded.ID()] ok: true; got: false")
+		}
+		if want := 2 * time.Hour; want != ttl {
+			t.Errorf("want ttl: %v; got: %v", want, ttl)
+		}
+	})
+
+	t.Run("writes the session under its ID when its ID is unchanged since it was last committed", func(t *testing.T) {
+		store := newFakeStore(t)
+		sess := New()
+		if err := Commit(t.Context(), store, sess, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		sess.Set("key", "new")
+
+		err := Commit(t.Context(), store, sess, time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		reloaded, err := Load(t.Context(), store, sess.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		val, ok := reloaded.Get[string]("key")
+		if !ok {
+			t.Fatal("want reloaded.Get[string](\"key\") ok: true; got: false")
+		}
+		if want := "new"; want != val {
+			t.Errorf("want val: %q; got: %q", want, val)
+		}
+	})
+
+	t.Run("writes the session under its ID when its ID is unchanged since a commit that could not remove the superseded entry", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.SetUser(User{Email: "a@example.com"})
+		store.deleteErr = errors.New("store unavailable")
+		if err := Commit(t.Context(), store, loaded, time.Hour); !errors.Is(err, ErrSupersededNotDeleted) {
+			t.Fatalf("Commit: err not wrapping ErrSupersededNotDeleted: %v", err)
+		}
+		loaded.Set("key", "new")
+
+		err = Commit(t.Context(), store, loaded, time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		reloaded, err := Load(t.Context(), store, loaded.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		val, ok := reloaded.Get[string]("key")
+		if !ok {
+			t.Fatal("want reloaded.Get[string](\"key\") ok: true; got: false")
+		}
+		if want := "new"; want != val {
+			t.Errorf("want val: %q; got: %q", want, val)
+		}
+	})
+
+	t.Run("rejects a session whose ID is unchanged but whose entry is no longer in store", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if err := store.Delete(t.Context(), committed.ID()); err != nil {
+			t.Fatalf("store.Delete: %v", err)
+		}
+
+		err = Commit(t.Context(), store, loaded, time.Hour)
+
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("want err: %v; got: %v", ErrNotFound, err)
+		}
+		entry, err := store.Get(t.Context(), committed.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if entry != nil {
+			t.Error("want entry: nil; got: non-nil")
+		}
+	})
+
+	t.Run("returns the error from store when it cannot write a session whose ID is unchanged", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		updateErr := errors.New("store unavailable")
+		store.updateErr = updateErr
+
+		err = Commit(t.Context(), store, loaded, time.Hour)
+
+		if !errors.Is(err, updateErr) {
+			t.Errorf("want err: %v; got: %v", updateErr, err)
+		}
+	})
+
+	t.Run("removes a destroyed session", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.SetUser(User{Email: "a@example.com"})
+		if loaded.ID() == committed.ID() {
+			t.Fatal("loaded.SetUser: ID unchanged")
+		}
+		loaded.Destroy()
+
+		err = Commit(t.Context(), store, loaded, time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		entry, err := store.Get(t.Context(), committed.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if entry != nil {
+			t.Error("want entry: nil; got: non-nil")
+		}
+	})
+
+	t.Run("does not write a destroyed session", func(t *testing.T) {
+		store := newFakeStore(t)
+		sess := New()
+		sess.Destroy()
+
+		err := Commit(t.Context(), store, sess, time.Hour)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		entry, err := store.Get(t.Context(), sess.ID())
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if entry != nil {
+			t.Error("want entry: nil; got: non-nil")
+		}
+	})
+
+	t.Run("returns the error from store when it cannot remove a destroyed session", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		loaded.Destroy()
+		deleteErr := errors.New("store unavailable")
+		store.deleteErr = deleteErr
+
+		err = Commit(t.Context(), store, loaded, time.Hour)
+
+		if !errors.Is(err, deleteErr) {
+			t.Errorf("want err: %v; got: %v", deleteErr, err)
 		}
 	})
 }
 
 func TestSession_CSRFToken(t *testing.T) {
-	t.Run("returns different token on each call", func(t *testing.T) {
+	t.Run("returns a different token on each call", func(t *testing.T) {
 		sess := New()
 
 		first := sess.CSRFToken()
@@ -263,31 +646,10 @@ func TestSession_CSRFToken(t *testing.T) {
 			t.Errorf("want second: != %q; got: %q", first, second)
 		}
 	})
-
-	t.Run("returns token that VerifyCSRFToken accepts", func(t *testing.T) {
-		sess := New()
-
-		token := sess.CSRFToken()
-
-		if !sess.VerifyCSRFToken(token) {
-			t.Error("want sess.VerifyCSRFToken(token): true; got: false")
-		}
-	})
-
-	t.Run("keeps earlier tokens valid", func(t *testing.T) {
-		sess := New()
-		token := sess.CSRFToken()
-
-		sess.CSRFToken()
-
-		if !sess.VerifyCSRFToken(token) {
-			t.Error("want sess.VerifyCSRFToken(token): true; got: false")
-		}
-	})
 }
 
 func TestSession_VerifyCSRFToken(t *testing.T) {
-	t.Run("accepts token from this session", func(t *testing.T) {
+	t.Run("accepts the latest token", func(t *testing.T) {
 		sess := New()
 		token := sess.CSRFToken()
 
@@ -298,7 +660,31 @@ func TestSession_VerifyCSRFToken(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects token from another session", func(t *testing.T) {
+	t.Run("accepts an older token", func(t *testing.T) {
+		sess := New()
+		token := sess.CSRFToken()
+		sess.CSRFToken()
+
+		accepted := sess.VerifyCSRFToken(token)
+
+		if !accepted {
+			t.Error("want accepted: true; got: false")
+		}
+	})
+
+	t.Run("accepts a token issued after SetUser", func(t *testing.T) {
+		sess := New()
+		sess.SetUser(User{Email: "a@example.com"})
+		token := sess.CSRFToken()
+
+		accepted := sess.VerifyCSRFToken(token)
+
+		if !accepted {
+			t.Error("want accepted: true; got: false")
+		}
+	})
+
+	t.Run("rejects a token from another session", func(t *testing.T) {
 		sess := New()
 		token := New().CSRFToken()
 
@@ -309,7 +695,7 @@ func TestSession_VerifyCSRFToken(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects empty token", func(t *testing.T) {
+	t.Run("rejects an empty token", func(t *testing.T) {
 		sess := New()
 
 		accepted := sess.VerifyCSRFToken("")
@@ -370,7 +756,7 @@ func TestSession_IsAuthenticated(t *testing.T) {
 }
 
 func TestSession_Get(t *testing.T) {
-	t.Run("returns value stored under key", func(t *testing.T) {
+	t.Run("returns the value stored under the key", func(t *testing.T) {
 		sess := New()
 		sess.Set("key", "value")
 
@@ -384,7 +770,7 @@ func TestSession_Get(t *testing.T) {
 		}
 	})
 
-	t.Run("reports false for missing key", func(t *testing.T) {
+	t.Run("reports false for a missing key", func(t *testing.T) {
 		sess := New()
 		sess.Set("other", "value")
 
@@ -395,7 +781,7 @@ func TestSession_Get(t *testing.T) {
 		}
 	})
 
-	t.Run("reports false for value of another type", func(t *testing.T) {
+	t.Run("reports false for a value of another type", func(t *testing.T) {
 		sess := New()
 		sess.Set("key", 1)
 
@@ -405,10 +791,54 @@ func TestSession_Get(t *testing.T) {
 			t.Error("want ok: false; got: true")
 		}
 	})
+
+	t.Run("returns numbers as float64 on a loaded session", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		committed.Set("key", 1)
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+
+		val, ok := loaded.Get[float64]("key")
+
+		if !ok {
+			t.Fatal("want ok: true; got: false")
+		}
+		if want := 1.0; want != val {
+			t.Errorf("want val: %v; got: %v", want, val)
+		}
+	})
+
+	t.Run("returns structs as map[string]any on a loaded session", func(t *testing.T) {
+		store := newFakeStore(t)
+		committed := New()
+		committed.Set("key", struct{ Name string }{Name: "a"})
+		if err := Commit(t.Context(), store, committed, time.Hour); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+		loaded, err := Load(t.Context(), store, committed.ID())
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+
+		val, ok := loaded.Get[map[string]any]("key")
+
+		if !ok {
+			t.Fatal("want ok: true; got: false")
+		}
+		if want := (map[string]any{"Name": "a"}); !reflect.DeepEqual(want, val) {
+			t.Errorf("want val: %v; got: %v", want, val)
+		}
+	})
 }
 
 func TestSession_GetAndDelete(t *testing.T) {
-	t.Run("returns value stored under key", func(t *testing.T) {
+	t.Run("returns the value stored under the key", func(t *testing.T) {
 		sess := New()
 		sess.Set("key", "value")
 
@@ -422,7 +852,7 @@ func TestSession_GetAndDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("removes value stored under key", func(t *testing.T) {
+	t.Run("removes the value stored under the key", func(t *testing.T) {
 		sess := New()
 		sess.Set("key", "value")
 
@@ -433,7 +863,7 @@ func TestSession_GetAndDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("reports false for missing key", func(t *testing.T) {
+	t.Run("reports false for a missing key", func(t *testing.T) {
 		sess := New()
 		sess.Set("other", "value")
 
@@ -444,7 +874,7 @@ func TestSession_GetAndDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("removes value of another type", func(t *testing.T) {
+	t.Run("removes a value of another type", func(t *testing.T) {
 		sess := New()
 		sess.Set("key", 1)
 
@@ -457,7 +887,7 @@ func TestSession_GetAndDelete(t *testing.T) {
 }
 
 func TestSession_Set(t *testing.T) {
-	t.Run("stores value under key", func(t *testing.T) {
+	t.Run("stores the value under the key", func(t *testing.T) {
 		sess := New()
 
 		sess.Set("key", "value")
@@ -488,7 +918,7 @@ func TestSession_Set(t *testing.T) {
 }
 
 func TestSession_Delete(t *testing.T) {
-	t.Run("removes value stored under key", func(t *testing.T) {
+	t.Run("removes the value stored under the key", func(t *testing.T) {
 		sess := New()
 		sess.Set("key", "value")
 
@@ -501,7 +931,7 @@ func TestSession_Delete(t *testing.T) {
 }
 
 func TestSession_SetUser(t *testing.T) {
-	t.Run("attaches user", func(t *testing.T) {
+	t.Run("attaches the user", func(t *testing.T) {
 		sess := New()
 
 		sess.SetUser(User{Email: "a@example.com"})
@@ -515,7 +945,7 @@ func TestSession_SetUser(t *testing.T) {
 		}
 	})
 
-	t.Run("replaces existing user", func(t *testing.T) {
+	t.Run("replaces the user already attached", func(t *testing.T) {
 		sess := New()
 		sess.SetUser(User{Email: "a@example.com"})
 
@@ -530,7 +960,7 @@ func TestSession_SetUser(t *testing.T) {
 		}
 	})
 
-	t.Run("gives session a new ID", func(t *testing.T) {
+	t.Run("gives the session a new ID", func(t *testing.T) {
 		sess := New()
 		oldID := sess.ID()
 
@@ -541,7 +971,7 @@ func TestSession_SetUser(t *testing.T) {
 		}
 	})
 
-	t.Run("invalidates earlier CSRF tokens", func(t *testing.T) {
+	t.Run("invalidates the CSRF tokens returned so far", func(t *testing.T) {
 		sess := New()
 		token := sess.CSRFToken()
 
@@ -552,17 +982,7 @@ func TestSession_SetUser(t *testing.T) {
 		}
 	})
 
-	t.Run("issues new CSRF tokens that VerifyCSRFToken accepts", func(t *testing.T) {
-		sess := New()
-
-		sess.SetUser(User{Email: "a@example.com"})
-
-		if !sess.VerifyCSRFToken(sess.CSRFToken()) {
-			t.Error("want sess.VerifyCSRFToken(sess.CSRFToken()): true; got: false")
-		}
-	})
-
-	t.Run("discards data", func(t *testing.T) {
+	t.Run("discards the session's data", func(t *testing.T) {
 		sess := New()
 		sess.Set("key", "value")
 
@@ -575,7 +995,7 @@ func TestSession_SetUser(t *testing.T) {
 }
 
 func TestSession_Destroy(t *testing.T) {
-	t.Run("detaches user", func(t *testing.T) {
+	t.Run("detaches the session's user", func(t *testing.T) {
 		sess := New()
 		sess.SetUser(User{Email: "a@example.com"})
 
@@ -586,7 +1006,7 @@ func TestSession_Destroy(t *testing.T) {
 		}
 	})
 
-	t.Run("discards data", func(t *testing.T) {
+	t.Run("discards the session's data", func(t *testing.T) {
 		sess := New()
 		sess.Set("key", "value")
 
@@ -599,6 +1019,16 @@ func TestSession_Destroy(t *testing.T) {
 }
 
 func TestSession_IsDestroyed(t *testing.T) {
+	t.Run("reports false before Destroy", func(t *testing.T) {
+		sess := New()
+
+		destroyed := sess.IsDestroyed()
+
+		if destroyed {
+			t.Error("want destroyed: false; got: true")
+		}
+	})
+
 	t.Run("reports true after Destroy", func(t *testing.T) {
 		sess := New()
 		sess.Destroy()
@@ -609,59 +1039,77 @@ func TestSession_IsDestroyed(t *testing.T) {
 			t.Error("want destroyed: true; got: false")
 		}
 	})
-
-	t.Run("reports false before Destroy", func(t *testing.T) {
-		sess := New()
-
-		destroyed := sess.IsDestroyed()
-
-		if destroyed {
-			t.Error("want destroyed: false; got: true")
-		}
-	})
 }
 
 // Asserts at compile time that *fakeStore satisfies Store.
 var _ Store = (*fakeStore)(nil)
 
-// fakeStore is a Store that holds entries in a map and never expires them. It
-// records the TTL of each committed entry. When prepareErr or commitErr is set,
-// Prepare or Commit returns it without touching the entries.
+// fakeStore is a Store backed by a memstore.Store. It records the TTL of each
+// Create and Update call. When getErr, createErr, updateErr or deleteErr is
+// set, Get, Create, Update or Delete returns it without touching the entries.
 type fakeStore struct {
-	entries    map[string][]byte
-	ttls       map[string]time.Duration
-	prepareErr error
-	commitErr  error
+	*memstore.Store
+
+	ttls      map[string]time.Duration
+	getErr    error
+	createErr error
+	updateErr error
+	deleteErr error
 }
 
-func (s *fakeStore) Prepare(_ context.Context, id string) ([]byte, error) {
-	if s.prepareErr != nil {
-		return nil, s.prepareErr
-	}
-
-	return s.entries[id], nil
+// seed is an entry written to a fakeStore before a test runs.
+type seed struct {
+	id   string
+	data string
 }
 
-func (s *fakeStore) Commit(_ context.Context, id string, data []byte, ttl time.Duration) error {
-	if s.commitErr != nil {
-		return s.commitErr
+// newFakeStore returns a fakeStore holding only seeds, each stored for an hour.
+func newFakeStore(t *testing.T, seeds ...seed) *fakeStore {
+	t.Helper()
+
+	store := &fakeStore{
+		Store: memstore.New(),
+		ttls:  make(map[string]time.Duration),
+	}
+	for _, s := range seeds {
+		if _, err := store.Store.Create(t.Context(), s.id, []byte(s.data), time.Hour); err != nil {
+			t.Fatalf("memstore.Store.Create: %v", err)
+		}
 	}
 
-	if s.entries == nil {
-		s.entries = make(map[string][]byte)
+	return store
+}
+
+func (s *fakeStore) Get(ctx context.Context, id string) ([]byte, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
 	}
-	if s.ttls == nil {
-		s.ttls = make(map[string]time.Duration)
+
+	return s.Store.Get(ctx, id)
+}
+
+func (s *fakeStore) Create(ctx context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
+	if s.createErr != nil {
+		return false, s.createErr
 	}
-	s.entries[id] = data
 	s.ttls[id] = ttl
 
-	return nil
+	return s.Store.Create(ctx, id, data, ttl)
 }
 
-func (s *fakeStore) Drop(_ context.Context, id string) error {
-	delete(s.entries, id)
-	delete(s.ttls, id)
+func (s *fakeStore) Update(ctx context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
+	if s.updateErr != nil {
+		return false, s.updateErr
+	}
+	s.ttls[id] = ttl
 
-	return nil
+	return s.Store.Update(ctx, id, data, ttl)
+}
+
+func (s *fakeStore) Delete(ctx context.Context, id string) error {
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+
+	return s.Store.Delete(ctx, id)
 }
