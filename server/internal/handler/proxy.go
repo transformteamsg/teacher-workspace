@@ -75,7 +75,7 @@ func (h *Handler) proxy() http.Handler {
 			return
 		}
 
-		if u.ID == "" || u.Email == "" || u.Role == "" || u.Attributes == nil {
+		if u.ID == "" || u.Email == "" || u.Role == "" || u.SchoolCode == "" || u.Attributes == nil {
 			logger.Error("incomplete user found in session")
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
 				Message: http.StatusText(http.StatusInternalServerError),
@@ -91,6 +91,7 @@ func (h *Handler) proxy() http.Handler {
 			Role  string `json:"role"`
 			// EffectiveRole duplicates Role for PG. Remove it once PG reads role.
 			EffectiveRole string   `json:"effective_role"`
+			SchoolCode    string   `json:"school_code"`
 			Attributes    []string `json:"attributes"`
 		}{
 			Issuer:    "tw",
@@ -102,6 +103,7 @@ func (h *Handler) proxy() http.Handler {
 			Email:         u.Email,
 			Role:          u.Role,
 			EffectiveRole: u.Role,
+			SchoolCode:    u.SchoolCode,
 			Attributes:    u.Attributes,
 		}
 
