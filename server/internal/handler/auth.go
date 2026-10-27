@@ -142,8 +142,9 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 // [Handler.authEdupass]. Edupass redirects the user here after they log in.
 //
 // On success, it logs the user in to the session with the identity, base role
-// and attributes from their Edupass ID token, and redirects them to the path
-// they asked to return to.
+// and attributes from their Edupass ID token, and the location code of the
+// school the base role was granted at. It then redirects them to the path they
+// asked to return to.
 //
 // On failure, it redirects the user to the login page, which reports the
 // failure and keeps the path they asked to return to. The error query
@@ -383,6 +384,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		Name:       claims.Name,
 		Email:      claims.CESEmail,
 		Role:       resolved.roles[0].code,
+		SchoolCode: resolved.roles[0].location,
 		Attributes: resolved.attributes,
 	})
 

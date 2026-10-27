@@ -2281,6 +2281,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			Name:       "John Smith",
 			Email:      "john.smith@example.com",
 			Role:       "ROLE_TEACHER",
+			SchoolCode: "1234",
 			Attributes: []string{"ATTR_PG_ADMIN", "ATTR_CCE"},
 		}
 		if !reflect.DeepEqual(want, user) {
@@ -2652,6 +2653,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			Name:       "John Smith",
 			Email:      "john.smith@example.com",
 			Role:       "ROLE_HOD",
+			SchoolCode: "1234",
 			Attributes: []string{},
 		}
 		if !reflect.DeepEqual(want, user) {
