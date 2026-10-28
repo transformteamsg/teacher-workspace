@@ -416,7 +416,7 @@ func TestServerConfig_validate(t *testing.T) {
 
 func TestSessionConfig_validate(t *testing.T) {
 	t.Run("accepts valid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*SessionConfig)
 		}{
@@ -429,9 +429,9 @@ func TestSessionConfig_validate(t *testing.T) {
 				mutate: func(c *SessionConfig) { c.AuthenticatedTTL = time.Second },
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Session
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -441,7 +441,7 @@ func TestSessionConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*SessionConfig)
 			want   string
@@ -465,6 +465,21 @@ func TestSessionConfig_validate(t *testing.T) {
 				name:   "name with a semicolon",
 				mutate: func(c *SessionConfig) { c.Name = "tw;session" },
 				want:   `TW_SESSION_NAME must be a valid cookie name; got "tw;session"`,
+			},
+			{
+				name:   "name with the __Host- prefix",
+				mutate: func(c *SessionConfig) { c.Name = "__Host-tw_session" },
+				want:   `TW_SESSION_NAME must not start with __Host- or __Secure-; got "__Host-tw_session"`,
+			},
+			{
+				name:   "name with the __Secure- prefix",
+				mutate: func(c *SessionConfig) { c.Name = "__Secure-tw_session" },
+				want:   `TW_SESSION_NAME must not start with __Host- or __Secure-; got "__Secure-tw_session"`,
+			},
+			{
+				name:   "name with a prefix in another case",
+				mutate: func(c *SessionConfig) { c.Name = "__host-tw_session" },
+				want:   `TW_SESSION_NAME must not start with __Host- or __Secure-; got "__host-tw_session"`,
 			},
 			{
 				name:   "zero default TTL",
@@ -510,17 +525,17 @@ func TestSessionConfig_validate(t *testing.T) {
 				want: "TW_SESSION_VALKEY_URL is required",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Session
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
