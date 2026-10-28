@@ -56,7 +56,7 @@ func Default() Config {
 		},
 		Session: SessionConfig{
 			Name:             "tw_session",
-			DefaultTTL:       3 * time.Hour,
+			DefaultTTL:       time.Hour,
 			AuthenticatedTTL: 30 * time.Minute,
 			Secure:           true,
 			StoreProvider:    SessionStoreProviderMemory,

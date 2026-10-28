@@ -57,7 +57,7 @@ func TestDefault(t *testing.T) {
 		if want, got := "tw_session", cfg.Session.Name; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if want, got := 3*time.Hour, cfg.Session.DefaultTTL; want != got {
+		if want, got := time.Hour, cfg.Session.DefaultTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
 		if want, got := 30*time.Minute, cfg.Session.AuthenticatedTTL; want != got {
