@@ -64,6 +64,131 @@ func TestSession(t *testing.T) {
 		}
 	})
 
+	t.Run("loads the session identified by the __Host- prefixed session cookie when the Secure option is set", func(t *testing.T) {
+		store := newFakeStore(t)
+		seeded := session.New()
+		if err := session.Commit(t.Context(), store.Store, seeded, time.Hour); err != nil {
+			t.Fatalf("session.Commit: %v", err)
+		}
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+			Secure:           true,
+		}
+
+		var loaded *session.Session
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			loaded, _ = SessionFromContext(r.Context())
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		req.AddCookie(&http.Cookie{
+			Name:  "__Host-sid",
+			Value: seeded.ID(),
+		})
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		if loaded == nil {
+			t.Fatal("want loaded: non-nil; got: nil")
+		}
+		if want, got := seeded.ID(), loaded.ID(); want != got {
+			t.Errorf("want loaded.ID(): %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not load the session identified by an unprefixed session cookie when the Secure option is set", func(t *testing.T) {
+		store := newFakeStore(t)
+		seeded := session.New()
+		if err := session.Commit(t.Context(), store.Store, seeded, time.Hour); err != nil {
+			t.Fatalf("session.Commit: %v", err)
+		}
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+			Secure:           true,
+		}
+
+		var loaded *session.Session
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			loaded, _ = SessionFromContext(r.Context())
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		// The unprefixed cookie stands in for one planted by another subdomain.
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		req.AddCookie(&http.Cookie{
+			Name:  opts.Name,
+			Value: seeded.ID(),
+		})
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		if loaded == nil {
+			t.Fatal("want loaded: non-nil; got: nil")
+		}
+		if want, got := seeded.ID(), loaded.ID(); want == got {
+			t.Errorf("want loaded.ID(): != %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("loads the session identified by the __Host- prefixed session cookie when the Secure option is set and an unprefixed session cookie comes first", func(t *testing.T) {
+		store := newFakeStore(t)
+		planted := session.New()
+		if err := session.Commit(t.Context(), store.Store, planted, time.Hour); err != nil {
+			t.Fatalf("session.Commit: %v", err)
+		}
+		seeded := session.New()
+		if err := session.Commit(t.Context(), store.Store, seeded, time.Hour); err != nil {
+			t.Fatalf("session.Commit: %v", err)
+		}
+
+		opts := SessionOptions{
+			Name:             "sid",
+			DefaultTTL:       time.Hour,
+			AuthenticatedTTL: 24 * time.Hour,
+			Secure:           true,
+		}
+
+		var loaded *session.Session
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			loaded, _ = SessionFromContext(r.Context())
+		})
+
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		// The unprefixed cookie stands in for one planted by another subdomain
+		// with a longer path, which browsers send first (RFC 6265, section 5.4).
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		req.AddCookie(&http.Cookie{
+			Name:  opts.Name,
+			Value: planted.ID(),
+		})
+		req.AddCookie(&http.Cookie{
+			Name:  "__Host-sid",
+			Value: seeded.ID(),
+		})
+		rec := httptest.NewRecorder()
+
+		Session(store, opts)(next).ServeHTTP(rec, req)
+
+		if loaded == nil {
+			t.Fatal("want loaded: non-nil; got: nil")
+		}
+		if want, got := seeded.ID(), loaded.ID(); want != got {
+			t.Errorf("want loaded.ID(): %q; got: %q", want, got)
+		}
+	})
+
 	t.Run("creates a new session when the session cookie is missing", func(t *testing.T) {
 		store := newFakeStore(t)
 
@@ -747,6 +872,9 @@ func TestSession(t *testing.T) {
 		if want, got := "/", cookies[0].Path; want != got {
 			t.Errorf("want cookies[0].Path: %q; got: %q", want, got)
 		}
+		if got := cookies[0].Domain; got != "" {
+			t.Errorf("want cookies[0].Domain: empty; got: %q", got)
+		}
 		if !cookies[0].HttpOnly {
 			t.Error("want cookies[0].HttpOnly: true; got: false")
 		}
@@ -829,6 +957,55 @@ func TestSession(t *testing.T) {
 				}
 				if want, got := test.secure, cookies[0].Secure; want != got {
 					t.Errorf("want cookies[0].Secure: %t; got: %t", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("names the session cookie", func(t *testing.T) {
+		for _, test := range []struct {
+			name   string
+			secure bool
+			want   string
+		}{
+			{
+				name:   "with the __Host- prefix when the Secure option is set",
+				secure: true,
+				want:   "__Host-sid",
+			},
+			{
+				name:   "as given when the Secure option is unset",
+				secure: false,
+				want:   "sid",
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				store := newFakeStore(t)
+
+				opts := SessionOptions{
+					Name:             "sid",
+					DefaultTTL:       time.Hour,
+					AuthenticatedTTL: 24 * time.Hour,
+					Secure:           test.secure,
+				}
+
+				next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					_, _ = w.Write([]byte("ok"))
+				})
+
+				ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+				req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+				rec := httptest.NewRecorder()
+
+				Session(store, opts)(next).ServeHTTP(rec, req)
+
+				cookies := rec.Result().Cookies()
+				if len(cookies) == 0 {
+					t.Fatal("want cookies: non-empty; got: empty")
+				}
+				if want, got := test.want, cookies[0].Name; want != got {
+					t.Errorf("want cookies[0].Name: %q; got: %q", want, got)
 				}
 			})
 		}
