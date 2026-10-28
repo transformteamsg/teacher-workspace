@@ -6,7 +6,7 @@ Teacher Workspace is a unified platform that consolidates teacher-facing applica
 
 ### Prerequisites
 
-- **[mise](https://mise.jdx.dev/installing-mise.html)** 2026.10.19 or newer, which installs and pins the tools below
+- **[mise](https://mise.jdx.dev/installing-mise.html)** 2026.10.20 or newer, which installs and pins the tools below
   - **Go** 1.27.3
   - **Node.js** 24.22.1
   - **pnpm** 11.22.0
