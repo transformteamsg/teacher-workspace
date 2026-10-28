@@ -3214,14 +3214,14 @@ func TestResolveEdupassGroups(t *testing.T) {
 }
 
 func TestEdupassRoleLabel(t *testing.T) {
-	t.Run("returns the name Edupass registers", func(t *testing.T) {
+	t.Run("returns the name shown to users", func(t *testing.T) {
 		tests := []struct {
 			name string
 			code string
 			want string
 		}{
 			{name: "for ROLE_TEACHER", code: "ROLE_TEACHER", want: "Teacher"},
-			{name: "for ROLE_VICE_PRINCIPAL_ADMINISTRATION", code: "ROLE_VICE_PRINCIPAL_ADMINISTRATION", want: "Vice Principal (Administration)"},
+			{name: "for ROLE_VICE_PRINCIPAL_ADMINISTRATION", code: "ROLE_VICE_PRINCIPAL_ADMINISTRATION", want: "Vice-Principal (Administration)"},
 			{name: "for ROLE_SNR_SWO", code: "ROLE_SNR_SWO", want: "Senior Student Welfare Officer"},
 			{name: "for ROLE_AED_TL", code: "ROLE_AED_TL", want: "Allied Educator (T&L)"},
 		}

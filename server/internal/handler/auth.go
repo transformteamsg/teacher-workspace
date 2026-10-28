@@ -466,13 +466,13 @@ const (
 // means adding it here.
 var edupassRoleLabels = map[string]string{
 	"ROLE_PRINCIPAL":                     "Principal",
-	"ROLE_VICE_PRINCIPAL":                "Vice Principal",
-	"ROLE_VICE_PRINCIPAL_ADMINISTRATION": "Vice Principal (Administration)",
+	"ROLE_VICE_PRINCIPAL":                "Vice-Principal",
+	"ROLE_VICE_PRINCIPAL_ADMINISTRATION": "Vice-Principal (Administration)",
 	"ROLE_ADMIN_MANAGER":                 "Administration Manager",
 	"ROLE_ADMIN_SUPPORT":                 "Administrative Support Staff",
 	"ROLE_YEAR_HEAD":                     "Year Head",
 	"ROLE_ASST_YEAR_HEAD":                "Assistant Year Head",
-	"ROLE_HOD":                           "Head of Department",
+	"ROLE_HOD":                           "Head of Dept",
 	"ROLE_SUBJECT_HEAD":                  "Subject Head",
 	"ROLE_LEVEL_HEAD":                    "Level Head",
 	"ROLE_SSD":                           "School Staff Developer",
