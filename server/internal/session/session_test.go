@@ -731,32 +731,44 @@ func TestSession_User(t *testing.T) {
 		}
 	})
 
-	t.Run("returns a copy whose attributes are not shared with the session", func(t *testing.T) {
+	t.Run("returns a copy whose fields are not shared with the session", func(t *testing.T) {
 		sess := New()
-		sess.SetUser(User{Attributes: []string{"ATTR_CCE"}})
+		var attached, unchanged User
+		fillFields(t, reflect.ValueOf(&attached).Elem())
+		fillFields(t, reflect.ValueOf(&unchanged).Elem())
+		sess.SetUser(attached)
 
 		user, ok := sess.User()
-
 		if !ok {
 			t.Fatal("want ok: true; got: false")
 		}
-		user.Attributes[0] = "ATTR_PG_ADMIN"
-		reread, ok := sess.User()
+
+		changeFields(reflect.ValueOf(&user).Elem())
+		user, ok = sess.User()
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if want, got := []string{"ATTR_CCE"}, reread.Attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want reread.Attributes: %#v; got: %#v", want, got)
+		if !reflect.DeepEqual(unchanged, user) {
+			t.Errorf("want user: %+v; got: %+v", unchanged, user)
 		}
 	})
 
 	t.Run("returns the attributes the user was attached with", func(t *testing.T) {
 		tests := []struct {
-			name       string
-			attributes []string
+			name           string
+			attributes     []string
+			wantAttributes []string
 		}{
-			{name: "when nil", attributes: nil},
-			{name: "when empty", attributes: []string{}},
+			{
+				name:           "when nil",
+				attributes:     nil,
+				wantAttributes: nil,
+			},
+			{
+				name:           "when empty",
+				attributes:     []string{},
+				wantAttributes: []string{},
+			},
 		}
 
 		for _, test := range tests {
@@ -765,11 +777,10 @@ func TestSession_User(t *testing.T) {
 				sess.SetUser(User{Attributes: test.attributes})
 
 				user, ok := sess.User()
-
 				if !ok {
 					t.Fatal("want ok: true; got: false")
 				}
-				if want, got := test.attributes, user.Attributes; !reflect.DeepEqual(want, got) {
+				if want, got := test.wantAttributes, user.Attributes; !reflect.DeepEqual(want, got) {
 					t.Errorf("want user.Attributes: %#v; got: %#v", want, got)
 				}
 			})
@@ -1005,19 +1016,21 @@ func TestSession_SetUser(t *testing.T) {
 		}
 	})
 
-	t.Run("attaches a copy whose attributes are not shared with the caller", func(t *testing.T) {
+	t.Run("attaches a copy whose fields are not shared with the caller", func(t *testing.T) {
 		sess := New()
-		attached := User{Attributes: []string{"ATTR_CCE"}}
+		var attached, unchanged User
+		fillFields(t, reflect.ValueOf(&attached).Elem())
+		fillFields(t, reflect.ValueOf(&unchanged).Elem())
 
 		sess.SetUser(attached)
+		changeFields(reflect.ValueOf(&attached).Elem())
 
-		attached.Attributes[0] = "ATTR_PG_ADMIN"
 		user, ok := sess.User()
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if want, got := []string{"ATTR_CCE"}, user.Attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want user.Attributes: %#v; got: %#v", want, got)
+		if !reflect.DeepEqual(unchanged, user) {
+			t.Errorf("want user: %+v; got: %+v", unchanged, user)
 		}
 	})
 
@@ -1173,4 +1186,75 @@ func (s *fakeStore) Delete(ctx context.Context, id string) error {
 	}
 
 	return s.Store.Delete(ctx, id)
+}
+
+// fillFields sets every field reachable from v to a non-zero value, giving each
+// slice and map one element, so a field that is shared rather than copied
+// cannot pass unnoticed by being empty. It fails the test on a kind it cannot
+// fill or an unexported field, so a new kind of field added to User makes the
+// test fail until the helper handles it.
+func fillFields(t *testing.T, v reflect.Value) {
+	t.Helper()
+
+	switch v.Kind() {
+	case reflect.String:
+		v.SetString("value")
+	case reflect.Bool:
+		v.SetBool(true)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v.SetInt(1)
+	case reflect.Slice:
+		v.Set(reflect.MakeSlice(v.Type(), 1, 1))
+		fillFields(t, v.Index(0))
+	case reflect.Map:
+		key := reflect.New(v.Type().Key()).Elem()
+		elem := reflect.New(v.Type().Elem()).Elem()
+		fillFields(t, key)
+		fillFields(t, elem)
+		v.Set(reflect.MakeMap(v.Type()))
+		v.SetMapIndex(key, elem)
+	case reflect.Pointer:
+		v.Set(reflect.New(v.Type().Elem()))
+		fillFields(t, v.Elem())
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if !v.Field(i).CanSet() {
+				t.Fatalf("fillFields: cannot set unexported field %s.%s", v.Type(), v.Type().Field(i).Name)
+			}
+			fillFields(t, v.Field(i))
+		}
+	default:
+		t.Fatalf("fillFields: unsupported kind %s", v.Kind())
+	}
+}
+
+// changeFields changes every value reachable from v, including those held
+// behind a slice, map, or pointer, so a value shared with another User shows
+// up as changed there.
+func changeFields(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.String:
+		v.SetString("changed")
+	case reflect.Bool:
+		v.SetBool(!v.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v.SetInt(v.Int() + 1)
+	case reflect.Slice:
+		for i := range v.Len() {
+			changeFields(v.Index(i))
+		}
+	case reflect.Map:
+		for _, key := range v.MapKeys() {
+			elem := reflect.New(v.Type().Elem()).Elem()
+			elem.Set(v.MapIndex(key))
+			changeFields(elem)
+			v.SetMapIndex(key, elem)
+		}
+	case reflect.Pointer:
+		changeFields(v.Elem())
+	case reflect.Struct:
+		for i := range v.NumField() {
+			changeFields(v.Field(i))
+		}
+	}
 }
