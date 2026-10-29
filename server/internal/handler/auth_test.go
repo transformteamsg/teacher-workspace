@@ -1494,54 +1494,11 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("logs the login without the email", func(t *testing.T) {
-		signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
-		if err != nil {
-			t.Fatalf("rsa.GenerateKey: %v", err)
-		}
-
-		cfg := newEdupassConfig()
-
-		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			now := time.Now()
-			idToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-				"iss":      cfg.Edupass.IssuerURL.String(),
-				"aud":      cfg.Edupass.ClientID,
-				"sub":      "test-sub",
-				"name":     "John Smith",
-				"id":       "test-id",
-				"iat":      now.Unix(),
-				"exp":      now.Add(time.Hour).Unix(),
-				"nonce":    "test-nonce",
-				"cesEmail": "john.smith@example.com",
-				"groups":   []string{"1234_TW_ROLE_TEACHER"},
-			})
-			signedIDToken, err := idToken.SignedString(signingKey)
-			if err != nil {
-				t.Errorf("SignedString: %v", err)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			if err := json.NewEncoder(w).Encode(map[string]any{
-				"access_token": "test-access-token",
-				"token_type":   "Bearer",
-				"expires_in":   3599,
-				"id_token":     signedIDToken,
-			}); err != nil {
-				t.Errorf("Encode: %v", err)
-			}
-		}))
-		t.Cleanup(edupass.Close)
-
-		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
-		h, err := New(cfg)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-		h.edupassIDTokenVerifier = oidc.NewVerifier(
-			cfg.Edupass.IssuerURL.String(),
-			&oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{&signingKey.PublicKey}},
-			&oidc.Config{ClientID: cfg.Edupass.ClientID},
-		)
+	t.Run("logs the login with the Edupass ID and email", func(t *testing.T) {
+		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
+			"cesEmail": "john.smith@example.com",
+			"groups":   []string{"1234_TW_ROLE_TEACHER"},
+		})
 
 		var logs bytes.Buffer
 		sess := session.New()
@@ -1564,8 +1521,11 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := "logged in", records[0].Msg; want != got {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
-		if got := logs.String(); strings.Contains(got, "john.smith@example.com") {
-			t.Errorf("want logs: without the email; got: %s", got)
+		if want, got := "test-id", records[0].EdupassID; want != got {
+			t.Errorf("want records[0].EdupassID: %q; got: %q", want, got)
+		}
+		if want, got := "john.smith@example.com", records[0].Email; want != got {
+			t.Errorf("want records[0].Email: %q; got: %q", want, got)
 		}
 	})
 
@@ -2421,6 +2381,9 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := "test-id", records[0].EdupassID; want != got {
 			t.Errorf("want records[0].EdupassID: %q; got: %q", want, got)
 		}
+		if want, got := "john.smith@example.com", records[0].Email; want != got {
+			t.Errorf("want records[0].Email: %q; got: %q", want, got)
+		}
 		if want, got := []string{"1234_TW_ROLE_SUPERINTENDENT"}, records[0].Codes; !reflect.DeepEqual(want, got) {
 			t.Errorf("want records[0].Codes: %q; got: %q", want, got)
 		}
@@ -2517,7 +2480,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("logs a warning with the refusal reason and the roles and locations it saw", func(t *testing.T) {
+	t.Run("logs a warning with the refusal reason and the groups, roles and locations it saw", func(t *testing.T) {
 		for _, test := range []struct {
 			name          string
 			groups        []string
@@ -2599,11 +2562,17 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				if want, got := "test-id", refusal.EdupassID; want != got {
 					t.Errorf("want refusal.EdupassID: %q; got: %q", want, got)
 				}
+				if want, got := "john.smith@example.com", refusal.Email; want != got {
+					t.Errorf("want refusal.Email: %q; got: %q", want, got)
+				}
 				if want, got := test.wantRoles, refusal.Roles; !reflect.DeepEqual(want, got) {
 					t.Errorf("want refusal.Roles: %q; got: %q", want, got)
 				}
 				if want, got := test.wantLocations, refusal.Locations; !reflect.DeepEqual(want, got) {
 					t.Errorf("want refusal.Locations: %q; got: %q", want, got)
+				}
+				if want, got := test.groups, refusal.Groups; !reflect.DeepEqual(want, got) {
+					t.Errorf("want refusal.Groups: %q; got: %q", want, got)
 				}
 			})
 		}
@@ -3304,10 +3273,12 @@ type logRecord struct {
 	Err       string   `json:"err"`
 	Provider  string   `json:"provider"`
 	EdupassID string   `json:"edupass_id"`
+	Email     string   `json:"email"`
 	Codes     []string `json:"codes"`
 	Roles     []string `json:"roles"`
 	Reason    string   `json:"reason"`
 	Locations []string `json:"locations"`
+	Groups    []string `json:"groups"`
 }
 
 // decodeLogRecords returns the records in logs, the output of a
