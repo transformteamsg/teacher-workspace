@@ -1518,7 +1518,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := slog.LevelInfo.String(), records[0].Level; want != got {
 			t.Errorf("want records[0].Level: %q; got: %q", want, got)
 		}
-		if want, got := "logged in", records[0].Msg; want != got {
+		if want, got := "user logged in", records[0].Msg; want != got {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
 		if want, got := "test-id", records[0].EdupassID; want != got {
@@ -2387,7 +2387,7 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		if want, got := []string{"1234_TW_ROLE_SUPERINTENDENT"}, records[0].Codes; !reflect.DeepEqual(want, got) {
 			t.Errorf("want records[0].Codes: %q; got: %q", want, got)
 		}
-		if want, got := "logged in", records[1].Msg; want != got {
+		if want, got := "user logged in", records[1].Msg; want != got {
 			t.Errorf("want records[1].Msg: %q; got: %q", want, got)
 		}
 	})

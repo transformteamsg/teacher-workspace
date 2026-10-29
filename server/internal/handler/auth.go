@@ -340,8 +340,6 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The CES email is what a teacher gives when they report a refused
-	// sign-in, and the Edupass ID is what the Edupass team needs to trace it.
 	logger = logger.With("edupass_id", claims.ID, "email", claims.CESEmail)
 
 	resolved := resolveEdupassGroups(claims.Groups, h.cfg.Edupass.AppCode)
@@ -371,8 +369,6 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// groups is the raw claim: unlike roles and locations, it also shows
-		// the attributes and unrecognized codes.
 		logger.Warn(
 			"staff does not have exactly one recognized base role",
 			"reason", reason,
@@ -393,7 +389,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		Attributes: resolved.attributes,
 	})
 
-	logger.Info("logged in")
+	logger.Info("user logged in")
 	httputil.Redirect(w, logger, http.StatusFound, returnTo)
 }
 
