@@ -186,8 +186,7 @@ func (s *Session) VerifyCSRFToken(token string) bool {
 }
 
 // User returns a copy of the user attached to the session, and reports whether
-// there is one. Changing the copy, its attributes included, leaves the session
-// unchanged.
+// there is one.
 func (s *Session) User() (User, bool) {
 	if s.user == nil {
 		return User{}, false
@@ -233,8 +232,7 @@ func (s *Session) Delete(key string) {
 }
 
 // SetUser attaches a copy of u to the session, replacing any user already
-// attached. Changing u afterwards, its attributes included, leaves the session
-// unchanged.
+// attached.
 //
 // To defend against session fixation, it also gives the session a new ID,
 // invalidates every token returned by [Session.CSRFToken] so far, and discards
@@ -242,8 +240,10 @@ func (s *Session) Delete(key string) {
 func (s *Session) SetUser(u User) {
 	s.id = random.Base58(tokenLength)
 	s.csrfToken = random.Base58(tokenLength)
+
 	u.Attributes = slices.Clone(u.Attributes)
 	s.user = &u
+
 	clear(s.data)
 }
 
