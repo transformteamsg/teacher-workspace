@@ -2685,6 +2685,34 @@ func TestRenderUnauthorized(t *testing.T) {
 	})
 }
 
+func TestRenderForbidden(t *testing.T) {
+	t.Run("writes a 403 JSON error response", func(t *testing.T) {
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		renderForbidden(rec, req)
+
+		if want, got := http.StatusForbidden, rec.Code; want != got {
+			t.Errorf("want status: %d; got: %d", want, got)
+		}
+		if want, got := httputil.MIMEApplicationJSONCharsetUTF8, rec.Header().Get("Content-Type"); want != got {
+			t.Errorf("want Content-Type: %q; got: %q", want, got)
+		}
+
+		var body struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := http.StatusText(http.StatusForbidden), body.Message; want != got {
+			t.Errorf("want body.Message: %q; got: %q", want, got)
+		}
+	})
+}
+
 func TestSafeReturnTo(t *testing.T) {
 	t.Run("returns the given path", func(t *testing.T) {
 		for _, test := range []struct {

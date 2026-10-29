@@ -99,6 +99,10 @@ func New(cfg *config.Config) (*Handler, error) {
 //   - gets a 401 under /api/
 //   - is otherwise redirected to the login page, carrying the requested URL to
 //     return to
+//
+// A request under /api/ with a method other than GET, HEAD, OPTIONS, or QUERY
+// gets a 403 unless it is same-origin and carries a CSRF token for the session,
+// as described in [middleware.CSRF].
 func (h *Handler) Routes(store session.Store) http.Handler {
 	sessionOpts := middleware.SessionOptions{
 		Name:             h.cfg.Session.Name,
@@ -112,7 +116,7 @@ func (h *Handler) Routes(store session.Store) http.Handler {
 	app.HandleFunc("POST /logout", h.logout)
 	app.HandleFunc("GET /auth/edupass", h.authEdupass)
 	app.HandleFunc("GET /auth/edupass/callback", h.authEdupassCallback)
-	app.Handle("/api/", middleware.RequireAuth(renderUnauthorized)(h.proxy()))
+	app.Handle("/api/", middleware.RequireAuth(renderUnauthorized)(middleware.CSRF(renderForbidden)(h.proxy())))
 	app.Handle("/", middleware.RequireAuth(redirectToLogin)(h.index()))
 
 	mux := http.NewServeMux()
