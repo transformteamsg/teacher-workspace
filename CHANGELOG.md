@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.0.6 (2026-10-29)
+
+Updates the sidebar, header and home page to the new design, adds the favicon, shows specific alerts when sign-in is refused, and carries the teacher's school code to remote app backends as a `school_code` claim in the TW JWT. Sign-in now rejects Edupass base roles whose location code is not four digits, and signing out no longer lets a request in flight restore the session. No required configuration changes, but the default `TW_SESSION_DEFAULT_TTL` drops from `3h` to `1h`: set it explicitly to keep the old lifetime ([#279](https://github.com/transformteamsg/teacher-workspace/pull/279)). Sessions signed in before the upgrade carry no school code, so remote app requests from them fail until the teacher signs in again.
+
+Versions stay in the `0.0.x` series while the host shell is pre-release, so this is a patch bump despite the features below.
+
+### Features ✨
+
+- feat(`server/config`): shorten the default unauthenticated session TTL to 1h ([#279](https://github.com/transformteamsg/teacher-workspace/pull/279)) ([93eee6d](https://github.com/transformteamsg/teacher-workspace/commit/93eee6d))
+- feat(`server/proxy`): add `school_code` claim to the TW JWT ([#272](https://github.com/transformteamsg/teacher-workspace/pull/272)) ([67bcfee](https://github.com/transformteamsg/teacher-workspace/commit/67bcfee))
+- feat(`server/handler`): forward `account` to the mock Edupass from `authEdupass` in development ([#262](https://github.com/transformteamsg/teacher-workspace/pull/262)) ([59bad63](https://github.com/transformteamsg/teacher-workspace/commit/59bad63))
+- feat(`host`): update the sidebar, header and home page to the sandbox design ([#263](https://github.com/transformteamsg/teacher-workspace/pull/263)) ([0a2cdc5](https://github.com/transformteamsg/teacher-workspace/commit/0a2cdc5))
+- feat(`host`): add the Teacher Workspace favicon ([#264](https://github.com/transformteamsg/teacher-workspace/pull/264)) ([7b06ad8](https://github.com/transformteamsg/teacher-workspace/commit/7b06ad8))
+- feat(`server/auth`): reject Edupass base roles whose location code is not four digits ([#250](https://github.com/transformteamsg/teacher-workspace/pull/250)) ([9804d7e](https://github.com/transformteamsg/teacher-workspace/commit/9804d7e))
+- feat(`host/login`): show specific sign-in refusal alerts ([#226](https://github.com/transformteamsg/teacher-workspace/pull/226)) ([0de1722](https://github.com/transformteamsg/teacher-workspace/commit/0de1722))
+
+### Bug Fixes 🐛
+
+- fix(`server/session`): stop a request in flight at sign-out from restoring the session ([#227](https://github.com/transformteamsg/teacher-workspace/pull/227)) ([135a52f](https://github.com/transformteamsg/teacher-workspace/commit/135a52f))
+
+### Chores 🧹
+
+- chore(`mise.toml`): bump `min_version` to `2026.10.20` ([#277](https://github.com/transformteamsg/teacher-workspace/pull/277)) ([58a3866](https://github.com/transformteamsg/teacher-workspace/commit/58a3866))
+- chore(`deps`): bump `shadcn` from `4.11.0` to `4.22.1` ([#273](https://github.com/transformteamsg/teacher-workspace/pull/273)) ([4bf76fc](https://github.com/transformteamsg/teacher-workspace/commit/4bf76fc))
+- chore(`toolchain`): bump `node` from `24.19.0` to `24.22.1` ([#269](https://github.com/transformteamsg/teacher-workspace/pull/269)) ([0adcc4c](https://github.com/transformteamsg/teacher-workspace/commit/0adcc4c))
+- chore(`toolchain`): require mise `2026.10.19` or newer ([#268](https://github.com/transformteamsg/teacher-workspace/pull/268)) ([abc037c](https://github.com/transformteamsg/teacher-workspace/commit/abc037c))
+- chore(`deps`): bump `express` from `5.2.1` to `5.3.0` ([#270](https://github.com/transformteamsg/teacher-workspace/pull/270)) ([b02dc79](https://github.com/transformteamsg/teacher-workspace/commit/b02dc79))
+
 ## 0.0.5 (2026-10-22)
 
 Loads Student Insights from its remote app at `/students`, in place of the placeholder page, and shows a helpful 404 page for unknown URLs. No configuration changes: the Student Insights remote is registered as `student_insights` and must expose `./App`.
