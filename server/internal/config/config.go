@@ -175,6 +175,10 @@ func (cfg SessionConfig) validate() error {
 		// http.SetCookie drops a cookie whose name falls outside the token charset
 		// of RFC 6265, section 4.1.1, serializing it to "" instead.
 		errs = append(errs, fmt.Errorf("TW_SESSION_NAME must be a valid cookie name; got %q", cfg.Name))
+	} else if lower := strings.ToLower(cfg.Name); strings.HasPrefix(lower, "__host-") || strings.HasPrefix(lower, "__secure-") {
+		// The server adds __Host- itself when TW_SESSION_SECURE is true, and
+		// browsers drop a prefixed cookie that lacks the Secure attribute.
+		errs = append(errs, fmt.Errorf("TW_SESSION_NAME must not start with __Host- or __Secure-; got %q", cfg.Name))
 	}
 
 	// A sub-second TTL truncates to Max-Age=0, which net/http omits rather than

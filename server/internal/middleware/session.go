@@ -19,7 +19,8 @@ type ctxKeySession struct{}
 
 // SessionOptions configures the [Session] middleware.
 type SessionOptions struct {
-	// Name is the session cookie name. It must be a valid cookie name.
+	// Name is the session cookie name, prefixed with __Host- when Secure is set.
+	// It must be a valid cookie name.
 	Name string
 
 	// DefaultTTL is how long an unauthenticated session lasts without a
@@ -63,12 +64,17 @@ type SessionOptions struct {
 // cannot be removed, the handler's response is replaced with a 500. If the
 // client disconnects before the session loads, nothing is written.
 func Session(store session.Store, opts SessionOptions) Middleware {
+	name := opts.Name
+	if opts.Secure {
+		name = "__Host-" + name
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger := LoggerFromContext(r.Context())
 
 			var id string
-			if c, err := r.Cookie(opts.Name); err == nil {
+			if c, err := r.Cookie(name); err == nil {
 				id = c.Value
 			}
 
@@ -125,7 +131,7 @@ func Session(store session.Store, opts SessionOptions) Middleware {
 					}
 
 					cookie := &http.Cookie{
-						Name:     opts.Name,
+						Name:     name,
 						Path:     "/",
 						Secure:   opts.Secure,
 						HttpOnly: true,

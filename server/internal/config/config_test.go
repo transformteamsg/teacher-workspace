@@ -202,7 +202,7 @@ func TestConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*Config)
 			want   string
@@ -251,17 +251,17 @@ func TestConfig_Validate(t *testing.T) {
 				want: `TW_REMOTE_POSTS_MANIFEST_URL must use scheme http or https; got "ftp://posts.example.com/mf-manifest.json"`,
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := validConfig()
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.Validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -318,7 +318,7 @@ func TestConfig_Validate(t *testing.T) {
 
 func TestServerConfig_validate(t *testing.T) {
 	t.Run("accepts valid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*ServerConfig)
 		}{
@@ -349,9 +349,9 @@ func TestServerConfig_validate(t *testing.T) {
 				mutate: func(c *ServerConfig) { c.IdleTimeout = 0 },
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Server
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -361,7 +361,7 @@ func TestServerConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*ServerConfig)
 			want   string
@@ -397,17 +397,17 @@ func TestServerConfig_validate(t *testing.T) {
 				want:   "TW_SERVER_IDLE_TIMEOUT must be >= 0; got -1s",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Server
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -416,7 +416,7 @@ func TestServerConfig_validate(t *testing.T) {
 
 func TestSessionConfig_validate(t *testing.T) {
 	t.Run("accepts valid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*SessionConfig)
 		}{
@@ -429,9 +429,9 @@ func TestSessionConfig_validate(t *testing.T) {
 				mutate: func(c *SessionConfig) { c.AuthenticatedTTL = time.Second },
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Session
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -441,7 +441,7 @@ func TestSessionConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*SessionConfig)
 			want   string
@@ -465,6 +465,21 @@ func TestSessionConfig_validate(t *testing.T) {
 				name:   "name with a semicolon",
 				mutate: func(c *SessionConfig) { c.Name = "tw;session" },
 				want:   `TW_SESSION_NAME must be a valid cookie name; got "tw;session"`,
+			},
+			{
+				name:   "name with the __Host- prefix",
+				mutate: func(c *SessionConfig) { c.Name = "__Host-tw_session" },
+				want:   `TW_SESSION_NAME must not start with __Host- or __Secure-; got "__Host-tw_session"`,
+			},
+			{
+				name:   "name with the __Secure- prefix",
+				mutate: func(c *SessionConfig) { c.Name = "__Secure-tw_session" },
+				want:   `TW_SESSION_NAME must not start with __Host- or __Secure-; got "__Secure-tw_session"`,
+			},
+			{
+				name:   "name with a prefix in another case",
+				mutate: func(c *SessionConfig) { c.Name = "__host-tw_session" },
+				want:   `TW_SESSION_NAME must not start with __Host- or __Secure-; got "__host-tw_session"`,
 			},
 			{
 				name:   "zero default TTL",
@@ -510,17 +525,17 @@ func TestSessionConfig_validate(t *testing.T) {
 				want: "TW_SESSION_VALKEY_URL is required",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Session
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -577,7 +592,7 @@ func TestSessionValkeyConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*SessionValkeyConfig)
 			want   string
@@ -613,7 +628,7 @@ func TestSessionValkeyConfig_validate(t *testing.T) {
 				want:   "TW_SESSION_VALKEY_PREFIX is required",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Session.Valkey
 				cfg.URL = &url.URL{
 					Scheme:   "valkey",
@@ -621,15 +636,15 @@ func TestSessionValkeyConfig_validate(t *testing.T) {
 					Path:     "/0",
 					RawQuery: "tls=true",
 				}
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -685,7 +700,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*EdupassConfig)
 			want   string
@@ -771,17 +786,17 @@ func TestEdupassConfig_validate(t *testing.T) {
 				want:   "TW_EDUPASS_REDIRECT_URL must include host",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := validConfig().Edupass
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -858,7 +873,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 				t.Fatalf("os.WriteFile: %v", err)
 			}
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name             string
 				clientSecret     string
 				clientSecretFile string
@@ -869,14 +884,14 @@ func TestEdupassConfig_validate(t *testing.T) {
 				{name: "from a file ending in LF", clientSecretFile: clientSecretFileWithLFPath, want: "test-secret"},
 				{name: "from a file ending in CRLF", clientSecretFile: clientSecretFileWithCRLFPath, want: "test-secret"},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
-					cfg.ClientSecret, cfg.ClientSecretFile = tt.clientSecret, tt.clientSecretFile
+					cfg.ClientSecret, cfg.ClientSecretFile = test.clientSecret, test.clientSecretFile
 
 					if err := cfg.validate(); err != nil {
 						t.Fatalf("want err: nil; got: %v", err)
 					}
-					if want, got := tt.want, cfg.ClientCredentials.Secret; want != got {
+					if want, got := test.want, cfg.ClientCredentials.Secret; want != got {
 						t.Errorf("want: %q; got: %q", want, got)
 					}
 				})
@@ -890,7 +905,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 				t.Fatalf("os.WriteFile: %v", err)
 			}
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name             string
 				clientSecretFile string
 				want             string
@@ -898,17 +913,17 @@ func TestEdupassConfig_validate(t *testing.T) {
 				{name: "unreadable file", clientSecretFile: missingFilePath, want: "TW_EDUPASS_CLIENT_SECRET_FILE: open " + missingFilePath + ": no such file or directory"},
 				{name: "empty file", clientSecretFile: emptyClientSecretFilePath, want: "TW_EDUPASS_CLIENT_SECRET_FILE: "},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
-					cfg.ClientSecret, cfg.ClientSecretFile = "", tt.clientSecretFile
+					cfg.ClientSecret, cfg.ClientSecretFile = "", test.clientSecretFile
 
 					err := cfg.validate()
 
 					if err == nil {
 						t.Fatal("want err: non-nil; got: nil")
 					}
-					if !strings.HasPrefix(err.Error(), tt.want) {
-						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
+					if !strings.HasPrefix(err.Error(), test.want) {
+						t.Errorf("want err: starting with %q; got: %q", test.want, err)
 					}
 				})
 			}
@@ -1024,7 +1039,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 			}
 			clientCertificateThumbprint := sha256.Sum256(clientCertificateDER)
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name                      string
 				clientPrivateKey          string
 				clientPrivateKeyFile      string
@@ -1045,12 +1060,12 @@ func TestEdupassConfig_validate(t *testing.T) {
 					wantCertificateThumbprint: base64.RawURLEncoding.EncodeToString(clientCertificateThumbprint[:]),
 				},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
 					cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 					cfg.ClientSecret = ""
-					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = tt.clientPrivateKey, tt.clientPrivateKeyFile
-					cfg.ClientCertificate, cfg.ClientCertificateFile = tt.clientCertificate, tt.clientCertificateFile
+					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = test.clientPrivateKey, test.clientPrivateKeyFile
+					cfg.ClientCertificate, cfg.ClientCertificateFile = test.clientCertificate, test.clientCertificateFile
 
 					if err := cfg.validate(); err != nil {
 						t.Fatalf("want err: nil; got: %v", err)
@@ -1058,7 +1073,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 					if got := clientPrivateKey.Equal(cfg.ClientCredentials.Key); !got {
 						t.Error("want: true; got: false")
 					}
-					if want, got := tt.wantCertificateThumbprint, cfg.ClientCredentials.CertificateThumbprint; want != got {
+					if want, got := test.wantCertificateThumbprint, cfg.ClientCredentials.CertificateThumbprint; want != got {
 						t.Errorf("want: %q; got: %q", want, got)
 					}
 				})
@@ -1103,7 +1118,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 				t.Fatalf("os.WriteFile: %v", err)
 			}
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name                 string
 				clientPrivateKey     string
 				clientPrivateKeyFile string
@@ -1117,11 +1132,11 @@ func TestEdupassConfig_validate(t *testing.T) {
 				{name: "not RSA", clientPrivateKey: ecdsaPrivateKeyPEM, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY: not RSA, got *ecdsa.PrivateKey"},
 				{name: "under 2048 bits", clientPrivateKey: rsa1024PrivateKeyPEM, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY: 1024 bits, want at least 2048"},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
 					cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 					cfg.ClientSecret = ""
-					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = tt.clientPrivateKey, tt.clientPrivateKeyFile
+					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = test.clientPrivateKey, test.clientPrivateKeyFile
 					cfg.ClientCertificate = clientCertificatePEM
 
 					err := cfg.validate()
@@ -1129,8 +1144,8 @@ func TestEdupassConfig_validate(t *testing.T) {
 					if err == nil {
 						t.Fatal("want err: non-nil; got: nil")
 					}
-					if !strings.HasPrefix(err.Error(), tt.want) {
-						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
+					if !strings.HasPrefix(err.Error(), test.want) {
+						t.Errorf("want err: starting with %q; got: %q", test.want, err)
 					}
 				})
 			}
@@ -1171,7 +1186,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 				t.Fatalf("os.WriteFile: %v", err)
 			}
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name                  string
 				clientCertificate     string
 				clientCertificateFile string
@@ -1184,20 +1199,20 @@ func TestEdupassConfig_validate(t *testing.T) {
 				{name: "expired", clientCertificate: expiredCertificatePEM, want: "TW_EDUPASS_CLIENT_CERTIFICATE: expired at"},
 				{name: "for another key", clientCertificate: otherCertificatePEM, want: "TW_EDUPASS_CLIENT_CERTIFICATE does not match TW_EDUPASS_CLIENT_PRIVATE_KEY"},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
 					cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 					cfg.ClientSecret = ""
 					cfg.ClientPrivateKey = clientPrivateKeyPEM
-					cfg.ClientCertificate, cfg.ClientCertificateFile = tt.clientCertificate, tt.clientCertificateFile
+					cfg.ClientCertificate, cfg.ClientCertificateFile = test.clientCertificate, test.clientCertificateFile
 
 					err := cfg.validate()
 
 					if err == nil {
 						t.Fatal("want err: non-nil; got: nil")
 					}
-					if !strings.HasPrefix(err.Error(), tt.want) {
-						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
+					if !strings.HasPrefix(err.Error(), test.want) {
+						t.Errorf("want err: starting with %q; got: %q", test.want, err)
 					}
 				})
 			}
@@ -1253,7 +1268,7 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 	})
 
 	t.Run("accepts valid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*RemoteAppsConfig)
 		}{
@@ -1282,9 +1297,9 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				mutate: func(c *RemoteAppsConfig) { c.SignedTokenTTL = time.Second },
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := validConfig().RemoteApps
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -1294,7 +1309,7 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*RemoteAppsConfig)
 			want   string
@@ -1433,17 +1448,17 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				want:   "TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := validConfig().RemoteApps
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -1484,7 +1499,7 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 }
 
 func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		name   string
 		mutate func(*RemoteAppsConfig)
 		want   bool
@@ -1519,11 +1534,11 @@ func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
 			want:   false,
 		},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			cfg := validConfig().RemoteApps
-			tt.mutate(&cfg)
+			test.mutate(&cfg)
 
-			if want, got := tt.want, cfg.IsPostsRegistered(); want != got {
+			if want, got := test.want, cfg.IsPostsRegistered(); want != got {
 				t.Errorf("want: %t; got: %t", want, got)
 			}
 		})
@@ -1531,7 +1546,7 @@ func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
 }
 
 func TestRemoteAppsConfig_IsStudentInsightsRegistered(t *testing.T) {
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		name   string
 		mutate func(*RemoteAppsConfig)
 		want   bool
@@ -1566,11 +1581,11 @@ func TestRemoteAppsConfig_IsStudentInsightsRegistered(t *testing.T) {
 			want:   false,
 		},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			cfg := validConfig().RemoteApps
-			tt.mutate(&cfg)
+			test.mutate(&cfg)
 
-			if want, got := tt.want, cfg.IsStudentInsightsRegistered(); want != got {
+			if want, got := test.want, cfg.IsStudentInsightsRegistered(); want != got {
 				t.Errorf("want: %t; got: %t", want, got)
 			}
 		})
