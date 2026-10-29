@@ -340,11 +340,12 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger = logger.With("edupass_id", claims.ID, "email", claims.CESEmail)
+
 	resolved := resolveEdupassGroups(claims.Groups, h.cfg.Edupass.AppCode)
 	if len(resolved.unrecognized) > 0 {
 		logger.Warn(
 			"discarded unrecognized Edupass role/attribute codes",
-			"edupass_id", claims.ID,
 			"codes", resolved.unrecognized,
 		)
 	}
@@ -371,9 +372,9 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		logger.Warn(
 			"staff does not have exactly one recognized base role",
 			"reason", reason,
-			"edupass_id", claims.ID,
 			"roles", roleCodes,
 			"locations", locations,
+			"groups", claims.Groups,
 		)
 		httputil.Redirect(w, logger, http.StatusFound, loginURL(returnTo, errCode))
 		return
@@ -388,7 +389,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		Attributes: resolved.attributes,
 	})
 
-	logger.Info("logged in")
+	logger.Info("user logged in")
 	httputil.Redirect(w, logger, http.StatusFound, returnTo)
 }
 
