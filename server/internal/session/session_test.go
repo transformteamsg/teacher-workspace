@@ -161,7 +161,7 @@ func TestCommit(t *testing.T) {
 			Name:       "John Smith",
 			Email:      "a@example.com",
 			Role:       "ROLE_TEACHER",
-			Attributes: []string{"ATTR_CCE"},
+			Attributes: []string{"ATTR_A"},
 		})
 		sess.Set("key", "value")
 		token := sess.CSRFToken()
@@ -190,7 +190,7 @@ func TestCommit(t *testing.T) {
 			Name:       "John Smith",
 			Email:      "a@example.com",
 			Role:       "ROLE_TEACHER",
-			Attributes: []string{"ATTR_CCE"},
+			Attributes: []string{"ATTR_A"},
 		}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
