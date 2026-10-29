@@ -734,8 +734,8 @@ func TestSession_User(t *testing.T) {
 	t.Run("returns a copy whose fields are not shared with the session", func(t *testing.T) {
 		sess := New()
 		var attached, unchanged User
-		fillFields(t, reflect.ValueOf(&attached).Elem())
-		fillFields(t, reflect.ValueOf(&unchanged).Elem())
+		fillFields(t, &attached)
+		fillFields(t, &unchanged)
 		sess.SetUser(attached)
 
 		user, ok := sess.User()
@@ -743,7 +743,7 @@ func TestSession_User(t *testing.T) {
 			t.Fatal("want ok: true; got: false")
 		}
 
-		changeFields(reflect.ValueOf(&user).Elem())
+		changeFields(&user)
 		user, ok = sess.User()
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
@@ -1019,11 +1019,11 @@ func TestSession_SetUser(t *testing.T) {
 	t.Run("attaches a copy whose fields are not shared with the caller", func(t *testing.T) {
 		sess := New()
 		var attached, unchanged User
-		fillFields(t, reflect.ValueOf(&attached).Elem())
-		fillFields(t, reflect.ValueOf(&unchanged).Elem())
+		fillFields(t, &attached)
+		fillFields(t, &unchanged)
 
 		sess.SetUser(attached)
-		changeFields(reflect.ValueOf(&attached).Elem())
+		changeFields(&attached)
 
 		user, ok := sess.User()
 		if !ok {
@@ -1188,73 +1188,40 @@ func (s *fakeStore) Delete(ctx context.Context, id string) error {
 	return s.Store.Delete(ctx, id)
 }
 
-// fillFields sets every field reachable from v to a non-zero value, giving each
-// slice and map one element, so a field that is shared rather than copied
-// cannot pass unnoticed by being empty. It fails the test on a kind it cannot
-// fill or an unexported field, so a new kind of field added to User makes the
-// test fail until the helper handles it.
-func fillFields(t *testing.T, v reflect.Value) {
+// fillFields sets every field of u to a non-zero value, giving each slice one
+// element, so a shared field cannot pass by being empty. It fails the test on a
+// field type it does not handle, so a new kind of field added to User fails the
+// test until the helper handles it.
+func fillFields(t *testing.T, u *User) {
 	t.Helper()
 
-	switch v.Kind() {
-	case reflect.String:
-		v.SetString("value")
-	case reflect.Bool:
-		v.SetBool(true)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		v.SetInt(1)
-	case reflect.Slice:
-		v.Set(reflect.MakeSlice(v.Type(), 1, 1))
-		fillFields(t, v.Index(0))
-	case reflect.Map:
-		key := reflect.New(v.Type().Key()).Elem()
-		elem := reflect.New(v.Type().Elem()).Elem()
-		fillFields(t, key)
-		fillFields(t, elem)
-		v.Set(reflect.MakeMap(v.Type()))
-		v.SetMapIndex(key, elem)
-	case reflect.Pointer:
-		v.Set(reflect.New(v.Type().Elem()))
-		fillFields(t, v.Elem())
-	case reflect.Struct:
-		for i := range v.NumField() {
-			if !v.Field(i).CanSet() {
-				t.Fatalf("fillFields: cannot set unexported field %s.%s", v.Type(), v.Type().Field(i).Name)
-			}
-			fillFields(t, v.Field(i))
+	v := reflect.ValueOf(u).Elem()
+	for i := range v.NumField() {
+		field := v.Field(i)
+		switch {
+		case field.Kind() == reflect.String:
+			field.SetString("value")
+		case field.Type() == reflect.TypeFor[[]string]():
+			field.Set(reflect.ValueOf([]string{"value"}))
+		default:
+			t.Fatalf("fillFields: unsupported field User.%s of type %s", v.Type().Field(i).Name, field.Type())
 		}
-	default:
-		t.Fatalf("fillFields: unsupported kind %s", v.Kind())
 	}
 }
 
-// changeFields changes every value reachable from v, including those held
-// behind a slice, map, or pointer, so a value shared with another User shows
-// up as changed there.
-func changeFields(v reflect.Value) {
-	switch v.Kind() {
-	case reflect.String:
-		v.SetString("changed")
-	case reflect.Bool:
-		v.SetBool(!v.Bool())
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		v.SetInt(v.Int() + 1)
-	case reflect.Slice:
-		for i := range v.Len() {
-			changeFields(v.Index(i))
-		}
-	case reflect.Map:
-		for _, key := range v.MapKeys() {
-			elem := reflect.New(v.Type().Elem()).Elem()
-			elem.Set(v.MapIndex(key))
-			changeFields(elem)
-			v.SetMapIndex(key, elem)
-		}
-	case reflect.Pointer:
-		changeFields(v.Elem())
-	case reflect.Struct:
-		for i := range v.NumField() {
-			changeFields(v.Field(i))
+// changeFields changes every field of u, including the elements of its slices,
+// so a value shared with another User shows up as changed there.
+func changeFields(u *User) {
+	v := reflect.ValueOf(u).Elem()
+	for i := range v.NumField() {
+		field := v.Field(i)
+		switch field.Kind() {
+		case reflect.String:
+			field.SetString("changed")
+		case reflect.Slice:
+			for j := range field.Len() {
+				field.Index(j).SetString("changed")
+			}
 		}
 	}
 }
