@@ -34,9 +34,13 @@ export default function RootLayout() {
 
         <div ref={topbarRef} className="tw:absolute tw:inset-x-0 tw:top-0 tw:h-px" />
 
-        <React.Suspense fallback={null}>
-          <Outlet />
-        </React.Suspense>
+        {/* A remote may fill its pane with `absolute inset-0`. Positioning the pane here keeps
+            that below the header: against the inset, the header would cover the remote's top. */}
+        <div className="tw:relative tw:flex tw:flex-1 tw:flex-col">
+          <React.Suspense fallback={null}>
+            <Outlet />
+          </React.Suspense>
+        </div>
       </SidebarInset>
       <WelcomeModal />
     </SidebarProvider>
