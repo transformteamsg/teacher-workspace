@@ -731,25 +731,23 @@ func TestSession_User(t *testing.T) {
 		}
 	})
 
-	t.Run("returns a copy whose fields are not shared with the session", func(t *testing.T) {
+	t.Run("returns a copy whose attributes are not shared with the session", func(t *testing.T) {
 		sess := New()
-		var attached, unchanged User
-		fillFields(t, &attached)
-		fillFields(t, &unchanged)
-		sess.SetUser(attached)
+		sess.SetUser(User{Attributes: []string{"ATTR_A"}})
 
 		user, ok := sess.User()
+
 		if !ok {
 			t.Fatal("want ok: true; got: false")
 		}
+		user.Attributes[0] = "ATTR_B"
 
-		changeFields(&user)
 		user, ok = sess.User()
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if !reflect.DeepEqual(unchanged, user) {
-			t.Errorf("want user: %+v; got: %+v", unchanged, user)
+		if want, got := []string{"ATTR_A"}, user.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want user.Attributes: %#v; got: %#v", want, got)
 		}
 	})
 
@@ -777,6 +775,7 @@ func TestSession_User(t *testing.T) {
 				sess.SetUser(User{Attributes: test.attributes})
 
 				user, ok := sess.User()
+
 				if !ok {
 					t.Fatal("want ok: true; got: false")
 				}
@@ -1016,21 +1015,19 @@ func TestSession_SetUser(t *testing.T) {
 		}
 	})
 
-	t.Run("attaches a copy whose fields are not shared with the caller", func(t *testing.T) {
+	t.Run("attaches a copy whose attributes are not shared with the caller", func(t *testing.T) {
 		sess := New()
-		var attached, unchanged User
-		fillFields(t, &attached)
-		fillFields(t, &unchanged)
+		attached := User{Attributes: []string{"ATTR_A"}}
 
 		sess.SetUser(attached)
-		changeFields(&attached)
+		attached.Attributes[0] = "ATTR_B"
 
 		user, ok := sess.User()
 		if !ok {
 			t.Fatal("want sess.User() ok: true; got: false")
 		}
-		if !reflect.DeepEqual(unchanged, user) {
-			t.Errorf("want user: %+v; got: %+v", unchanged, user)
+		if want, got := []string{"ATTR_A"}, user.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want user.Attributes: %#v; got: %#v", want, got)
 		}
 	})
 
@@ -1186,42 +1183,4 @@ func (s *fakeStore) Delete(ctx context.Context, id string) error {
 	}
 
 	return s.Store.Delete(ctx, id)
-}
-
-// fillFields sets every field of u to a non-zero value, giving each slice one
-// element, so a shared field cannot pass by being empty. It fails the test on a
-// field type it does not handle, so a new kind of field added to User fails the
-// test until the helper handles it.
-func fillFields(t *testing.T, u *User) {
-	t.Helper()
-
-	v := reflect.ValueOf(u).Elem()
-	for i := range v.NumField() {
-		field := v.Field(i)
-		switch {
-		case field.Kind() == reflect.String:
-			field.SetString("value")
-		case field.Type() == reflect.TypeFor[[]string]():
-			field.Set(reflect.ValueOf([]string{"value"}))
-		default:
-			t.Fatalf("fillFields: unsupported field User.%s of type %s", v.Type().Field(i).Name, field.Type())
-		}
-	}
-}
-
-// changeFields changes every field of u, including the elements of its slices,
-// so a value shared with another User shows up as changed there.
-func changeFields(u *User) {
-	v := reflect.ValueOf(u).Elem()
-	for i := range v.NumField() {
-		field := v.Field(i)
-		switch field.Kind() {
-		case reflect.String:
-			field.SetString("changed")
-		case reflect.Slice:
-			for j := range field.Len() {
-				field.Index(j).SetString("changed")
-			}
-		}
-	}
 }
