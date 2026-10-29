@@ -1,5 +1,5 @@
 import { OctagonX } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 
 import TeacherIllustration from '~/assets/images/teacher-illustration.png';
@@ -13,7 +13,7 @@ type LoginErrorCode =
   | 'unsupported_school_mk'
   | 'oauth2_callback_failed';
 
-const loginErrors: Record<LoginErrorCode, { title: string; description: string }> = {
+const loginErrors: Record<LoginErrorCode, { title: string; description: ReactNode }> = {
   no_role: {
     title: "You don't have a role assigned in your Edupass account.",
     description:
@@ -31,8 +31,12 @@ const loginErrors: Record<LoginErrorCode, { title: string; description: string }
   },
   oauth2_callback_failed: {
     title: "We couldn't sign you in with Edupass.",
-    description:
-      'Choose Sign in with Edupass to try again. If it keeps failing, ask the SSOE Administrator.',
+    description: (
+      <>
+        Choose Sign in with Edupass to try again. If it keeps failing, email the SSOE Service Desk
+        at <a href="mailto:help@schools.gov.sg">help@schools.gov.sg</a>.
+      </>
+    ),
   },
 };
 
