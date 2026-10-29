@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/transformteamsg/teacher-workspace/server/pkg/random"
@@ -184,14 +185,16 @@ func (s *Session) VerifyCSRFToken(token string) bool {
 	return verifyToken(s.csrfToken, token)
 }
 
-// User returns the user attached to the session, and reports whether there is
-// one.
+// User returns a copy of the user attached to the session, and reports whether
+// there is one.
 func (s *Session) User() (User, bool) {
 	if s.user == nil {
 		return User{}, false
 	}
 
-	return *s.user, true
+	u := *s.user
+	u.Attributes = slices.Clone(u.Attributes)
+	return u, true
 }
 
 // IsAuthenticated reports whether a user has been attached to the session.
@@ -228,7 +231,8 @@ func (s *Session) Delete(key string) {
 	delete(s.data, key)
 }
 
-// SetUser attaches u to the session, replacing any user already attached.
+// SetUser attaches a copy of u to the session, replacing any user already
+// attached.
 //
 // To defend against session fixation, it also gives the session a new ID,
 // invalidates every token returned by [Session.CSRFToken] so far, and discards
@@ -236,7 +240,10 @@ func (s *Session) Delete(key string) {
 func (s *Session) SetUser(u User) {
 	s.id = random.Base58(tokenLength)
 	s.csrfToken = random.Base58(tokenLength)
+
+	u.Attributes = slices.Clone(u.Attributes)
 	s.user = &u
+
 	clear(s.data)
 }
 

@@ -161,7 +161,7 @@ func TestCommit(t *testing.T) {
 			Name:       "John Smith",
 			Email:      "a@example.com",
 			Role:       "ROLE_TEACHER",
-			Attributes: []string{"ATTR_CCE"},
+			Attributes: []string{"ATTR_A"},
 		})
 		sess.Set("key", "value")
 		token := sess.CSRFToken()
@@ -190,7 +190,7 @@ func TestCommit(t *testing.T) {
 			Name:       "John Smith",
 			Email:      "a@example.com",
 			Role:       "ROLE_TEACHER",
-			Attributes: []string{"ATTR_CCE"},
+			Attributes: []string{"ATTR_A"},
 		}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
 		}
@@ -730,6 +730,61 @@ func TestSession_User(t *testing.T) {
 			t.Error("want ok: false; got: true")
 		}
 	})
+
+	t.Run("returns a copy whose attributes are not shared with the session", func(t *testing.T) {
+		sess := New()
+		sess.SetUser(User{Attributes: []string{"ATTR_A"}})
+
+		user, ok := sess.User()
+
+		if !ok {
+			t.Fatal("want ok: true; got: false")
+		}
+		user.Attributes[0] = "ATTR_B"
+
+		user, ok = sess.User()
+		if !ok {
+			t.Fatal("want sess.User() ok: true; got: false")
+		}
+		if want, got := []string{"ATTR_A"}, user.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want user.Attributes: %#v; got: %#v", want, got)
+		}
+	})
+
+	t.Run("returns the attributes the user was attached with", func(t *testing.T) {
+		tests := []struct {
+			name           string
+			attributes     []string
+			wantAttributes []string
+		}{
+			{
+				name:           "when nil",
+				attributes:     nil,
+				wantAttributes: nil,
+			},
+			{
+				name:           "when empty",
+				attributes:     []string{},
+				wantAttributes: []string{},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				sess := New()
+				sess.SetUser(User{Attributes: test.attributes})
+
+				user, ok := sess.User()
+
+				if !ok {
+					t.Fatal("want ok: true; got: false")
+				}
+				if want, got := test.wantAttributes, user.Attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("want user.Attributes: %#v; got: %#v", want, got)
+				}
+			})
+		}
+	})
 }
 
 func TestSession_IsAuthenticated(t *testing.T) {
@@ -957,6 +1012,22 @@ func TestSession_SetUser(t *testing.T) {
 		}
 		if want := (User{Email: "b@example.com"}); !reflect.DeepEqual(want, user) {
 			t.Errorf("want user: %+v; got: %+v", want, user)
+		}
+	})
+
+	t.Run("attaches a copy whose attributes are not shared with the caller", func(t *testing.T) {
+		sess := New()
+		attached := User{Attributes: []string{"ATTR_A"}}
+
+		sess.SetUser(attached)
+		attached.Attributes[0] = "ATTR_B"
+
+		user, ok := sess.User()
+		if !ok {
+			t.Fatal("want sess.User() ok: true; got: false")
+		}
+		if want, got := []string{"ATTR_A"}, user.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want user.Attributes: %#v; got: %#v", want, got)
 		}
 	})
 
