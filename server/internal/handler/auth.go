@@ -408,6 +408,14 @@ func renderUnauthorized(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// renderForbidden writes a 403 JSON error response.
+func renderForbidden(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.LoggerFromContext(r.Context())
+	httputil.RenderJSON(w, logger, http.StatusForbidden, &httputil.ErrorResponse{
+		Message: http.StatusText(http.StatusForbidden),
+	})
+}
+
 // safeReturnTo returns candidate if it is safe to redirect to, and fallback
 // otherwise. A safe candidate is at most 1024 bytes long, and a redirect to it
 // lands on exactly that path on this site.
