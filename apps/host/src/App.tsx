@@ -53,6 +53,7 @@ export default function App() {
               path="/students/*"
               element={
                 <ErrorBoundary
+                  key="students"
                   fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
                 >
                   <React.Suspense fallback={null}>
@@ -65,6 +66,7 @@ export default function App() {
               path="/posts/*"
               element={
                 <ErrorBoundary
+                  key="posts"
                   fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
                 >
                   <React.Suspense fallback={null}>
@@ -77,6 +79,7 @@ export default function App() {
               path="/groups/*"
               element={
                 <ErrorBoundary
+                  key="groups"
                   fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
                 >
                   <React.Suspense fallback={null}>
