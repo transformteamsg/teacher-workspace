@@ -32,7 +32,6 @@ type Handler struct {
 	edupassHTTPClient      *http.Client
 	edupassOAuth2Config    *oauth2.Config
 	edupassIDTokenVerifier *oidc.IDTokenVerifier
-	edupassEndSessionURL   string
 
 	// now is the time source for signed tokens. Nil means [time.Now].
 	now func() time.Time
@@ -62,7 +61,6 @@ func New(cfg *config.Config) (*Handler, error) {
 			),
 			&oidc.Config{ClientID: cfg.Edupass.ClientID},
 		),
-		edupassEndSessionURL: endSessionURL(cfg.Edupass),
 	}
 
 	switch cfg.Env {
@@ -111,7 +109,7 @@ func (h *Handler) Routes(store session.Store) http.Handler {
 
 	app := http.NewServeMux()
 	app.HandleFunc("GET /login", h.login)
-	app.HandleFunc("POST /logout", h.logout)
+	app.Handle("POST /logout", h.logout())
 	app.HandleFunc("GET /auth/edupass", h.authEdupass)
 	app.HandleFunc("GET /auth/edupass/callback", h.authEdupassCallback)
 	app.Handle("/api/", middleware.RequireAuth(renderUnauthorized)(h.proxy()))

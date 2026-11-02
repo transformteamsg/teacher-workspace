@@ -167,7 +167,7 @@ func TestHandler_logout(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
 		rec := httptest.NewRecorder()
 
-		h.logout(rec, req)
+		h.logout().ServeHTTP(rec, req)
 
 		if want, got := http.StatusInternalServerError, rec.Code; want != got {
 			t.Errorf("want status: %d; got: %d", want, got)
@@ -190,7 +190,7 @@ func TestHandler_logout(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
 		rec := httptest.NewRecorder()
 
-		h.logout(rec, req)
+		h.logout().ServeHTTP(rec, req)
 
 		records := decodeLogRecords(t, &logs)
 		if want, got := 1, len(records); want != got {
@@ -217,7 +217,7 @@ func TestHandler_logout(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
 		rec := httptest.NewRecorder()
 
-		h.logout(rec, req)
+		h.logout().ServeHTTP(rec, req)
 
 		if !sess.IsDestroyed() {
 			t.Error("want sess.IsDestroyed(): true; got: false")
@@ -243,7 +243,7 @@ func TestHandler_logout(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
 		rec := httptest.NewRecorder()
 
-		h.logout(rec, req)
+		h.logout().ServeHTTP(rec, req)
 
 		if !sess.IsDestroyed() {
 			t.Error("want sess.IsDestroyed(): true; got: false")

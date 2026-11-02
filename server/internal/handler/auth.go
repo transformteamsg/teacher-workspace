@@ -46,37 +46,33 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// logout destroys the session, logging out its user if it has one, and
-// redirects to the Edupass end-session endpoint, which ends the Edupass session
-// and returns the user to the login page. It redirects whether or not the
-// session has a user, so a user whose Teacher Workspace session has already
-// ended still ends their Edupass session.
+// logout returns the handler that destroys the session, logging out its user
+// if it has one, and redirects to the Edupass end-session endpoint, which ends
+// the Edupass session and returns the user to the login page. It redirects
+// whether or not the session has a user, so a user whose Teacher Workspace
+// session has already ended still ends their Edupass session.
 //
-// It responds with 500 if the request has no session.
-func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
-	logger := middleware.LoggerFromContext(r.Context())
+// The handler responds with 500 if the request has no session.
+func (h *Handler) logout() http.Handler {
+	endSessionURL := *h.cfg.Edupass.EndSessionURL
+	q := endSessionURL.Query()
+	q.Set("post_logout_redirect_uri", h.cfg.Edupass.PostLogoutRedirectURL.String())
+	endSessionURL.RawQuery = q.Encode()
 
-	sess, ok := middleware.SessionFromContext(r.Context())
-	if !ok {
-		logger.Error("no session found in context")
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
-		return
-	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger := middleware.LoggerFromContext(r.Context())
 
-	sess.Destroy()
+		sess, ok := middleware.SessionFromContext(r.Context())
+		if !ok {
+			logger.Error("no session found in context")
+			httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+			return
+		}
 
-	httputil.Redirect(w, logger, http.StatusSeeOther, h.edupassEndSessionURL)
-}
+		sess.Destroy()
 
-// endSessionURL returns cfg's end-session endpoint with post_logout_redirect_uri
-// set to cfg's post-logout redirect URL. The endpoint's own query parameters,
-// if any, are kept.
-func endSessionURL(cfg config.EdupassConfig) string {
-	u := *cfg.EndSessionURL
-	q := u.Query()
-	q.Set("post_logout_redirect_uri", cfg.PostLogoutRedirectURL.String())
-	u.RawQuery = q.Encode()
-	return u.String()
+		httputil.Redirect(w, logger, http.StatusSeeOther, endSessionURL.String())
+	})
 }
 
 const (
