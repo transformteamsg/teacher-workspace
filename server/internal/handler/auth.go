@@ -653,13 +653,13 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 	// only known once every entry has been seen.
 	attributes := []string{}
 	for _, candidate := range attributeCandidates {
-		switch {
-		case len(roles) != 1 || candidate.location != roles[0].location:
+		if len(roles) != 1 || candidate.location != roles[0].location {
 			unrecognized = append(unrecognized, candidate.entry)
-		case !slices.Contains(attributes, candidate.code):
+			continue
+		}
+		// A repeat of an attribute already kept is dropped without being reported.
+		if !slices.Contains(attributes, candidate.code) {
 			attributes = append(attributes, candidate.code)
-		default:
-			// A repeat of an attribute already kept is dropped without being reported.
 		}
 	}
 
