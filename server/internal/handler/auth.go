@@ -54,10 +54,11 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 //
 // The handler responds with 500 if the request has no session.
 func (h *Handler) logout() http.Handler {
-	endSessionURL := *h.cfg.Edupass.EndSessionURL
-	q := endSessionURL.Query()
+	u := *h.cfg.Edupass.EndSessionURL
+	q := u.Query()
 	q.Set("post_logout_redirect_uri", h.cfg.Edupass.PostLogoutRedirectURL.String())
-	endSessionURL.RawQuery = q.Encode()
+	u.RawQuery = q.Encode()
+	endSessionURL := u.String()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := middleware.LoggerFromContext(r.Context())
@@ -71,7 +72,7 @@ func (h *Handler) logout() http.Handler {
 
 		sess.Destroy()
 
-		httputil.Redirect(w, logger, http.StatusSeeOther, endSessionURL.String())
+		httputil.Redirect(w, logger, http.StatusSeeOther, endSessionURL)
 	})
 }
 
