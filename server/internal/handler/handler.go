@@ -32,6 +32,7 @@ type Handler struct {
 	edupassHTTPClient      *http.Client
 	edupassOAuth2Config    *oauth2.Config
 	edupassIDTokenVerifier *oidc.IDTokenVerifier
+	edupassEndSessionURL   string
 
 	// now is the time source for signed tokens. Nil means [time.Now].
 	now func() time.Time
@@ -61,6 +62,7 @@ func New(cfg *config.Config) (*Handler, error) {
 			),
 			&oidc.Config{ClientID: cfg.Edupass.ClientID},
 		),
+		edupassEndSessionURL: endSessionURL(cfg.Edupass),
 	}
 
 	switch cfg.Env {

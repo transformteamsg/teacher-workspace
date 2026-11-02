@@ -47,7 +47,10 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 }
 
 // logout destroys the session, logging out its user if it has one, and
-// redirects to the login page.
+// redirects to the Edupass end-session endpoint, which ends the Edupass session
+// and returns the user to the login page. It redirects whether or not the
+// session has a user, so a user whose Teacher Workspace session has already
+// ended still ends their Edupass session.
 //
 // It responds with 500 if the request has no session.
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +65,18 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 
 	sess.Destroy()
 
-	httputil.Redirect(w, logger, http.StatusSeeOther, "/login")
+	httputil.Redirect(w, logger, http.StatusSeeOther, h.edupassEndSessionURL)
+}
+
+// endSessionURL returns cfg's end-session endpoint with post_logout_redirect_uri
+// set to cfg's post-logout redirect URL. The endpoint's own query parameters,
+// if any, are kept.
+func endSessionURL(cfg config.EdupassConfig) string {
+	u := *cfg.EndSessionURL
+	q := u.Query()
+	q.Set("post_logout_redirect_uri", cfg.PostLogoutRedirectURL.String())
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 const (

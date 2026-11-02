@@ -204,7 +204,7 @@ func TestHandler_logout(t *testing.T) {
 		}
 	})
 
-	t.Run("destroys the session and redirects to the login page when the session is authenticated", func(t *testing.T) {
+	t.Run("destroys the session and redirects to the Edupass end-session endpoint when the session is authenticated", func(t *testing.T) {
 		h, err := New(newEdupassConfig())
 		if err != nil {
 			t.Fatalf("New: %v", err)
@@ -225,12 +225,13 @@ func TestHandler_logout(t *testing.T) {
 		if want, got := http.StatusSeeOther, rec.Code; want != got {
 			t.Errorf("want status: %d; got: %d", want, got)
 		}
-		if want, got := "/login", rec.Header().Get("Location"); want != got {
+		wantLocation := "https://edupass.example.com/oauth2/logout?post_logout_redirect_uri=https%3A%2F%2Ftw.example.com%2Flogin"
+		if want, got := wantLocation, rec.Header().Get("Location"); want != got {
 			t.Errorf("want Location: %q; got: %q", want, got)
 		}
 	})
 
-	t.Run("destroys the session and redirects to the login page when the session is unauthenticated", func(t *testing.T) {
+	t.Run("destroys the session and redirects to the Edupass end-session endpoint when the session is unauthenticated", func(t *testing.T) {
 		h, err := New(newEdupassConfig())
 		if err != nil {
 			t.Fatalf("New: %v", err)
@@ -250,7 +251,8 @@ func TestHandler_logout(t *testing.T) {
 		if want, got := http.StatusSeeOther, rec.Code; want != got {
 			t.Errorf("want status: %d; got: %d", want, got)
 		}
-		if want, got := "/login", rec.Header().Get("Location"); want != got {
+		wantLocation := "https://edupass.example.com/oauth2/logout?post_logout_redirect_uri=https%3A%2F%2Ftw.example.com%2Flogin"
+		if want, got := wantLocation, rec.Header().Get("Location"); want != got {
 			t.Errorf("want Location: %q; got: %q", want, got)
 		}
 	})
@@ -3253,11 +3255,21 @@ func newEdupassConfig() *config.Config {
 				Host:   "edupass.example.com",
 				Path:   "/oauth2/jwks",
 			},
+			EndSessionURL: &url.URL{
+				Scheme: "https",
+				Host:   "edupass.example.com",
+				Path:   "/oauth2/logout",
+			},
 			ClientID: "teacher-workspace",
 			RedirectURL: &url.URL{
 				Scheme: "https",
 				Host:   "tw.example.com",
 				Path:   "/auth/edupass/callback",
+			},
+			PostLogoutRedirectURL: &url.URL{
+				Scheme: "https",
+				Host:   "tw.example.com",
+				Path:   "/login",
 			},
 			AppCode:           config.EdupassAppCodeTW,
 			ClientAuthMethod:  config.OAuth2ClientAuthMethodClientSecretPost,
