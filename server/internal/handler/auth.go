@@ -617,14 +617,14 @@ type edupassGroups struct {
 // Workspace doesn't support MK staff. removedMKRole reports that one was
 // dropped, counting only an entry that would otherwise have resolved into
 // roles. A base role or attribute whose location code is not four digits, such
-// as the global X, or an attribute with extra segments ahead of the app code,
-// is reported in unrecognized too, since every Teacher Workspace role is tied
-// to a school. An attribute at any location other than the single base role's
-// is reported as well, so one left over from another school grants nothing,
-// and so is every attribute when there is not exactly one base role, since
-// there is then no location to match. resolveEdupassGroups doesn't decide
-// whether sign-in proceeds; the caller refuses unless roles holds exactly one
-// entry.
+// as the global X, is reported in unrecognized too, since every Teacher
+// Workspace role is tied to a school. So is an entry with extra segments ahead
+// of the app code, such as 1234_5_TW_ROLE_TEACHER. An attribute at any
+// location other than the single base role's is reported as well, so one left
+// over from another school grants nothing, and so is every attribute when
+// there is not exactly one base role, since there is then no location to
+// match. resolveEdupassGroups doesn't decide whether sign-in proceeds; the
+// caller refuses unless roles holds exactly one entry.
 func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
 	roles := []edupassRole{}
 	attributeCandidates := []edupassAttribute{}
@@ -634,11 +634,10 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 	for _, entry := range raw {
 		switch {
 		case strings.Contains(entry, edupassRoleInfix):
-			code := codeAfterInfix(entry, edupassRoleInfix)
-			location, _, _ := strings.Cut(entry, "_")
+			location, app, code := splitEdupassEntry(entry, edupassRoleInfix)
 			_, recognized := edupassRoleLabels[code]
 			switch {
-			case !hasEdupassAppCode(entry, edupassRoleInfix, appCode) ||
+			case app != string(appCode) ||
 				!recognized ||
 				!isEdupassLocationCode(location):
 				unrecognized = append(unrecognized, entry)
@@ -649,10 +648,8 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 				roles = append(roles, edupassRole{location: location, code: code})
 			}
 		case strings.Contains(entry, edupassAttrInfix):
-			code := codeAfterInfix(entry, edupassAttrInfix)
-			location, _, _ := strings.Cut(entry, "_")
-			prefix := entry[:strings.Index(entry, edupassAttrInfix)]
-			if prefix != location+"_"+string(appCode) ||
+			location, app, code := splitEdupassEntry(entry, edupassAttrInfix)
+			if app != string(appCode) ||
 				!isRecognizedEdupassAttribute(code) ||
 				!isEdupassLocationCode(location) {
 				fmt.Printf("DEBUG attr dropped (malformed): %s\n", entry) //todo to remove after testing
@@ -690,20 +687,12 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 	}
 }
 
-// codeAfterInfix returns entry with everything ahead of infix removed, the
-// infix's own leading underscore dropped, and the rest (its ROLE_/ATTR_
-// prefix included) kept as the code.
-func codeAfterInfix(entry, infix string) string {
+// splitEdupassEntry splits entry, which must contain infix, into the
+// `<location>_<app code>_<role code>` parts of an Edupass app role. app is
+// everything between the first underscore and the infix, so an extra segment
+// ahead of the app code ends up in it. code keeps its ROLE_ or ATTR_ prefix.
+func splitEdupassEntry(entry, infix string) (location, app, code string) {
 	idx := strings.Index(entry, infix)
-	return entry[idx+1:]
-}
-
-// hasEdupassAppCode reports whether entry's app code, the underscore-separated
-// part just ahead of infix, is appCode. It rejects a lookalike entry meant for
-// a different application or Edupass environment that happens to share the
-// ROLE_/ATTR_ infix shape, without caring what the location code ahead of the
-// app code says.
-func hasEdupassAppCode(entry, infix string, appCode config.EdupassAppCode) bool {
-	prefix := entry[:strings.Index(entry, infix)]
-	return strings.HasSuffix(prefix, "_"+string(appCode))
+	location, app, _ = strings.Cut(entry[:idx], "_")
+	return location, app, entry[idx+1:]
 }

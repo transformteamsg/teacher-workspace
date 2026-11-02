@@ -2502,6 +2502,11 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 				wantLocation: "/login?error=no_role&return_to=%2Fposts",
 			},
 			{
+				name:         "no_role when the only MK entry has an extra segment ahead of the app code",
+				groups:       []string{"6101_5678_TW_ROLE_TEACHER"},
+				wantLocation: "/login?error=no_role&return_to=%2Fposts",
+			},
+			{
 				name:         "no_role when the only MK entry is an attribute",
 				groups:       []string{"6101_TW_ATTR_CCE"},
 				wantLocation: "/login?error=no_role&return_to=%2Fposts",
@@ -3107,6 +3112,31 @@ func TestResolveEdupassGroups(t *testing.T) {
 		}
 		if want, got := []string{"X_TW_ROLE_PRINCIPAL"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("reports a base role with an extra segment ahead of the app code as unrecognized", func(t *testing.T) {
+		for _, test := range []struct {
+			name  string
+			entry string
+		}{
+			{
+				name:  "at a school",
+				entry: "1234_5678_TW_ROLE_TEACHER",
+			},
+			{
+				name:  "at an MK school",
+				entry: "6101_5678_TW_ROLE_TEACHER",
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups([]string{test.entry}, config.EdupassAppCodeTW)
+
+				want := edupassGroups{roles: []edupassRole{}, attributes: []string{}, unrecognized: []string{test.entry}}
+				if !reflect.DeepEqual(want, resolved) {
+					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
+				}
+			})
 		}
 	})
 
