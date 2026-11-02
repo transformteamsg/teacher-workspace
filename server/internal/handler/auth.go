@@ -579,51 +579,40 @@ type edupassGroups struct {
 	// the single base role, stripped of its location code and app code, each
 	// once, unranked and in arrival order.
 	attributes []string
-	// unrecognized contains every raw entry that didn't split into a
-	// recognized base role or attribute, verbatim, for logging. A base role
-	// at a MOE Kindergarten (MK) school, or at a location that is not four
-	// digits, is reported here too, even though its role code is recognized. So
-	// is an attribute whose location is not four digits or differs from the
-	// single base role's, or that arrives when there is not exactly one base
-	// role.
+	// unrecognized contains, verbatim and for logging, every raw entry that
+	// didn't resolve into a recognized base role or attribute. That includes
+	// entries whose code is recognized:
+	//   - a base role at a MOE Kindergarten (MK) school
+	//   - a base role or attribute at a location that is not four digits
+	//   - an attribute at a location other than the single base role's
+	//   - every attribute when there is not exactly one base role
 	unrecognized []string
 	// removedMKRole reports whether a base role at an MK school was dropped.
 	removedMKRole bool
 }
 
 // resolveEdupassGroups splits raw (an Edupass `groups` claim) into recognized
-// base roles and attributes, stripping the app code from each. A base role
-// keeps the location code it was granted at, so a caller can tell roles at one
-// location from roles spread across several. An attribute drops its location
-// code, and is kept only when it was granted at the location of the single base
-// role, once however many times Edupass repeats it. Every slice in the result
-// is non-nil, even when empty.
+// base roles and attributes. Every slice in the result is non-nil.
 //
-// Each entry is an Edupass app role, named
-// `<location_code>_<app_code>_<tw_role_code>`. app_code is Teacher Workspace's
-// app code for the Edupass environment (TW in production, TWSTG in pre-prod),
-// passed in as appCode. Teacher Workspace registers both its base roles and
-// its attributes as app roles, so tw_role_code is `<ROLE|ATTR>_<role_code>`:
-// `1234_TW_ROLE_TEACHER` is the base role ROLE_TEACHER and `1234_TW_ATTR_CCE`
-// the attribute ATTR_CCE, both at location 1234. resolveEdupassGroups requires
-// an entry's app_code to be appCode, rejecting a lookalike entry meant for a
-// different application or Edupass environment.
+// An entry is `<location_code>_<app_code>_<ROLE|ATTR>_<code>`, such as
+// `1234_TW_ROLE_TEACHER` or `1234_TW_ATTR_CCE`. app_code must be appCode (TW in
+// production, TWSTG in pre-prod).
 //
-// A code absent from both reference lists, or in an entry whose app_code is
-// not appCode, is reported in unrecognized rather than blocking resolution:
-// Edupass can add codes between Teacher Workspace releases. A base role at a
-// MOE Kindergarten (MK) school is reported in unrecognized too, since Teacher
-// Workspace doesn't support MK staff. removedMKRole reports that one was
-// dropped, counting only an entry that would otherwise have resolved into
-// roles. A base role or attribute whose location code is not four digits, such
-// as the global X, is reported in unrecognized too, since every Teacher
-// Workspace role is tied to a school. So is an entry with extra segments ahead
-// of the app code, such as 1234_5_TW_ROLE_TEACHER. An attribute at any
-// location other than the single base role's is reported as well, so one left
-// over from another school grants nothing, and so is every attribute when
-// there is not exactly one base role, since there is then no location to
-// match. resolveEdupassGroups doesn't decide whether sign-in proceeds; the
-// caller refuses unless roles holds exactly one entry.
+// A base role keeps its location code. An attribute is kept only when granted
+// at the single base role's location, once however often Edupass repeats it.
+//
+// These entries are reported in unrecognized rather than blocking resolution,
+// since Edupass can add codes between Teacher Workspace releases:
+//   - a code absent from the reference lists
+//   - an app_code other than appCode, or extra segments ahead of it, such as
+//     1234_5_TW_ROLE_TEACHER
+//   - a location that is not four digits, such as the global X
+//   - a base role at a MOE Kindergarten (MK) school, which also sets removedMKRole
+//   - an attribute at a location other than the single base role's
+//   - every attribute when there is not exactly one base role
+//
+// resolveEdupassGroups doesn't decide whether sign-in proceeds: the caller
+// refuses unless roles holds exactly one entry.
 func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
 	roles := []edupassRole{}
 	attributeCandidates := []edupassAttribute{}
