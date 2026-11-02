@@ -3,7 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -652,7 +651,6 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 			if app != string(appCode) ||
 				!isRecognizedEdupassAttribute(code) ||
 				!isEdupassLocationCode(location) {
-				fmt.Printf("DEBUG attr dropped (malformed): %s\n", entry) //todo to remove after testing
 				unrecognized = append(unrecognized, entry)
 			} else {
 				attributeCandidates = append(attributeCandidates, edupassAttribute{location: location, code: code, entry: entry})
@@ -668,16 +666,13 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 	for _, candidate := range attributeCandidates {
 		switch {
 		case len(roles) != 1 || candidate.location != roles[0].location:
-			fmt.Printf("DEBUG attr dropped (other location or no single base role): %s\n", candidate.entry) //todo to remove after testing
 			unrecognized = append(unrecognized, candidate.entry)
 		case !slices.Contains(attributes, candidate.code):
 			attributes = append(attributes, candidate.code)
 		default:
 			// A repeat of an attribute already kept is dropped without being reported.
-			fmt.Printf("DEBUG attr dropped (duplicate): %s\n", candidate.entry) //todo to remove after testing
 		}
 	}
-	fmt.Printf("DEBUG attr final: %q\n", attributes) //todo to remove after testing
 
 	return edupassGroups{
 		roles:         roles,
