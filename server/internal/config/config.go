@@ -258,13 +258,15 @@ type EdupassClientCredentials struct {
 
 // EdupassConfig represents the configuration for the Edupass identity provider.
 type EdupassConfig struct {
-	IssuerURL *url.URL `dotenv:"TW_EDUPASS_ISSUER_URL"`
-	AuthURL   *url.URL `dotenv:"TW_EDUPASS_AUTH_URL"`
-	TokenURL  *url.URL `dotenv:"TW_EDUPASS_TOKEN_URL"`
-	JWKSURL   *url.URL `dotenv:"TW_EDUPASS_JWKS_URL"`
+	IssuerURL     *url.URL `dotenv:"TW_EDUPASS_ISSUER_URL"`
+	AuthURL       *url.URL `dotenv:"TW_EDUPASS_AUTH_URL"`
+	TokenURL      *url.URL `dotenv:"TW_EDUPASS_TOKEN_URL"`
+	JWKSURL       *url.URL `dotenv:"TW_EDUPASS_JWKS_URL"`
+	EndSessionURL *url.URL `dotenv:"TW_EDUPASS_END_SESSION_URL"`
 
-	ClientID    string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
-	RedirectURL *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
+	ClientID              string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
+	RedirectURL           *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
+	PostLogoutRedirectURL *url.URL `dotenv:"TW_EDUPASS_POST_LOGOUT_REDIRECT_URL"`
 
 	AppCode EdupassAppCode `dotenv:"TW_EDUPASS_APP_CODE"`
 
@@ -322,6 +324,16 @@ func (cfg *EdupassConfig) validate() error {
 			errs = append(errs, fmt.Errorf("TW_EDUPASS_JWKS_URL must include host[:port]; got %q", cfg.JWKSURL))
 		}
 	}
+	if cfg.EndSessionURL == nil {
+		errs = append(errs, errors.New("TW_EDUPASS_END_SESSION_URL is required"))
+	} else {
+		if cfg.EndSessionURL.Scheme != "http" && cfg.EndSessionURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("TW_EDUPASS_END_SESSION_URL must use scheme http or https; got %q", cfg.EndSessionURL))
+		}
+		if cfg.EndSessionURL.Host == "" {
+			errs = append(errs, fmt.Errorf("TW_EDUPASS_END_SESSION_URL must include host[:port]; got %q", cfg.EndSessionURL))
+		}
+	}
 
 	if cfg.ClientID == "" {
 		errs = append(errs, errors.New("TW_EDUPASS_CLIENT_ID is required"))
@@ -334,6 +346,16 @@ func (cfg *EdupassConfig) validate() error {
 		}
 		if cfg.RedirectURL.Host == "" {
 			errs = append(errs, fmt.Errorf("TW_EDUPASS_REDIRECT_URL must include host[:port]; got %q", cfg.RedirectURL))
+		}
+	}
+	if cfg.PostLogoutRedirectURL == nil {
+		errs = append(errs, errors.New("TW_EDUPASS_POST_LOGOUT_REDIRECT_URL is required"))
+	} else {
+		if cfg.PostLogoutRedirectURL.Scheme != "http" && cfg.PostLogoutRedirectURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("TW_EDUPASS_POST_LOGOUT_REDIRECT_URL must use scheme http or https; got %q", cfg.PostLogoutRedirectURL))
+		}
+		if cfg.PostLogoutRedirectURL.Host == "" {
+			errs = append(errs, fmt.Errorf("TW_EDUPASS_POST_LOGOUT_REDIRECT_URL must include host[:port]; got %q", cfg.PostLogoutRedirectURL))
 		}
 	}
 
