@@ -56,7 +56,9 @@ Configure your relying party with these values:
 | `staff-15` | Priya Nair | priya.nair@example.com | `6101_TW_ROLE_TEACHER`, `1234_TW_ROLE_TEACHER`, `1234_TW_ROLE_HOD` | **Conflict fixture:** a role at an MK school does not count, but two roles at a non-MK school still give `multiple_roles` | Refused: the MK role is discarded, but two base roles still resolve, and exactly one is required |
 | `staff-16` | Quentin Ong | quentin.ong@example.com | `6101_XX_ROLE_TEACHER` | Another application's role at an MK school | Refused with `no_role`, not `unsupported_school_mk`: the `XX` role is discarded, so no base role resolves |
 | `staff-17` | Rachel Sim | rachel.sim@example.com | `6101_TW_ROLE_SUPERINTENDENT` | Unrecognized role code at an MK school | Refused with `no_role`, not `unsupported_school_mk`: the role code is unrecognized, so no base role resolves |
-| `staff-18` | Samuel Yeo | samuel.yeo@example.com | `6101_TW_ATTR_CCE` | An attribute at an MK school and no base role | Refused with `no_role`: no base role resolves, and the attribute is kept |
+| `staff-18` | Samuel Yeo | samuel.yeo@example.com | `6101_TW_ATTR_CCE` | An attribute at an MK school and no base role | Refused with `no_role`: no base role resolves, so the attribute is discarded too |
+| `staff-19` | Tina Goh | tina.goh@example.com | `1234_TW_ROLE_TEACHER`, `1234_TW_ATTR_CCE`, `1234_TW_ATTR_CCE` | An attribute granted twice at the base role's school; for deduplication testing | Signs in as `ROLE_TEACHER` with `ATTR_CCE` once |
+| `staff-20` | Umar Said | umar.said@example.com | `1234_TW_ROLE_TEACHER`, `1234_TW_ATTR_CCE`, `5678_TW_ATTR_SDE` | An attribute at the base role's school and one at another school; for attribute location testing | Signs in as `ROLE_TEACHER` with `ATTR_CCE` only: the `5678` attribute is discarded |
 
 ## How It Works
 

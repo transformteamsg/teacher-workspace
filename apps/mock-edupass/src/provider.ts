@@ -119,6 +119,18 @@ export const accounts: Account[] = [
     cesEmail: 'samuel.yeo@example.com',
     groups: ['6101_TW_ATTR_CCE'],
   },
+  {
+    id: 'staff-19',
+    name: 'Tina Goh',
+    cesEmail: 'tina.goh@example.com',
+    groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ATTR_CCE', '1234_TW_ATTR_CCE'],
+  },
+  {
+    id: 'staff-20',
+    name: 'Umar Said',
+    cesEmail: 'umar.said@example.com',
+    groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ATTR_CCE', '5678_TW_ATTR_SDE'],
+  },
 ];
 
 /**
