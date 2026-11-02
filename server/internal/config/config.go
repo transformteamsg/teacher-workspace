@@ -264,8 +264,10 @@ type EdupassConfig struct {
 	JWKSURL       *url.URL `dotenv:"TW_EDUPASS_JWKS_URL"`
 	EndSessionURL *url.URL `dotenv:"TW_EDUPASS_END_SESSION_URL"`
 
-	ClientID              string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
-	RedirectURL           *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
+	ClientID    string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
+	RedirectURL *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
+	// PostLogoutRedirectURL is where Edupass returns the browser after sign-out.
+	// It must exactly match a redirect URI registered for the client with Edupass.
 	PostLogoutRedirectURL *url.URL `dotenv:"TW_EDUPASS_POST_LOGOUT_REDIRECT_URL"`
 
 	AppCode EdupassAppCode `dotenv:"TW_EDUPASS_APP_CODE"`
