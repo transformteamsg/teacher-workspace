@@ -330,24 +330,6 @@ func TestServerConfig_validate(t *testing.T) {
 				name:   "port at the top of the range",
 				mutate: func(c *ServerConfig) { c.Port = 65535 },
 			},
-			// net/http reads a zero timeout as "no timeout", so it is a valid choice
-			// rather than an unset field.
-			{
-				name:   "zero read header timeout",
-				mutate: func(c *ServerConfig) { c.ReadHeaderTimeout = 0 },
-			},
-			{
-				name:   "zero read timeout",
-				mutate: func(c *ServerConfig) { c.ReadTimeout = 0 },
-			},
-			{
-				name:   "zero write timeout",
-				mutate: func(c *ServerConfig) { c.WriteTimeout = 0 },
-			},
-			{
-				name:   "zero idle timeout",
-				mutate: func(c *ServerConfig) { c.IdleTimeout = 0 },
-			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Server
@@ -377,24 +359,44 @@ func TestServerConfig_validate(t *testing.T) {
 				want:   "TW_SERVER_PORT must be 1-65535; got 65536",
 			},
 			{
+				name:   "zero read header timeout",
+				mutate: func(c *ServerConfig) { c.ReadHeaderTimeout = 0 },
+				want:   "TW_SERVER_READ_HEADER_TIMEOUT must be > 0; got 0s",
+			},
+			{
 				name:   "negative read header timeout",
 				mutate: func(c *ServerConfig) { c.ReadHeaderTimeout = -time.Second },
-				want:   "TW_SERVER_READ_HEADER_TIMEOUT must be >= 0; got -1s",
+				want:   "TW_SERVER_READ_HEADER_TIMEOUT must be > 0; got -1s",
+			},
+			{
+				name:   "zero read timeout",
+				mutate: func(c *ServerConfig) { c.ReadTimeout = 0 },
+				want:   "TW_SERVER_READ_TIMEOUT must be > 0; got 0s",
 			},
 			{
 				name:   "negative read timeout",
 				mutate: func(c *ServerConfig) { c.ReadTimeout = -time.Second },
-				want:   "TW_SERVER_READ_TIMEOUT must be >= 0; got -1s",
+				want:   "TW_SERVER_READ_TIMEOUT must be > 0; got -1s",
+			},
+			{
+				name:   "zero write timeout",
+				mutate: func(c *ServerConfig) { c.WriteTimeout = 0 },
+				want:   "TW_SERVER_WRITE_TIMEOUT must be > 0; got 0s",
 			},
 			{
 				name:   "negative write timeout",
 				mutate: func(c *ServerConfig) { c.WriteTimeout = -time.Second },
-				want:   "TW_SERVER_WRITE_TIMEOUT must be >= 0; got -1s",
+				want:   "TW_SERVER_WRITE_TIMEOUT must be > 0; got -1s",
+			},
+			{
+				name:   "zero idle timeout",
+				mutate: func(c *ServerConfig) { c.IdleTimeout = 0 },
+				want:   "TW_SERVER_IDLE_TIMEOUT must be > 0; got 0s",
 			},
 			{
 				name:   "negative idle timeout",
 				mutate: func(c *ServerConfig) { c.IdleTimeout = -time.Second },
-				want:   "TW_SERVER_IDLE_TIMEOUT must be >= 0; got -1s",
+				want:   "TW_SERVER_IDLE_TIMEOUT must be > 0; got -1s",
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {

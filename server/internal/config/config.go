@@ -127,17 +127,17 @@ func (cfg ServerConfig) validate() error {
 	if cfg.Port < 1 || cfg.Port > 65535 {
 		errs = append(errs, fmt.Errorf("TW_SERVER_PORT must be 1-65535; got %d", cfg.Port))
 	}
-	if cfg.ReadHeaderTimeout < 0 {
-		errs = append(errs, fmt.Errorf("TW_SERVER_READ_HEADER_TIMEOUT must be >= 0; got %v", cfg.ReadHeaderTimeout))
+	if cfg.ReadHeaderTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_SERVER_READ_HEADER_TIMEOUT must be > 0; got %v", cfg.ReadHeaderTimeout))
 	}
-	if cfg.ReadTimeout < 0 {
-		errs = append(errs, fmt.Errorf("TW_SERVER_READ_TIMEOUT must be >= 0; got %v", cfg.ReadTimeout))
+	if cfg.ReadTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_SERVER_READ_TIMEOUT must be > 0; got %v", cfg.ReadTimeout))
 	}
-	if cfg.WriteTimeout < 0 {
-		errs = append(errs, fmt.Errorf("TW_SERVER_WRITE_TIMEOUT must be >= 0; got %v", cfg.WriteTimeout))
+	if cfg.WriteTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_SERVER_WRITE_TIMEOUT must be > 0; got %v", cfg.WriteTimeout))
 	}
-	if cfg.IdleTimeout < 0 {
-		errs = append(errs, fmt.Errorf("TW_SERVER_IDLE_TIMEOUT must be >= 0; got %v", cfg.IdleTimeout))
+	if cfg.IdleTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_SERVER_IDLE_TIMEOUT must be > 0; got %v", cfg.IdleTimeout))
 	}
 
 	return errors.Join(errs...)
