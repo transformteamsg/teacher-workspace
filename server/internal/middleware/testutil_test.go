@@ -53,6 +53,23 @@ type hijackableWriter struct {
 	hijackedHeader http.Header
 }
 
+// newHijackableWriter returns a [hijackableWriter] over an in-memory connection
+// that is closed when the test ends.
+func newHijackableWriter(t *testing.T) *hijackableWriter {
+	t.Helper()
+
+	conn, peer := net.Pipe()
+	t.Cleanup(func() {
+		_ = conn.Close()
+		_ = peer.Close()
+	})
+
+	return &hijackableWriter{
+		ResponseRecorder: httptest.NewRecorder(),
+		conn:             conn,
+	}
+}
+
 func (w *hijackableWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	w.hijacked = true
 	w.hijackedHeader = w.Header().Clone()

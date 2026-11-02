@@ -101,6 +101,7 @@ func main() {
 			h.Routes(store),
 			middleware.RequestID,
 			middleware.RequestLog,
+			middleware.Recover,
 		),
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
 		ReadTimeout:       cfg.Server.ReadTimeout,

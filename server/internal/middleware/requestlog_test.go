@@ -720,20 +720,3 @@ type requestLogRecord struct {
 	Aborted    bool   `json:"aborted"`
 	DurationMS int64  `json:"duration_ms"`
 }
-
-// newHijackableWriter returns a [hijackableWriter] over an in-memory connection
-// that is closed when the test ends.
-func newHijackableWriter(t *testing.T) *hijackableWriter {
-	t.Helper()
-
-	conn, peer := net.Pipe()
-	t.Cleanup(func() {
-		_ = conn.Close()
-		_ = peer.Close()
-	})
-
-	return &hijackableWriter{
-		ResponseRecorder: httptest.NewRecorder(),
-		conn:             conn,
-	}
-}
