@@ -12,7 +12,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -2290,53 +2289,44 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("logs the user in without an attribute granted at another school", func(t *testing.T) {
-		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
-			"cesEmail": "john.smith@example.com",
-			"groups":   []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "5678_TW_ATTR_SDE"},
-		})
+	t.Run("logs the user in with ATTR_CCE as their only attribute", func(t *testing.T) {
+		for _, test := range []struct {
+			name   string
+			groups []string
+		}{
+			{
+				name:   "when another school also grants an attribute",
+				groups: []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "5678_TW_ATTR_SDE"},
+			},
+			{
+				name:   "when their school grants it more than once",
+				groups: []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "1234_TW_ATTR_CCE"},
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
+					"cesEmail": "john.smith@example.com",
+					"groups":   test.groups,
+				})
 
-		sess := session.New()
-		sess.Set(sessionKeyEdupassState, "test-state")
-		sess.Set(sessionKeyEdupassNonce, "test-nonce")
-		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
-		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
-		ctx = middleware.WithSession(ctx, sess)
-		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+				sess := session.New()
+				sess.Set(sessionKeyEdupassState, "test-state")
+				sess.Set(sessionKeyEdupassNonce, "test-nonce")
+				sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
 
-		h.authEdupassCallback(httptest.NewRecorder(), req)
+				h.authEdupassCallback(httptest.NewRecorder(), req)
 
-		user, ok := sess.User()
-		if !ok {
-			t.Fatal("want sess.User() ok: true; got: false")
-		}
-		if want, got := []string{"ATTR_CCE"}, user.Attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want user.Attributes: %q; got: %q", want, got)
-		}
-	})
-
-	t.Run("logs the user in with an attribute granted more than once at their school kept once", func(t *testing.T) {
-		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
-			"cesEmail": "john.smith@example.com",
-			"groups":   []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "1234_TW_ATTR_CCE"},
-		})
-
-		sess := session.New()
-		sess.Set(sessionKeyEdupassState, "test-state")
-		sess.Set(sessionKeyEdupassNonce, "test-nonce")
-		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
-		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
-		ctx = middleware.WithSession(ctx, sess)
-		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
-
-		h.authEdupassCallback(httptest.NewRecorder(), req)
-
-		user, ok := sess.User()
-		if !ok {
-			t.Fatal("want sess.User() ok: true; got: false")
-		}
-		if want, got := []string{"ATTR_CCE"}, user.Attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want user.Attributes: %q; got: %q", want, got)
+				user, ok := sess.User()
+				if !ok {
+					t.Fatal("want sess.User() ok: true; got: false")
+				}
+				if want, got := []string{"ATTR_CCE"}, user.Attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("want user.Attributes: %q; got: %q", want, got)
+				}
+			})
 		}
 	})
 
@@ -3248,20 +3238,24 @@ func TestResolveEdupassGroups(t *testing.T) {
 
 	t.Run("reports every attribute as unrecognized", func(t *testing.T) {
 		for _, test := range []struct {
-			name string
-			raw  []string
+			name             string
+			raw              []string
+			wantUnrecognized []string
 		}{
 			{
-				name: "when there is no base role",
-				raw:  []string{"1234_TW_ATTR_CCE"},
+				name:             "when there is no base role",
+				raw:              []string{"1234_TW_ATTR_CCE"},
+				wantUnrecognized: []string{"1234_TW_ATTR_CCE"},
 			},
 			{
-				name: "when the only base role is at an MK school",
-				raw:  []string{"6101_TW_ROLE_TEACHER", "6101_TW_ATTR_CCE"},
+				name:             "when the only base role is at an MK school",
+				raw:              []string{"6101_TW_ROLE_TEACHER", "6101_TW_ATTR_CCE"},
+				wantUnrecognized: []string{"6101_TW_ROLE_TEACHER", "6101_TW_ATTR_CCE"},
 			},
 			{
-				name: "when there is more than one base role",
-				raw:  []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_HOD", "1234_TW_ATTR_CCE"},
+				name:             "when there is more than one base role",
+				raw:              []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_HOD", "1234_TW_ATTR_CCE"},
+				wantUnrecognized: []string{"1234_TW_ATTR_CCE"},
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
@@ -3270,8 +3264,8 @@ func TestResolveEdupassGroups(t *testing.T) {
 				if want, got := []string{}, resolved.attributes; !reflect.DeepEqual(want, got) {
 					t.Errorf("want resolved.attributes: %q; got: %q", want, got)
 				}
-				if got := resolved.unrecognized; !slices.Contains(got, test.raw[len(test.raw)-1]) {
-					t.Errorf("want resolved.unrecognized: containing %q; got: %q", test.raw[len(test.raw)-1], got)
+				if want, got := test.wantUnrecognized, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
 				}
 			})
 		}
