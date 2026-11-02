@@ -85,7 +85,7 @@ export default function LoginView() {
               </Alert>
             )}
 
-            <Button render={<a href={loginHref} />} className="tw:mt-6 tw:w-full tw:text-white">
+            <Button render={<a href={loginHref} />} className="tw:mt-6 tw:w-full">
               Sign in with Edupass
             </Button>
           </div>
