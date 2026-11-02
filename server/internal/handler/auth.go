@@ -3,9 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -555,6 +557,18 @@ type edupassRole struct {
 	code string
 }
 
+// edupassAttribute is an attribute resolved from one Edupass `groups` entry,
+// before it is checked against the base role's location.
+type edupassAttribute struct {
+	// location is the location code the attribute was granted at.
+	location string
+	// code is the attribute code with the location and app code stripped, such
+	// as "ATTR_CCE".
+	code string
+	// entry is the raw `groups` entry, kept to report it if it is discarded.
+	entry string
+}
+
 // edupassGroups is the outcome of resolving one staff member's Edupass
 // `groups` claim.
 type edupassGroups struct {
@@ -562,13 +576,17 @@ type edupassGroups struct {
 	// one entry means Edupass returned conflicting base roles, whether for
 	// one location or spread across several.
 	roles []edupassRole
-	// attributes contains every recognized attribute, stripped of its
-	// location code and app code, unranked and in arrival order.
+	// attributes contains every recognized attribute granted at the location of
+	// the single base role, stripped of its location code and app code, each
+	// once, unranked and in arrival order.
 	attributes []string
 	// unrecognized contains every raw entry that didn't split into a
 	// recognized base role or attribute, verbatim, for logging. A base role
 	// at a MOE Kindergarten (MK) school, or at a location that is not four
-	// digits, is reported here too, even though its role code is recognized.
+	// digits, is reported here too, even though its role code is recognized. So
+	// is an attribute whose location is not four digits or differs from the
+	// single base role's, or that arrives when there is not exactly one base
+	// role.
 	unrecognized []string
 	// removedMKRole reports whether a base role at an MK school was dropped.
 	removedMKRole bool
@@ -578,7 +596,9 @@ type edupassGroups struct {
 // base roles and attributes, stripping the app code from each. A base role
 // keeps the location code it was granted at, so a caller can tell roles at one
 // location from roles spread across several. An attribute drops its location
-// code. Every slice in the result is non-nil, even when empty.
+// code, and is kept only when it was granted at the location of the single base
+// role, once however many times Edupass repeats it. Every slice in the result
+// is non-nil, even when empty.
 //
 // Each entry is an Edupass app role, named
 // `<location_code>_<app_code>_<tw_role_code>`. app_code is Teacher Workspace's
@@ -594,18 +614,20 @@ type edupassGroups struct {
 // not appCode, is reported in unrecognized rather than blocking resolution:
 // Edupass can add codes between Teacher Workspace releases. A base role at a
 // MOE Kindergarten (MK) school is reported in unrecognized too, since Teacher
-// Workspace doesn't support MK staff. The MK check covers base roles only: an
-// attribute at an MK school still resolves into attributes, because sign-in is
-// granted by a base role alone, so dropping MK base roles is enough to keep
-// MK staff out. removedMKRole reports that one was dropped, counting only an
-// entry that would otherwise have resolved into roles. A base role whose
-// location code is not four digits, such as the global X, is reported in
-// unrecognized too, since every Teacher Workspace role is tied to a school.
-// resolveEdupassGroups doesn't decide whether sign-in proceeds; the caller
-// refuses unless roles holds exactly one entry.
+// Workspace doesn't support MK staff. removedMKRole reports that one was
+// dropped, counting only an entry that would otherwise have resolved into
+// roles. A base role or attribute whose location code is not four digits, such
+// as the global X, or an attribute with extra segments ahead of the app code,
+// is reported in unrecognized too, since every Teacher Workspace role is tied
+// to a school. An attribute at any location other than the single base role's
+// is reported as well, so one left over from another school grants nothing,
+// and so is every attribute when there is not exactly one base role, since
+// there is then no location to match. resolveEdupassGroups doesn't decide
+// whether sign-in proceeds; the caller refuses unless roles holds exactly one
+// entry.
 func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
 	roles := []edupassRole{}
-	attributes := []string{}
+	attributeCandidates := []edupassAttribute{}
 	unrecognized := []string{}
 	removedMKRole := false
 
@@ -628,17 +650,37 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 			}
 		case strings.Contains(entry, edupassAttrInfix):
 			code := codeAfterInfix(entry, edupassAttrInfix)
-			if !hasEdupassAppCode(entry, edupassAttrInfix, appCode) {
+			location, _, _ := strings.Cut(entry, "_")
+			prefix := entry[:strings.Index(entry, edupassAttrInfix)]
+			if prefix != location+"_"+string(appCode) ||
+				!isRecognizedEdupassAttribute(code) ||
+				!isEdupassLocationCode(location) {
+				fmt.Printf("DEBUG attr dropped (malformed): %s\n", entry) //todo to remove after testing
 				unrecognized = append(unrecognized, entry)
-			} else if isRecognizedEdupassAttribute(code) {
-				attributes = append(attributes, code)
 			} else {
-				unrecognized = append(unrecognized, entry)
+				attributeCandidates = append(attributeCandidates, edupassAttribute{location: location, code: code, entry: entry})
 			}
 		default:
 			unrecognized = append(unrecognized, entry)
 		}
 	}
+
+	// An attribute can arrive before its base role, so the location to match is
+	// only known once every entry has been seen.
+	attributes := []string{}
+	for _, candidate := range attributeCandidates {
+		switch {
+		case len(roles) != 1 || candidate.location != roles[0].location:
+			fmt.Printf("DEBUG attr dropped (other location or no single base role): %s\n", candidate.entry) //todo to remove after testing
+			unrecognized = append(unrecognized, candidate.entry)
+		case !slices.Contains(attributes, candidate.code):
+			attributes = append(attributes, candidate.code)
+		default:
+			// A repeat of an attribute already kept is dropped without being reported.
+			fmt.Printf("DEBUG attr dropped (duplicate): %s\n", candidate.entry) //todo to remove after testing
+		}
+	}
+	fmt.Printf("DEBUG attr final: %q\n", attributes) //todo to remove after testing
 
 	return edupassGroups{
 		roles:         roles,
