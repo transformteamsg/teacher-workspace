@@ -226,8 +226,8 @@ func TestHandler_logout(t *testing.T) {
 			t.Errorf("want status: %d; got: %d", want, got)
 		}
 		wantLocation := "https://edupass.example.com/oauth2/logout?post_logout_redirect_uri=https%3A%2F%2Ftw.example.com%2Flogin"
-		if want, got := wantLocation, rec.Header().Get("Location"); want != got {
-			t.Errorf("want Location: %q; got: %q", want, got)
+		if got := rec.Header().Get("Location"); wantLocation != got {
+			t.Errorf("want Location: %q; got: %q", wantLocation, got)
 		}
 	})
 
@@ -252,8 +252,8 @@ func TestHandler_logout(t *testing.T) {
 			t.Errorf("want status: %d; got: %d", want, got)
 		}
 		wantLocation := "https://edupass.example.com/oauth2/logout?post_logout_redirect_uri=https%3A%2F%2Ftw.example.com%2Flogin"
-		if want, got := wantLocation, rec.Header().Get("Location"); want != got {
-			t.Errorf("want Location: %q; got: %q", want, got)
+		if got := rec.Header().Get("Location"); wantLocation != got {
+			t.Errorf("want Location: %q; got: %q", wantLocation, got)
 		}
 	})
 }
