@@ -50,15 +50,16 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 // if it has one, and redirects to the Edupass end-session endpoint, which ends
 // the Edupass session and returns the user to the login page. It redirects
 // whether or not the session has a user, so a user whose Teacher Workspace
-// session has already ended still ends their Edupass session.
+// session has already ended still ends their Edupass session. When the user's
+// ID token carried a login_hint claim, the redirect carries it as logout_hint,
+// so Edupass ends that account's session without asking which one.
 //
 // The handler responds with 500 if the request has no session.
 func (h *Handler) logout() http.Handler {
-	u := *h.cfg.Edupass.EndSessionURL
-	q := u.Query()
+	endSessionURL := *h.cfg.Edupass.EndSessionURL
+	q := endSessionURL.Query()
 	q.Set("post_logout_redirect_uri", h.cfg.Edupass.PostLogoutRedirectURL.String())
-	u.RawQuery = q.Encode()
-	endSessionURL := u.String()
+	endSessionURL.RawQuery = q.Encode()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := middleware.LoggerFromContext(r.Context())
@@ -70,9 +71,17 @@ func (h *Handler) logout() http.Handler {
 			return
 		}
 
+		user, _ := sess.User()
 		sess.Destroy()
 
-		httputil.Redirect(w, logger, http.StatusSeeOther, endSessionURL)
+		location := endSessionURL
+		if user.LoginHint != "" {
+			q := location.Query()
+			q.Set("logout_hint", user.LoginHint)
+			location.RawQuery = q.Encode()
+		}
+
+		httputil.Redirect(w, logger, http.StatusSeeOther, location.String())
 	})
 }
 
@@ -325,10 +334,11 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
-		ID       string   `json:"id"`
-		Name     string   `json:"name"`
-		CESEmail string   `json:"cesEmail"`
-		Groups   []string `json:"groups"`
+		ID        string   `json:"id"`
+		Name      string   `json:"name"`
+		CESEmail  string   `json:"cesEmail"`
+		Groups    []string `json:"groups"`
+		LoginHint string   `json:"login_hint"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		logger.Error("failed to unmarshal claims", "err", err)
@@ -398,6 +408,7 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		Role:       resolved.roles[0].code,
 		SchoolCode: resolved.roles[0].location,
 		Attributes: resolved.attributes,
+		LoginHint:  claims.LoginHint,
 	})
 
 	logger.Info("user logged in")
