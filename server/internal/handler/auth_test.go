@@ -231,6 +231,27 @@ func TestHandler_logout(t *testing.T) {
 		}
 	})
 
+	t.Run("sends the user's login_hint as logout_hint when the session has one", func(t *testing.T) {
+		h, err := New(newEdupassConfig())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		sess := session.New()
+		sess.SetUser(session.User{Email: "a@example.com", LoginHint: "O.hint-value"})
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/logout", nil)
+		rec := httptest.NewRecorder()
+
+		h.logout().ServeHTTP(rec, req)
+
+		wantLocation := "https://edupass.example.com/oauth2/logout?logout_hint=O.hint-value&post_logout_redirect_uri=https%3A%2F%2Ftw.example.com%2Flogin"
+		if got := rec.Header().Get("Location"); wantLocation != got {
+			t.Errorf("want Location: %q; got: %q", wantLocation, got)
+		}
+	})
+
 	t.Run("destroys the session and redirects to the Edupass end-session endpoint when the session is unauthenticated", func(t *testing.T) {
 		h, err := New(newEdupassConfig())
 		if err != nil {
@@ -1597,6 +1618,76 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 		if want, got := "john_tan@schools.gov.sg", user.Email; want != got {
 			t.Errorf("want user.Email: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps the ID token's login_hint claim on the user", func(t *testing.T) {
+		signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatalf("rsa.GenerateKey: %v", err)
+		}
+
+		cfg := newEdupassConfig()
+
+		edupass := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
+			idToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+				"iss":        cfg.Edupass.IssuerURL.String(),
+				"aud":        cfg.Edupass.ClientID,
+				"sub":        "test-sub",
+				"name":       "John Smith",
+				"id":         "test-id",
+				"iat":        now.Unix(),
+				"exp":        now.Add(time.Hour).Unix(),
+				"nonce":      "test-nonce",
+				"email":      "john.smith@example.com",
+				"cesEmail":   "john_tan@schools.gov.sg",
+				"groups":     []string{"1234_TW_ROLE_TEACHER"},
+				"login_hint": "O.hint-value",
+			})
+			signedIDToken, err := idToken.SignedString(signingKey)
+			if err != nil {
+				t.Errorf("SignedString: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-access-token",
+				"token_type":   "Bearer",
+				"expires_in":   3599,
+				"id_token":     signedIDToken,
+			}); err != nil {
+				t.Errorf("Encode: %v", err)
+			}
+		}))
+		t.Cleanup(edupass.Close)
+
+		cfg.Edupass.TokenURL = &url.URL{Scheme: "http", Host: edupass.Listener.Addr().String(), Path: "/token"}
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		h.edupassIDTokenVerifier = oidc.NewVerifier(
+			cfg.Edupass.IssuerURL.String(),
+			&oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{&signingKey.PublicKey}},
+			&oidc.Config{ClientID: cfg.Edupass.ClientID},
+		)
+
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		user, ok := sess.User()
+		if !ok {
+			t.Fatal("want sess.User() ok: true; got: false")
+		}
+		if want, got := "O.hint-value", user.LoginHint; want != got {
+			t.Errorf("want user.LoginHint: %q; got: %q", want, got)
 		}
 	})
 

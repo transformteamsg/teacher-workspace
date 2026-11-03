@@ -59,6 +59,10 @@ type User struct {
 	Role       string   `json:"role"`
 	SchoolCode string   `json:"school_code"`
 	Attributes []string `json:"attributes"`
+
+	// LoginHint is the ID token's login_hint claim, or empty when the token
+	// carried none.
+	LoginHint string `json:"login_hint,omitempty"`
 }
 
 // New returns a new unauthenticated Session.
