@@ -46,23 +46,34 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// logout destroys the session, logging out its user if it has one, and
-// redirects to the login page.
+// logout returns the handler that destroys the session, logging out its user
+// if it has one, and redirects to the Edupass end-session endpoint, which ends
+// the Edupass session and returns the user to the login page. It redirects
+// whether or not the session has a user, so a user whose Teacher Workspace
+// session has already ended still ends their Edupass session.
 //
-// It responds with 500 if the request has no session.
-func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
-	logger := middleware.LoggerFromContext(r.Context())
+// The handler responds with 500 if the request has no session.
+func (h *Handler) logout() http.Handler {
+	u := *h.cfg.Edupass.EndSessionURL
+	q := u.Query()
+	q.Set("post_logout_redirect_uri", h.cfg.Edupass.PostLogoutRedirectURL.String())
+	u.RawQuery = q.Encode()
+	endSessionURL := u.String()
 
-	sess, ok := middleware.SessionFromContext(r.Context())
-	if !ok {
-		logger.Error("no session found in context")
-		httputil.RenderPlain(w, logger, http.StatusInternalServerError)
-		return
-	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger := middleware.LoggerFromContext(r.Context())
 
-	sess.Destroy()
+		sess, ok := middleware.SessionFromContext(r.Context())
+		if !ok {
+			logger.Error("no session found in context")
+			httputil.RenderPlain(w, logger, http.StatusInternalServerError)
+			return
+		}
 
-	httputil.Redirect(w, logger, http.StatusSeeOther, "/login")
+		sess.Destroy()
+
+		httputil.Redirect(w, logger, http.StatusSeeOther, endSessionURL)
+	})
 }
 
 const (

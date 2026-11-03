@@ -101,6 +101,9 @@ func TestDefault(t *testing.T) {
 		if got := cfg.Edupass.JWKSURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
+		if got := cfg.Edupass.EndSessionURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
 		if got := cfg.Edupass.ClientID; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
@@ -126,6 +129,9 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: empty; got: %q", got)
 		}
 		if got := cfg.Edupass.RedirectURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.Edupass.PostLogoutRedirectURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
 
@@ -155,12 +161,14 @@ func TestDefault(t *testing.T) {
 func validConfig() Config {
 	cfg := Default()
 	cfg.Edupass = EdupassConfig{
-		IssuerURL:   &url.URL{Scheme: "http", Host: "localhost:9000"},
-		AuthURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
-		TokenURL:    &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
-		JWKSURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
-		ClientID:    "teacher-workspace",
-		RedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
+		IssuerURL:             &url.URL{Scheme: "http", Host: "localhost:9000"},
+		AuthURL:               &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
+		TokenURL:              &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
+		JWKSURL:               &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
+		EndSessionURL:         &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/session/end"},
+		ClientID:              "teacher-workspace",
+		RedirectURL:           &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
+		PostLogoutRedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/login"},
 
 		AppCode: EdupassAppCodeTW,
 
@@ -680,6 +688,8 @@ func TestEdupassConfig_validate(t *testing.T) {
 				cfg.TokenURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/token"}
 				cfg.JWKSURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/jwks"}
 				cfg.RedirectURL = &url.URL{Scheme: scheme, Host: "localhost:3000", Path: "/auth/edupass/callback"}
+				cfg.EndSessionURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/session/end"}
+				cfg.PostLogoutRedirectURL = &url.URL{Scheme: scheme, Host: "localhost:3000", Path: "/login"}
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -786,6 +796,36 @@ func TestEdupassConfig_validate(t *testing.T) {
 				name:   "redirect URL without a host",
 				mutate: func(c *EdupassConfig) { c.RedirectURL = &url.URL{Scheme: "http"} },
 				want:   "TW_EDUPASS_REDIRECT_URL must include host",
+			},
+			{
+				name:   "missing end-session URL",
+				mutate: func(c *EdupassConfig) { c.EndSessionURL = nil },
+				want:   "TW_EDUPASS_END_SESSION_URL is required",
+			},
+			{
+				name:   "end-session URL with a non-HTTP scheme",
+				mutate: func(c *EdupassConfig) { c.EndSessionURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
+				want:   "TW_EDUPASS_END_SESSION_URL must use scheme http or https",
+			},
+			{
+				name:   "end-session URL without a host",
+				mutate: func(c *EdupassConfig) { c.EndSessionURL = &url.URL{Scheme: "http"} },
+				want:   "TW_EDUPASS_END_SESSION_URL must include host",
+			},
+			{
+				name:   "missing post-logout redirect URL",
+				mutate: func(c *EdupassConfig) { c.PostLogoutRedirectURL = nil },
+				want:   "TW_EDUPASS_POST_LOGOUT_REDIRECT_URL is required",
+			},
+			{
+				name:   "post-logout redirect URL with a non-HTTP scheme",
+				mutate: func(c *EdupassConfig) { c.PostLogoutRedirectURL = &url.URL{Scheme: "ftp", Host: "localhost:3000"} },
+				want:   "TW_EDUPASS_POST_LOGOUT_REDIRECT_URL must use scheme http or https",
+			},
+			{
+				name:   "post-logout redirect URL without a host",
+				mutate: func(c *EdupassConfig) { c.PostLogoutRedirectURL = &url.URL{Scheme: "http"} },
+				want:   "TW_EDUPASS_POST_LOGOUT_REDIRECT_URL must include host",
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
