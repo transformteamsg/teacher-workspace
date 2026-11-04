@@ -145,3 +145,30 @@ jobs:
           labels: ${{ steps.metadata.outputs.labels }}
           cache-from: type=gha,scope=teacher-workspace
           cache-to: type=gha,mode=max,scope=teacher-workspace
+
+      - name: Extract metadata for image with Posts and Student groups hidden
+        id: metadata-pg-hidden
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          DOCKER_METADATA_PR_HEAD_SHA: true
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/transform/teacher-workspace
+          tags: |
+            type=ref,event=pr,suffix=-{{sha}}-pg-hidden
+            type=ref,event=pr,suffix=-latest-pg-hidden
+
+      # Each build replaces the cache scope that release builds also read, so
+      # building the Dockerfile default last lets a release reuse its layers.
+      - name: Build and push image with Posts and Student groups hidden
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            PUBLIC_HIDE_PG_FEATURES=true
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.metadata-pg-hidden.outputs.tags }}
+          labels: ${{ steps.metadata-pg-hidden.outputs.labels }}
+          cache-from: type=gha,scope=teacher-workspace
+          cache-to: type=gha,mode=max,scope=teacher-workspace
