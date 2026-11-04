@@ -3236,6 +3236,24 @@ func TestResolveEdupassGroups(t *testing.T) {
 		}
 	})
 
+	t.Run("keeps a base role granted more than once at the same location once", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{
+			"1234_TW_ROLE_TEACHER",
+			"1234_TW_ATTR_CCE",
+			"1234_TW_ROLE_TEACHER",
+		}, config.EdupassAppCodeTW)
+
+		if want, got := []edupassRole{{location: "1234", code: "ROLE_TEACHER"}}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		}
+		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		}
+		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
 	t.Run("reports every attribute as unrecognized", func(t *testing.T) {
 		for _, test := range []struct {
 			name             string

@@ -571,9 +571,9 @@ type edupassAttribute struct {
 // edupassGroups is the outcome of resolving one staff member's Edupass
 // `groups` claim.
 type edupassGroups struct {
-	// roles contains every recognized base role in arrival order. More than
-	// one entry means Edupass returned conflicting base roles, whether for
-	// one location or spread across several.
+	// roles contains every recognized base role, each once, in arrival order.
+	// More than one entry means Edupass returned conflicting base roles, whether
+	// for one location or spread across several.
 	roles []edupassRole
 	// attributes contains every recognized attribute granted at the location of
 	// the single base role, stripped of its location code and app code, each
@@ -598,8 +598,9 @@ type edupassGroups struct {
 // `1234_TW_ROLE_TEACHER` or `1234_TW_ATTR_CCE`. app_code must be appCode (TW in
 // production, TWSTG in pre-prod).
 //
-// A base role keeps its location code. An attribute is kept only when granted
-// at the single base role's location, once however often Edupass repeats it.
+// A base role keeps its location code, and is kept once however often Edupass
+// repeats it. An attribute is kept only when granted at the single base role's
+// location, also once however often Edupass repeats it.
 //
 // These entries are reported in unrecognized rather than blocking resolution,
 // since Edupass can add codes between Teacher Workspace releases:
@@ -633,7 +634,11 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 				unrecognized = append(unrecognized, entry)
 				removedMKRole = true
 			default:
-				roles = append(roles, edupassRole{location: location, code: code})
+				// A repeat of a role already kept is dropped without being reported.
+				role := edupassRole{location: location, code: code}
+				if !slices.Contains(roles, role) {
+					roles = append(roles, role)
+				}
 			}
 		case strings.Contains(entry, edupassAttrInfix):
 			location, app, code := splitEdupassEntry(entry, edupassAttrInfix)
