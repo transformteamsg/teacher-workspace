@@ -137,6 +137,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            PUBLIC_HIDE_PG_FEATURES=false
           platforms: linux/arm64
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
