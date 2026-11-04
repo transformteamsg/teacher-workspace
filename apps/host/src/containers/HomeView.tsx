@@ -58,12 +58,6 @@ const APP_SECTIONS: AppSectionProps[] = [
         href: 'https://forms.moe.edu.sg',
       },
       {
-        name: 'Student Insights',
-        description: 'Holistic insights that help every student thrive',
-        icon: Students,
-        href: '/students',
-      },
-      {
         name: 'Allocate',
         description: 'Simplify your Full SBB class allocation',
         icon: Allocate,
