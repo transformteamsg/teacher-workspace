@@ -2251,6 +2251,47 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 	})
 
+	t.Run("logs the user in with ATTR_CCE as their only attribute", func(t *testing.T) {
+		for _, test := range []struct {
+			name   string
+			groups []string
+		}{
+			{
+				name:   "when another school also grants an attribute",
+				groups: []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "5678_TW_ATTR_SDE"},
+			},
+			{
+				name:   "when their school grants it more than once",
+				groups: []string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "1234_TW_ATTR_CCE"},
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
+					"cesEmail": "john.smith@example.com",
+					"groups":   test.groups,
+				})
+
+				sess := session.New()
+				sess.Set(sessionKeyEdupassState, "test-state")
+				sess.Set(sessionKeyEdupassNonce, "test-nonce")
+				sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+				h.authEdupassCallback(httptest.NewRecorder(), req)
+
+				user, ok := sess.User()
+				if !ok {
+					t.Fatal("want sess.User() ok: true; got: false")
+				}
+				if want, got := []string{"ATTR_CCE"}, user.Attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("want user.Attributes: %q; got: %q", want, got)
+				}
+			})
+		}
+	})
+
 	t.Run("logs the user in with a base role carrying the configured app code", func(t *testing.T) {
 		cfg := newEdupassConfig()
 		cfg.Edupass.AppCode = config.EdupassAppCodeTWSTG
@@ -2413,6 +2454,11 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			{
 				name:         "no_role when the only MK entry has an unrecognized role code",
 				groups:       []string{"6101_TW_ROLE_SUPERINTENDENT"},
+				wantLocation: "/login?error=no_role&return_to=%2Fposts",
+			},
+			{
+				name:         "no_role when the only MK entry has an extra segment ahead of the app code",
+				groups:       []string{"6101_5678_TW_ROLE_TEACHER"},
 				wantLocation: "/login?error=no_role&return_to=%2Fposts",
 			},
 			{
@@ -2889,6 +2935,9 @@ func TestResolveEdupassGroups(t *testing.T) {
 		if want, got := []string{"ATTR_PG_ADMIN", "ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
 		}
+		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
 	})
 
 	t.Run("resolves pre-prod codes with the pre-prod app code the same as production codes with the production app code", func(t *testing.T) {
@@ -2905,9 +2954,6 @@ func TestResolveEdupassGroups(t *testing.T) {
 
 		if want, got := []edupassRole{}, resolved.roles; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
-		}
-		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
 		}
 	})
 
@@ -3030,14 +3076,187 @@ func TestResolveEdupassGroups(t *testing.T) {
 		}
 	})
 
-	t.Run("keeps an attribute at an MK school", func(t *testing.T) {
-		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "6101_TW_ATTR_CCE"}, config.EdupassAppCodeTW)
+	t.Run("reports a base role with an extra segment ahead of the app code as unrecognized", func(t *testing.T) {
+		for _, test := range []struct {
+			name  string
+			entry string
+		}{
+			{
+				name:  "at a school",
+				entry: "1234_5678_TW_ROLE_TEACHER",
+			},
+			{
+				name:  "at an MK school",
+				entry: "6101_5678_TW_ROLE_TEACHER",
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups([]string{test.entry}, config.EdupassAppCodeTW)
+
+				want := edupassGroups{roles: []edupassRole{}, attributes: []string{}, unrecognized: []string{test.entry}}
+				if !reflect.DeepEqual(want, resolved) {
+					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
+				}
+			})
+		}
+	})
+
+	t.Run("reports an attribute whose location is not four digits as unrecognized", func(t *testing.T) {
+		for _, test := range []struct {
+			name  string
+			entry string
+		}{
+			{
+				name:  "when the location is the global X",
+				entry: "X_TW_ATTR_PG_ADMIN",
+			},
+			{
+				name:  "when the location is three digits",
+				entry: "123_TW_ATTR_CCE",
+			},
+			{
+				name:  "when the location is five digits",
+				entry: "12345_TW_ATTR_CCE",
+			},
+			{
+				name:  "when the location is letters",
+				entry: "ABCD_TW_ATTR_CCE",
+			},
+			{
+				name:  "when the location is four digits mixed with a letter",
+				entry: "123A_TW_ATTR_CCE",
+			},
+			{
+				name:  "when the location is full-width digits",
+				entry: "\uFF11\uFF12\uFF13\uFF14_TW_ATTR_CCE",
+			},
+			{
+				name:  "when the location is four bytes long with a non-ASCII digit",
+				entry: "12\u0663_TW_ATTR_CCE",
+			},
+			{
+				name:  "when the location is missing",
+				entry: "_TW_ATTR_CCE",
+			},
+			{
+				name:  "when an extra segment sits ahead of the app code",
+				entry: "1234_5_TW_ATTR_CCE",
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", test.entry}, config.EdupassAppCodeTW)
+
+				want := edupassGroups{
+					roles:        []edupassRole{{location: "1234", code: "ROLE_TEACHER"}},
+					attributes:   []string{},
+					unrecognized: []string{test.entry},
+				}
+				if !reflect.DeepEqual(want, resolved) {
+					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
+				}
+			})
+		}
+	})
+
+	t.Run("reports an attribute at another school's location as unrecognized without affecting one at the base role's location", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "5678_TW_ATTR_SDE"}, config.EdupassAppCodeTW)
+
+		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		}
+		if want, got := []string{"5678_TW_ATTR_SDE"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("reports an attribute with an unrecognized code as unrecognized without affecting a valid one", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "1234_TW_ATTR_NOPE"}, config.EdupassAppCodeTW)
+
+		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		}
+		if want, got := []string{"1234_TW_ATTR_NOPE"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("matches an attribute against the base role's location even when the attribute arrives first", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{"1234_TW_ATTR_CCE", "1234_TW_ROLE_TEACHER"}, config.EdupassAppCodeTW)
 
 		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
 		}
 		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
 			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps an attribute granted more than once at the same location once", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{
+			"1234_TW_ROLE_TEACHER",
+			"1234_TW_ATTR_CCE",
+			"1234_TW_ATTR_SDE",
+			"1234_TW_ATTR_CCE",
+		}, config.EdupassAppCodeTW)
+
+		if want, got := []string{"ATTR_CCE", "ATTR_SDE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		}
+		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps a base role granted more than once at the same location once", func(t *testing.T) {
+		resolved := resolveEdupassGroups([]string{
+			"1234_TW_ROLE_TEACHER",
+			"1234_TW_ATTR_CCE",
+			"1234_TW_ROLE_TEACHER",
+		}, config.EdupassAppCodeTW)
+
+		if want, got := []edupassRole{{location: "1234", code: "ROLE_TEACHER"}}, resolved.roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		}
+		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		}
+		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("reports every attribute as unrecognized", func(t *testing.T) {
+		for _, test := range []struct {
+			name             string
+			raw              []string
+			wantUnrecognized []string
+		}{
+			{
+				name:             "when there is no base role",
+				raw:              []string{"1234_TW_ATTR_CCE"},
+				wantUnrecognized: []string{"1234_TW_ATTR_CCE"},
+			},
+			{
+				name:             "when the only base role is at an MK school",
+				raw:              []string{"6101_TW_ROLE_TEACHER", "6101_TW_ATTR_CCE"},
+				wantUnrecognized: []string{"6101_TW_ROLE_TEACHER", "6101_TW_ATTR_CCE"},
+			},
+			{
+				name:             "when there is more than one base role",
+				raw:              []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_HOD", "1234_TW_ATTR_CCE"},
+				wantUnrecognized: []string{"1234_TW_ATTR_CCE"},
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups(test.raw, config.EdupassAppCodeTW)
+
+				if want, got := []string{}, resolved.attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+				}
+				if want, got := test.wantUnrecognized, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+				}
+			})
 		}
 	})
 
@@ -3178,6 +3397,39 @@ func TestResolveEdupassGroups(t *testing.T) {
 				}
 				if !reflect.DeepEqual(want, resolved) {
 					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
+				}
+			})
+		}
+	})
+
+	t.Run("rejects an attribute from the other Edupass environment", func(t *testing.T) {
+		for _, test := range []struct {
+			name      string
+			appCode   config.EdupassAppCode
+			baseRole  string
+			attribute string
+		}{
+			{
+				name:      "when the app code is the production one",
+				appCode:   config.EdupassAppCodeTW,
+				baseRole:  "1234_TW_ROLE_TEACHER",
+				attribute: "1234_TWSTG_ATTR_CCE",
+			},
+			{
+				name:      "when the app code is the pre-prod one",
+				appCode:   config.EdupassAppCodeTWSTG,
+				baseRole:  "1234_TWSTG_ROLE_TEACHER",
+				attribute: "1234_TW_ATTR_CCE",
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				resolved := resolveEdupassGroups([]string{test.baseRole, test.attribute}, test.appCode)
+
+				if want, got := []string{}, resolved.attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+				}
+				if want, got := []string{test.attribute}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
 				}
 			})
 		}

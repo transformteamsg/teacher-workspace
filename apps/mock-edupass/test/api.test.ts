@@ -767,6 +767,16 @@ describe('POST /token', () => {
         title: 'an attribute at an MK school and no base role',
         groups: ['6101_TW_ATTR_CCE'],
       },
+      {
+        account: 'staff-19',
+        title: 'a base role and an attribute granted twice at one school',
+        groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ATTR_CCE', '1234_TW_ATTR_CCE'],
+      },
+      {
+        account: 'staff-20',
+        title: 'a base role and attributes at its school and at another',
+        groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ATTR_CCE', '5678_TW_ATTR_SDE'],
+      },
     ];
 
     for (const { account, title, groups } of groupsFixtures) {
