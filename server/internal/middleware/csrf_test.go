@@ -13,13 +13,16 @@ import (
 
 func TestCSRF(t *testing.T) {
 	t.Run("serves a safe method without a token", func(t *testing.T) {
-		for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions, "QUERY"} {
+		for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
 			t.Run(method, func(t *testing.T) {
 				sess := session.New()
 				sess.SetUser(session.User{Email: "teacher@example.com"})
 
 				next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusCreated)
+				})
+				reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusForbidden)
 				})
 
 				ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
@@ -29,7 +32,7 @@ func TestCSRF(t *testing.T) {
 				req.Header.Set("Sec-Fetch-Site", "cross-site")
 				rec := httptest.NewRecorder()
 
-				CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+				CSRF(reject)(next).ServeHTTP(rec, req)
 
 				if want, got := http.StatusCreated, rec.Code; want != got {
 					t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -47,16 +50,19 @@ func TestCSRF(t *testing.T) {
 				next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusCreated)
 				})
+				reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusForbidden)
+				})
 
 				ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 				ctx = WithSession(ctx, sess)
 
 				req := httptest.NewRequest(method, "/", nil).WithContext(ctx)
 				req.Header.Set("Sec-Fetch-Site", "same-origin")
-				req.Header.Set(CSRFTokenHeader, sess.CSRFToken())
+				req.Header.Set("X-CSRF-Token", sess.CSRFToken())
 				rec := httptest.NewRecorder()
 
-				CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+				CSRF(reject)(next).ServeHTTP(rec, req)
 
 				if want, got := http.StatusCreated, rec.Code; want != got {
 					t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -75,16 +81,19 @@ func TestCSRF(t *testing.T) {
 				next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					nextCalled = true
 				})
+				reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusForbidden)
+				})
 
 				ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 				ctx = WithSession(ctx, sess)
 
 				req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 				req.Header.Set("Sec-Fetch-Site", site)
-				req.Header.Set(CSRFTokenHeader, sess.CSRFToken())
+				req.Header.Set("X-CSRF-Token", sess.CSRFToken())
 				rec := httptest.NewRecorder()
 
-				CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+				CSRF(reject)(next).ServeHTTP(rec, req)
 
 				if want, got := http.StatusForbidden, rec.Code; want != got {
 					t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -104,16 +113,19 @@ func TestCSRF(t *testing.T) {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			nextCalled = true
 		})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		})
 
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 		ctx = WithSession(ctx, sess)
 
 		req := httptest.NewRequest(http.MethodPost, "http://example.com/", nil).WithContext(ctx)
 		req.Header.Set("Origin", "http://attacker.example")
-		req.Header.Set(CSRFTokenHeader, sess.CSRFToken())
+		req.Header.Set("X-CSRF-Token", sess.CSRFToken())
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		if want, got := http.StatusForbidden, rec.Code; want != got {
 			t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -130,16 +142,19 @@ func TestCSRF(t *testing.T) {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusCreated)
 		})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		})
 
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 		ctx = WithSession(ctx, sess)
 
 		req := httptest.NewRequest(http.MethodPost, "http://example.com/", nil).WithContext(ctx)
 		req.Header.Set("Origin", "http://example.com")
-		req.Header.Set(CSRFTokenHeader, sess.CSRFToken())
+		req.Header.Set("X-CSRF-Token", sess.CSRFToken())
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		if want, got := http.StatusCreated, rec.Code; want != got {
 			t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -153,15 +168,18 @@ func TestCSRF(t *testing.T) {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusCreated)
 		})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		})
 
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 		ctx = WithSession(ctx, sess)
 
 		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
-		req.Header.Set(CSRFTokenHeader, sess.CSRFToken())
+		req.Header.Set("X-CSRF-Token", sess.CSRFToken())
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		if want, got := http.StatusCreated, rec.Code; want != got {
 			t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -176,6 +194,9 @@ func TestCSRF(t *testing.T) {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			nextCalled = true
 		})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		})
 
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 		ctx = WithSession(ctx, sess)
@@ -183,7 +204,7 @@ func TestCSRF(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		if want, got := http.StatusForbidden, rec.Code; want != got {
 			t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -201,6 +222,9 @@ func TestCSRF(t *testing.T) {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			nextCalled = true
 		})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		})
 
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 		ctx = WithSession(ctx, sess)
@@ -209,7 +233,7 @@ func TestCSRF(t *testing.T) {
 		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		if want, got := http.StatusForbidden, rec.Code; want != got {
 			t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -227,16 +251,19 @@ func TestCSRF(t *testing.T) {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			nextCalled = true
 		})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		})
 
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 		ctx = WithSession(ctx, sess)
 
 		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 		req.Header.Set("Sec-Fetch-Site", "same-origin")
-		req.Header.Set(CSRFTokenHeader, session.New().CSRFToken())
+		req.Header.Set("X-CSRF-Token", session.New().CSRFToken())
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		if want, got := http.StatusForbidden, rec.Code; want != got {
 			t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -255,16 +282,19 @@ func TestCSRF(t *testing.T) {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			nextCalled = true
 		})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		})
 
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 		ctx = WithSession(ctx, sess)
 
 		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 		req.Header.Set("Sec-Fetch-Site", "same-origin")
-		req.Header.Set(CSRFTokenHeader, token)
+		req.Header.Set("X-CSRF-Token", token)
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		if want, got := http.StatusForbidden, rec.Code; want != got {
 			t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -279,6 +309,7 @@ func TestCSRF(t *testing.T) {
 		sess.SetUser(session.User{Email: "teacher@example.com"})
 
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
 		var logs bytes.Buffer
 		logger := slog.New(slog.NewJSONHandler(&logs, nil))
@@ -287,10 +318,10 @@ func TestCSRF(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 		req.Header.Set("Sec-Fetch-Site", "cross-site")
-		req.Header.Set(CSRFTokenHeader, sess.CSRFToken())
+		req.Header.Set("X-CSRF-Token", sess.CSRFToken())
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		records := decodeLogRecords(t, &logs)
 		if want, got := 1, len(records); want != got {
@@ -312,6 +343,7 @@ func TestCSRF(t *testing.T) {
 		sess.SetUser(session.User{Email: "teacher@example.com"})
 
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
 		var logs bytes.Buffer
 		logger := slog.New(slog.NewJSONHandler(&logs, nil))
@@ -322,7 +354,7 @@ func TestCSRF(t *testing.T) {
 		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		records := decodeLogRecords(t, &logs)
 		if want, got := 1, len(records); want != got {
@@ -341,6 +373,9 @@ func TestCSRF(t *testing.T) {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			nextCalled = true
 		})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		})
 
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 
@@ -348,7 +383,7 @@ func TestCSRF(t *testing.T) {
 		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		if want, got := http.StatusInternalServerError, rec.Code; want != got {
 			t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -360,6 +395,7 @@ func TestCSRF(t *testing.T) {
 
 	t.Run("logs an error when the request has no session", func(t *testing.T) {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+		reject := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
 		var logs bytes.Buffer
 		logger := slog.New(slog.NewJSONHandler(&logs, nil))
@@ -368,7 +404,7 @@ func TestCSRF(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 		rec := httptest.NewRecorder()
 
-		CSRF(writeForbidden)(next).ServeHTTP(rec, req)
+		CSRF(reject)(next).ServeHTTP(rec, req)
 
 		records := decodeLogRecords(t, &logs)
 		if want, got := 1, len(records); want != got {
@@ -381,9 +417,4 @@ func TestCSRF(t *testing.T) {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
 	})
-}
-
-// writeForbidden stands in for the reject handler, responding with 403.
-func writeForbidden(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusForbidden)
 }

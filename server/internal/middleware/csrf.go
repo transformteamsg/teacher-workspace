@@ -6,11 +6,8 @@ import (
 	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 )
 
-// CSRFTokenHeader is the request header that carries a CSRF token.
-const CSRFTokenHeader = "X-CSRF-Token"
-
-// CSRF returns a middleware that serves a GET, HEAD, OPTIONS, or QUERY request
-// with the handler it wraps. It serves any other request with that handler only
+// CSRF returns a middleware that serves a GET, HEAD, or OPTIONS request with
+// the handler it wraps. It serves any other request with that handler only
 // if the request is same-origin and its X-CSRF-Token header holds a token that
 // verifies against the request's session, and with reject otherwise. Each
 // rejection is logged as a warning.
@@ -27,10 +24,8 @@ func CSRF(reject http.HandlerFunc) Middleware {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// QUERY is safe, like GET, but CrossOriginProtection checks it as an
-			// unsafe method, and net/http has no constant for it.
 			switch r.Method {
-			case http.MethodGet, http.MethodHead, http.MethodOptions, "QUERY":
+			case http.MethodGet, http.MethodHead, http.MethodOptions:
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -50,7 +45,7 @@ func CSRF(reject http.HandlerFunc) Middleware {
 				return
 			}
 
-			if !sess.VerifyCSRFToken(r.Header.Get(CSRFTokenHeader)) {
+			if !sess.VerifyCSRFToken(r.Header.Get("X-CSRF-Token")) {
 				logger.Warn("rejected request without a valid CSRF token")
 				reject(w, r)
 				return

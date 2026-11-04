@@ -93,7 +93,7 @@ func TestHandler_Routes(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/posts/hello", nil)
 		req.AddCookie(&http.Cookie{Name: "tw_session", Value: sess.ID()})
 		req.Header.Set("Sec-Fetch-Site", "cross-site")
-		req.Header.Set(middleware.CSRFTokenHeader, token)
+		req.Header.Set("X-CSRF-Token", token)
 		rec := httptest.NewRecorder()
 
 		h.Routes(store).ServeHTTP(rec, req)
