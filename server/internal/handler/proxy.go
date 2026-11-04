@@ -128,6 +128,7 @@ func newRemoteBackendProxy(target *url.URL) *stdhttputil.ReverseProxy {
 			pr.SetURL(target)
 
 			pr.Out.Header.Del("Cookie")
+			pr.Out.Header.Del("X-CSRF-Token")
 			if signedToken, ok := pr.In.Context().Value(ctxKeySignedToken{}).(string); ok {
 				pr.Out.Header.Set("Authorization", "Bearer "+signedToken)
 			}
