@@ -6,6 +6,6 @@ declare module '*.svg?react' {
 }
 
 interface ImportMetaEnv {
-  /** `'true'` hides Posts and Student groups (#293). */
+  /** `'true'` hides Posts and Student groups. TODO(#306): remove. */
   readonly PUBLIC_HIDE_PG_FEATURES?: string;
 }

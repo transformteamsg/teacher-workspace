@@ -119,6 +119,7 @@ export function AppSidebar() {
             <NavMenuItems items={studentInsightsItems} />
           </SidebarGroupContent>
         </SidebarGroup>
+        {/* TODO(#306): remove the condition. */}
         {import.meta.env.PUBLIC_HIDE_PG_FEATURES !== 'true' && (
           <>
             <SidebarGroup>

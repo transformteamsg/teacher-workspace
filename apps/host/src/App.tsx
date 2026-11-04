@@ -62,6 +62,7 @@ export default function App() {
                 </ErrorBoundary>
               }
             />
+            {/* TODO(#306): remove the condition. */}
             {import.meta.env.PUBLIC_HIDE_PG_FEATURES !== 'true' && (
               <>
                 <Route

@@ -28,7 +28,7 @@ RUN pnpm install --offline --frozen-lockfile --ignore-scripts
 
 COPY apps/host/ ./apps/host/
 
-# Hides Posts and Student groups until they launch (#293).
+# Hides Posts and Student groups. TODO(#306): remove.
 ARG PUBLIC_HIDE_PG_FEATURES=true
 
 # Build the host app.
