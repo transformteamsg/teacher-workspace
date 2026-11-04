@@ -142,7 +142,7 @@ const APP_SECTIONS: AppSectionProps[] = [
     ],
   },
   {
-    title: 'Professional Development',
+    title: 'Professional Learning',
     apps: [
       {
         name: 'OPAL 2.0',
