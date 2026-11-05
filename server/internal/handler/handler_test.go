@@ -24,6 +24,10 @@ func TestHandler_Routes(t *testing.T) {
 					DefaultTTL:       time.Hour,
 					AuthenticatedTTL: time.Hour,
 				},
+				Edupass: config.EdupassConfig{
+					EndSessionURL:         &url.URL{Scheme: "https", Host: "edupass.example.com", Path: "/oauth2/logout"},
+					PostLogoutRedirectURL: &url.URL{Scheme: "https", Host: "tw.example.com", Path: "/login"},
+				},
 			},
 		}
 
@@ -65,6 +69,10 @@ func TestHandler_Routes(t *testing.T) {
 					Name:             "tw_session",
 					DefaultTTL:       time.Hour,
 					AuthenticatedTTL: time.Hour,
+				},
+				Edupass: config.EdupassConfig{
+					EndSessionURL:         &url.URL{Scheme: "https", Host: "edupass.example.com", Path: "/oauth2/logout"},
+					PostLogoutRedirectURL: &url.URL{Scheme: "https", Host: "tw.example.com", Path: "/login"},
 				},
 				RemoteApps: config.RemoteAppsConfig{
 					SignedTokenTTL:         time.Minute,
