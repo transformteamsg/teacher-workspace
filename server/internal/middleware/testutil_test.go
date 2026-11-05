@@ -76,3 +76,15 @@ func (w *hijackableWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 
 	return w.conn, bufio.NewReadWriter(bufio.NewReader(w.conn), bufio.NewWriter(w.conn)), nil
 }
+
+// panicValue calls fn and returns the value it panics with, or nil if it does
+// not panic.
+func panicValue(fn func()) (recovered any) {
+	defer func() {
+		recovered = recover()
+	}()
+
+	fn()
+
+	return nil
+}

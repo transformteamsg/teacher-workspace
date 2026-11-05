@@ -236,10 +236,13 @@ func TestRecover(t *testing.T) {
 		rec.Header().Set("X-Initial", "initial value")
 		rec.Header().Set("X-Removed", "removed by the handler")
 
-		panicValue(func() {
+		recovered := panicValue(func() {
 			Recover(next).ServeHTTP(rec, req)
 		})
 
+		if recovered != nil {
+			t.Fatalf("want ServeHTTP: no panic; got: %v", recovered)
+		}
 		header := rec.Result().Header
 		if want, got := "initial value", header.Get("X-Initial"); want != got {
 			t.Errorf("want X-Initial: %q; got: %q", want, got)
@@ -362,14 +365,16 @@ func TestRecover(t *testing.T) {
 
 	t.Run("logs an error when the handler panics", func(t *testing.T) {
 		for _, test := range []struct {
-			name string
-			next http.HandlerFunc
+			name          string
+			next          http.HandlerFunc
+			wantRecovered any
 		}{
 			{
 				name: "before committing the final status",
 				next: func(w http.ResponseWriter, r *http.Request) {
 					panic("handler failed")
 				},
+				wantRecovered: nil,
 			},
 			{
 				name: "after committing the final status",
@@ -377,6 +382,7 @@ func TestRecover(t *testing.T) {
 					w.WriteHeader(http.StatusCreated)
 					panic("handler failed")
 				},
+				wantRecovered: http.ErrAbortHandler,
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
@@ -387,10 +393,13 @@ func TestRecover(t *testing.T) {
 				req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 				rec := httptest.NewRecorder()
 
-				panicValue(func() {
+				recovered := panicValue(func() {
 					Recover(test.next).ServeHTTP(rec, req)
 				})
 
+				if want := test.wantRecovered; want != recovered {
+					t.Fatalf("want recovered: %v; got: %v", want, recovered)
+				}
 				records := decodeLogRecords[recoverLogRecord](t, &logs)
 				if want, got := 1, len(records); want != got {
 					t.Fatalf("want len(records): %d; got: %d", want, got)
@@ -424,10 +433,13 @@ func TestRecover(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 		rec := httptest.NewRecorder()
 
-		panicValue(func() {
+		recovered := panicValue(func() {
 			Recover(next).ServeHTTP(rec, req)
 		})
 
+		if want := http.ErrAbortHandler; want != recovered {
+			t.Fatalf("want recovered: %v; got: %v", want, recovered)
+		}
 		if got := logs.String(); got != "" {
 			t.Errorf("want logs: empty; got: %q", got)
 		}
@@ -445,10 +457,13 @@ func TestRecover(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 		rec := httptest.NewRecorder()
 
-		panicValue(func() {
+		recovered := panicValue(func() {
 			Chain(next, RequestLog, Recover).ServeHTTP(rec, req)
 		})
 
+		if recovered != nil {
+			t.Fatalf("want ServeHTTP: no panic; got: %v", recovered)
+		}
 		records := decodeLogRecords[recoverLogRecord](t, &logs)
 		if want, got := 2, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
@@ -470,16 +485,4 @@ type recoverLogRecord struct {
 	Err    string `json:"err"`
 	Stack  string `json:"stack"`
 	Status int    `json:"status"`
-}
-
-// panicValue calls fn and returns the value it panics with, or nil if it does
-// not panic.
-func panicValue(fn func()) (recovered any) {
-	defer func() {
-		recovered = recover()
-	}()
-
-	fn()
-
-	return nil
 }
