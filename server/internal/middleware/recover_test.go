@@ -60,19 +60,55 @@ func TestRecover(t *testing.T) {
 	})
 
 	t.Run("flushes the response when the handler flushes", func(t *testing.T) {
+		for _, test := range []struct {
+			name string
+			next http.HandlerFunc
+		}{
+			{
+				name: "through http.ResponseController",
+				next: func(w http.ResponseWriter, r *http.Request) {
+					_ = http.NewResponseController(w).Flush()
+				},
+			},
+			{
+				name: "through http.Flusher",
+				next: func(w http.ResponseWriter, r *http.Request) {
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+				},
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+				req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+				rec := httptest.NewRecorder()
+
+				Recover(test.next).ServeHTTP(rec, req)
+
+				if !rec.Flushed {
+					t.Error("want rec.Flushed: true; got: false")
+				}
+			})
+		}
+	})
+
+	t.Run("reports http.ErrNotSupported when the response cannot be flushed", func(t *testing.T) {
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 
+		var flushErr error
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_ = http.NewResponseController(w).Flush()
+			flushErr = http.NewResponseController(w).Flush()
 		})
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
-		rec := httptest.NewRecorder()
+		w := unflushableWriter{ResponseWriter: httptest.NewRecorder()}
 
-		Recover(next).ServeHTTP(rec, req)
+		Recover(next).ServeHTTP(w, req)
 
-		if !rec.Flushed {
-			t.Error("want rec.Flushed: true; got: false")
+		if !errors.Is(flushErr, http.ErrNotSupported) {
+			t.Errorf("want err: %v; got: %v", http.ErrNotSupported, flushErr)
 		}
 	})
 
@@ -193,6 +229,34 @@ func TestRecover(t *testing.T) {
 		}
 	})
 
+	t.Run("responds with a 500 when the handler panics after failing to flush the response", func(t *testing.T) {
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		var flushErr error
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			flushErr = http.NewResponseController(w).Flush()
+			panic("handler failed")
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		rec := httptest.NewRecorder()
+		w := unflushableWriter{ResponseWriter: rec}
+
+		recovered := panicValue(func() {
+			Recover(next).ServeHTTP(w, req)
+		})
+
+		if !errors.Is(flushErr, http.ErrNotSupported) {
+			t.Fatalf("http.ResponseController.Flush: %v", flushErr)
+		}
+		if recovered != nil {
+			t.Errorf("want ServeHTTP: no panic; got: %v", recovered)
+		}
+		if want, got := http.StatusInternalServerError, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+	})
+
 	t.Run("responds with a 500 when the handler panics after failing to hijack the connection", func(t *testing.T) {
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 
@@ -285,9 +349,18 @@ func TestRecover(t *testing.T) {
 				},
 			},
 			{
-				name: "after flushing",
+				name: "after flushing through http.ResponseController",
 				next: func(w http.ResponseWriter, r *http.Request) {
 					_ = http.NewResponseController(w).Flush()
+					panic("handler failed")
+				},
+			},
+			{
+				name: "after flushing through http.Flusher",
+				next: func(w http.ResponseWriter, r *http.Request) {
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
 					panic("handler failed")
 				},
 			},
