@@ -76,12 +76,12 @@ type recoverResponseWriter struct {
 
 // WriteHeader sends status, recording whether it is the response's final status.
 func (rw *recoverResponseWriter) WriteHeader(status int) {
+	rw.ResponseWriter.WriteHeader(status)
+
 	// A 1xx other than 101 leaves the final status still to come.
 	if status >= 200 || status == http.StatusSwitchingProtocols {
 		rw.committed = true
 	}
-
-	rw.ResponseWriter.WriteHeader(status)
 }
 
 // Write writes b, which commits 200 if no status has been committed.

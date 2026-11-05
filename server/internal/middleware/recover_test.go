@@ -171,6 +171,28 @@ func TestRecover(t *testing.T) {
 		}
 	})
 
+	t.Run("responds with a 500 when WriteHeader rejects the handler's status", func(t *testing.T) {
+		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(1000)
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		recovered := panicValue(func() {
+			Recover(next).ServeHTTP(rec, req)
+		})
+
+		if recovered != nil {
+			t.Errorf("want ServeHTTP: no panic; got: %v", recovered)
+		}
+		if want, got := http.StatusInternalServerError, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+	})
+
 	t.Run("responds with a 500 when the handler panics after failing to hijack the connection", func(t *testing.T) {
 		ctx := WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 
