@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"mime"
 	"net/http"
 	stdhttputil "net/http/httputil"
 	"net/url"
@@ -27,14 +28,22 @@ func (h *Handler) proxy() http.Handler {
 
 	if h.cfg.RemoteApps.IsPostsRegistered() {
 		remoteBackends["posts"] = remoteBackend{
-			proxy:      newRemoteBackendProxy(h.cfg.RemoteApps.PostsBackendBaseURL),
+			proxy: newRemoteBackendProxy(
+				h.cfg.RemoteApps.PostsBackendBaseURL,
+				h.cfg.RemoteApps.ProxyTimeout,
+				h.cfg.RemoteApps.ProxyStreamTimeout,
+			),
 			signingKey: h.cfg.RemoteApps.PostsBackendSigningKey,
 			audience:   "pg",
 		}
 	}
 	if h.cfg.RemoteApps.IsStudentInsightsRegistered() {
 		remoteBackends["student-insights"] = remoteBackend{
-			proxy:      newRemoteBackendProxy(h.cfg.RemoteApps.StudentInsightsBackendBaseURL),
+			proxy: newRemoteBackendProxy(
+				h.cfg.RemoteApps.StudentInsightsBackendBaseURL,
+				h.cfg.RemoteApps.ProxyTimeout,
+				h.cfg.RemoteApps.ProxyStreamTimeout,
+			),
 			signingKey: h.cfg.RemoteApps.StudentInsightsBackendSigningKey,
 			audience:   "si",
 		}
@@ -74,7 +83,6 @@ func (h *Handler) proxy() http.Handler {
 			})
 			return
 		}
-
 		if u.ID == "" || u.Email == "" || u.Role == "" || u.SchoolCode == "" || u.Attributes == nil {
 			logger.Error("incomplete user found in session")
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
@@ -122,8 +130,14 @@ func (h *Handler) proxy() http.Handler {
 	})
 }
 
-func newRemoteBackendProxy(target *url.URL) *stdhttputil.ReverseProxy {
-	return &stdhttputil.ReverseProxy{
+// newRemoteBackendProxy returns a handler that proxies requests to target. A
+// request is cut off once timeout has passed, with a 504 if the remote backend
+// has not sent its response headers by then. An event stream with a 200 status
+// or an upgraded connection, such as a WebSocket, instead stays open until
+// streamTimeout has passed since its response headers arrived, even past the
+// server's write timeout.
+func newRemoteBackendProxy(target *url.URL, timeout, streamTimeout time.Duration) http.Handler {
+	base := &stdhttputil.ReverseProxy{
 		Rewrite: func(pr *stdhttputil.ProxyRequest) {
 			pr.SetURL(target)
 
@@ -133,11 +147,10 @@ func newRemoteBackendProxy(target *url.URL) *stdhttputil.ReverseProxy {
 				pr.Out.Header.Set("Authorization", "Bearer "+signedToken)
 			}
 		},
-		ModifyResponse: func(resp *http.Response) error {
-			resp.Header.Del("Set-Cookie")
-			return nil
-		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if cause := context.Cause(r.Context()); cause != nil {
+				err = cause
+			}
 			if errors.Is(err, context.Canceled) {
 				// Cancellation means the client disconnected, which is expected.
 				// Logging it would only add noise, and the response would be lost.
@@ -156,9 +169,57 @@ func newRemoteBackendProxy(target *url.URL) *stdhttputil.ReverseProxy {
 				"err", err,
 			)
 
-			httputil.RenderJSON(w, logger, http.StatusBadGateway, &httputil.ErrorResponse{
-				Message: http.StatusText(http.StatusBadGateway),
+			status := http.StatusBadGateway
+			if errors.Is(err, context.DeadlineExceeded) {
+				// A deadline means the remote backend did not respond within
+				// the proxy's timeouts.
+				status = http.StatusGatewayTimeout
+			}
+
+			httputil.RenderJSON(w, logger, status, &httputil.ErrorResponse{
+				Message: http.StatusText(status),
 			})
 		},
 	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancelCause(r.Context())
+		defer cancel(nil)
+
+		timer := time.AfterFunc(timeout, func() {
+			cancel(context.DeadlineExceeded)
+		})
+		defer timer.Stop()
+
+		proxy := *base
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			resp.Header.Del("Set-Cookie")
+
+			mediaType, _, _ := mime.ParseMediaType(resp.Header.Get(httputil.HeaderContentType))
+			switch {
+			case resp.StatusCode == http.StatusSwitchingProtocols:
+				// The connection is switching protocols, such as to a
+				// WebSocket. The proxy hijacks it, which clears its write
+				// deadline, so only the timer needs extending.
+			case resp.StatusCode == http.StatusOK && mediaType == httputil.MIMETextEventStream:
+				// Keep the write deadline past the stream timeout, so the
+				// stream is closed by the timeout rather than a failed write.
+				deadline := time.Now().Add(streamTimeout + 5*time.Second)
+				if err := http.NewResponseController(w).SetWriteDeadline(deadline); err != nil {
+					return err
+				}
+			default:
+				return nil
+			}
+
+			// Don't revive a request whose timeout has already fired.
+			if !timer.Stop() {
+				return context.DeadlineExceeded
+			}
+			timer.Reset(streamTimeout)
+			return nil
+		}
+
+		proxy.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
