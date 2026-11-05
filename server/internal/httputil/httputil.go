@@ -22,6 +22,8 @@ const (
 	MIMETextPlainCharsetUTF8       = MIMETextPlain + "; " + charsetUTF8
 	MIMEApplicationJSON            = "application/json"
 	MIMEApplicationJSONCharsetUTF8 = MIMEApplicationJSON + "; " + charsetUTF8
+	MIMETextEventStream            = "text/event-stream"
+	MIMETextEventStreamCharsetUTF8 = MIMETextEventStream + "; " + charsetUTF8
 )
 
 // RenderPlain writes a plain text response with the given status code, whose
