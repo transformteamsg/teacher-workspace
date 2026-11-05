@@ -1,15 +1,19 @@
 package handler
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -49,7 +53,9 @@ func TestHandler_proxy(t *testing.T) {
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
 					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
 					PostsBackendBaseURL:    postsBackendURL,
@@ -132,7 +138,9 @@ func TestHandler_proxy(t *testing.T) {
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
 					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
 					PostsBackendBaseURL:    postsBackendURL,
@@ -208,7 +216,9 @@ func TestHandler_proxy(t *testing.T) {
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
 					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
 					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -336,7 +346,9 @@ func TestHandler_proxy(t *testing.T) {
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
 					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
 					PostsBackendBaseURL:    newRemoteBackend(t, http.NotFoundHandler()),
@@ -472,7 +484,9 @@ func TestHandler_proxy(t *testing.T) {
 			now: func() time.Time { return now },
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: ttl,
+					SignedTokenTTL:     ttl,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
 					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
 					PostsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
@@ -563,7 +577,9 @@ func TestHandler_proxy(t *testing.T) {
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
 					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
 					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -674,7 +690,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/search?q=hello&page=2", strings.NewReader(`{"title":"Hello"}`))
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := http.StatusOK, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
@@ -693,7 +709,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/hello", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := "/v1/hello", rec.Body.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
@@ -711,7 +727,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer forged")
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := "Bearer test-token", rec.Body.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
@@ -727,7 +743,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req.AddCookie(&http.Cookie{Name: "session-name", Value: "session-value"})
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := http.StatusOK, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
@@ -746,7 +762,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req.Header.Set("X-CSRF-Token", "csrf-token")
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := http.StatusOK, rec.Code; want != got {
 			t.Errorf("want rec.Code: %d; got: %d", want, got)
@@ -766,7 +782,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/hello", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if got := rec.Header().Values("Set-Cookie"); len(got) != 0 {
 			t.Errorf("want: empty; got: %q", got)
@@ -794,7 +810,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/hello", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := http.StatusBadGateway, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
@@ -855,7 +871,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello?token=secret", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if got := buf.String(); strings.Contains(got, "secret") {
 			t.Errorf("want: not containing %q; got: %q", "secret", got)
@@ -886,7 +902,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if got := rec.Body.String(); got != "" {
 			t.Errorf("want: empty; got: %q", got)
@@ -895,4 +911,251 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 			t.Errorf("want: empty; got: %q", got)
 		}
 	})
+
+	t.Run("responds with 504 when the remote backend sends no response headers within the timeout", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-r.Context().Done():
+			case <-time.After(5 * time.Second):
+			}
+		}))
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello", nil)
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL, 100*time.Millisecond, 5*time.Minute).ServeHTTP(rec, req)
+
+		if want, got := http.StatusGatewayTimeout, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+
+		var body struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := http.StatusText(http.StatusGatewayTimeout), body.Message; want != got {
+			t.Errorf("want body.Message: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("cuts off a response body still being sent when the timeout passes", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, "first part")
+			_ = http.NewResponseController(w).Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			_, _ = io.WriteString(w, ", second part")
+		}))
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello", nil)
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL, 100*time.Millisecond, 5*time.Minute).ServeHTTP(rec, req)
+
+		if want, got := "first part", rec.Body.String(); want != got {
+			t.Errorf("want rec.Body: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps an event stream open past the timeout and the server's write timeout", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			_, _ = io.WriteString(w, "data: first\n\n")
+			_ = http.NewResponseController(w).Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(time.Second):
+			}
+			_, _ = io.WriteString(w, "data: second\n\n")
+		}))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 5*time.Minute), 500*time.Millisecond)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyServer.URL+"/events", nil)
+		if err != nil {
+			t.Fatalf("http.NewRequestWithContext: %v", err)
+		}
+		resp, err := proxyServer.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Client.Do: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		body, err := io.ReadAll(resp.Body)
+
+		if err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+		if want, got := "data: first\n\ndata: second\n\n", string(body); want != got {
+			t.Errorf("want body: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("closes an event stream once the stream timeout passes", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			_, _ = io.WriteString(w, "data: first\n\n")
+			_ = http.NewResponseController(w).Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			_, _ = io.WriteString(w, "data: second\n\n")
+		}))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 750*time.Millisecond), 500*time.Millisecond)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyServer.URL+"/events", nil)
+		if err != nil {
+			t.Fatalf("http.NewRequestWithContext: %v", err)
+		}
+		resp, err := proxyServer.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Client.Do: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		// A stream cut off mid-response ends with an error, which is expected.
+		body, _ := io.ReadAll(resp.Body)
+
+		if want, got := "data: first\n\n", string(body); want != got {
+			t.Errorf("want body: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("cuts off an event stream whose status is not 200 when the timeout passes", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, "data: first\n\n")
+			_ = http.NewResponseController(w).Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(time.Second):
+			}
+			_, _ = io.WriteString(w, "data: second\n\n")
+		}))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 5*time.Minute), 500*time.Millisecond)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyServer.URL+"/events", nil)
+		if err != nil {
+			t.Fatalf("http.NewRequestWithContext: %v", err)
+		}
+		resp, err := proxyServer.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Client.Do: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if want, got := http.StatusCreated, resp.StatusCode; want != got {
+			t.Fatalf("want resp.StatusCode: %d; got: %d", want, got)
+		}
+		// A stream cut off mid-response ends with an error, which is expected.
+		body, _ := io.ReadAll(resp.Body)
+
+		if want, got := "data: first\n\n", string(body); want != got {
+			t.Errorf("want body: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps an upgraded connection open past the timeout and the server's write timeout", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, echoUpgradeHandler(t))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 5*time.Minute), 500*time.Millisecond)
+		conn, reader := dialUpgrade(t, proxyServer.Listener.Addr().String())
+
+		time.Sleep(time.Second)
+		if _, err := io.WriteString(conn, "ping"); err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		echoed := make([]byte, len("ping"))
+		_, err := io.ReadFull(reader, echoed)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if want, got := "ping", string(echoed); want != got {
+			t.Errorf("want echoed: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("closes an upgraded connection once the stream timeout passes", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, echoUpgradeHandler(t))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 750*time.Millisecond), 500*time.Millisecond)
+		_, reader := dialUpgrade(t, proxyServer.Listener.Addr().String())
+
+		_, err := io.Copy(io.Discard, reader)
+
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Error("want connection: closed; got: open")
+		}
+	})
+}
+
+// newProxyServer starts a server with the given write timeout that serves
+// proxy with a logger that discards its output, and returns the server.
+func newProxyServer(t *testing.T, proxy http.Handler, writeTimeout time.Duration) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := middleware.WithLogger(r.Context(), slog.New(slog.DiscardHandler))
+		proxy.ServeHTTP(w, r.WithContext(ctx))
+	}))
+	server.Config.WriteTimeout = writeTimeout
+	server.Start()
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+// echoUpgradeHandler switches the connection to the "echo" protocol, then
+// writes back everything it reads until the connection closes.
+func echoUpgradeHandler(t *testing.T) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, rw, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			t.Errorf("Hijack: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		_, _ = rw.WriteString("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: echo\r\n\r\n")
+		if err := rw.Flush(); err != nil {
+			return
+		}
+		_, _ = io.Copy(conn, rw)
+	})
+}
+
+// dialUpgrade connects to the server at addr and switches the connection to
+// the "echo" protocol. Reads and writes on the connection fail after 5s.
+func dialUpgrade(t *testing.T, addr string) (net.Conn, *bufio.Reader) {
+	t.Helper()
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("net.Dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("conn.SetDeadline: %v", err)
+	}
+
+	if _, err := io.WriteString(conn, "GET /socket HTTP/1.1\r\nHost: example.com\r\nConnection: Upgrade\r\nUpgrade: echo\r\n\r\n"); err != nil {
+		t.Fatalf("io.WriteString: %v", err)
+	}
+	reader := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		t.Fatalf("http.ReadResponse: %v", err)
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("http.ReadResponse: status %d, not %d", resp.StatusCode, http.StatusSwitchingProtocols)
+	}
+
+	return conn, reader
 }

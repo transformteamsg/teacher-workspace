@@ -80,6 +80,12 @@ func TestDefault(t *testing.T) {
 		if want, got := time.Minute, cfg.RemoteApps.SignedTokenTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
+		if want, got := 25*time.Second, cfg.RemoteApps.ProxyTimeout; want != got {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
+		if want, got := 5*time.Minute, cfg.RemoteApps.ProxyStreamTimeout; want != got {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
 	})
 
 	t.Run("leaves deployment-specific values unset", func(t *testing.T) {
@@ -209,6 +215,15 @@ func TestConfig_Validate(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts a proxy timeout below the write timeout", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.RemoteApps.ProxyTimeout = cfg.Server.WriteTimeout - time.Second
+
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
 	t.Run("rejects invalid values", func(t *testing.T) {
 		for _, test := range []struct {
 			name   string
@@ -257,6 +272,16 @@ func TestConfig_Validate(t *testing.T) {
 					c.RemoteApps.PostsManifestURL = &url.URL{Scheme: "ftp", Host: "posts.example.com", Path: "/mf-manifest.json"}
 				},
 				want: `TW_REMOTE_POSTS_MANIFEST_URL must use scheme http or https; got "ftp://posts.example.com/mf-manifest.json"`,
+			},
+			{
+				name:   "proxy timeout equal to the write timeout",
+				mutate: func(c *Config) { c.RemoteApps.ProxyTimeout = c.Server.WriteTimeout },
+				want:   "TW_REMOTE_PROXY_TIMEOUT must be < TW_SERVER_WRITE_TIMEOUT (30s); got 30s",
+			},
+			{
+				name:   "proxy timeout above the write timeout",
+				mutate: func(c *Config) { c.RemoteApps.ProxyTimeout = c.Server.WriteTimeout + time.Second },
+				want:   "TW_REMOTE_PROXY_TIMEOUT must be < TW_SERVER_WRITE_TIMEOUT (30s); got 31s",
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
@@ -320,6 +345,23 @@ func TestConfig_Validate(t *testing.T) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("want err: containing %q; got: %q", want, err)
 			}
+		}
+	})
+
+	t.Run("reports constraints between fields only once every field is valid", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Server.WriteTimeout = 0
+
+		err := cfg.Validate()
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := "TW_SERVER_WRITE_TIMEOUT must be > 0"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+		if unwanted := "TW_REMOTE_PROXY_TIMEOUT"; strings.Contains(err.Error(), unwanted) {
+			t.Errorf("want err: not containing %q; got: %q", unwanted, err)
 		}
 	})
 }
@@ -1370,6 +1412,26 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				name:   "sub-second signed token TTL",
 				mutate: func(c *RemoteAppsConfig) { c.SignedTokenTTL = 500 * time.Millisecond },
 				want:   "TW_REMOTE_SIGNED_TOKEN_TTL must be at least 1s; got 500ms",
+			},
+			{
+				name:   "zero proxy timeout",
+				mutate: func(c *RemoteAppsConfig) { c.ProxyTimeout = 0 },
+				want:   "TW_REMOTE_PROXY_TIMEOUT must be > 0; got 0s",
+			},
+			{
+				name:   "negative proxy timeout",
+				mutate: func(c *RemoteAppsConfig) { c.ProxyTimeout = -time.Second },
+				want:   "TW_REMOTE_PROXY_TIMEOUT must be > 0; got -1s",
+			},
+			{
+				name:   "zero proxy stream timeout",
+				mutate: func(c *RemoteAppsConfig) { c.ProxyStreamTimeout = 0 },
+				want:   "TW_REMOTE_PROXY_STREAM_TIMEOUT must be > 0; got 0s",
+			},
+			{
+				name:   "negative proxy stream timeout",
+				mutate: func(c *RemoteAppsConfig) { c.ProxyStreamTimeout = -time.Second },
+				want:   "TW_REMOTE_PROXY_STREAM_TIMEOUT must be > 0; got -1s",
 			},
 			{
 				name:   "missing posts manifest URL",

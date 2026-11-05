@@ -69,13 +69,16 @@ func Default() Config {
 			ClientAuthMethod: OAuth2ClientAuthMethodClientSecretPost,
 		},
 		RemoteApps: RemoteAppsConfig{
-			SignedTokenTTL: 1 * time.Minute,
+			SignedTokenTTL:     1 * time.Minute,
+			ProxyTimeout:       25 * time.Second,
+			ProxyStreamTimeout: 5 * time.Minute,
 		},
 	}
 }
 
 // Validate returns an error describing every invalid field, or nil if the
-// configuration is valid.
+// configuration is valid. Constraints between fields are reported only once
+// every field is valid on its own.
 func (cfg *Config) Validate() error {
 	var errs []error
 
@@ -103,13 +106,22 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
-	return errors.Join(append(
+	if err := errors.Join(append(
 		errs,
 		cfg.Server.validate(),
 		cfg.Session.validate(),
 		cfg.RemoteApps.validate(),
 		cfg.Edupass.validate(),
-	)...)
+	)...); err != nil {
+		return err
+	}
+
+	// A proxy timeout must fire while the server can still write a response.
+	if cfg.RemoteApps.ProxyTimeout >= cfg.Server.WriteTimeout {
+		return fmt.Errorf("TW_REMOTE_PROXY_TIMEOUT must be < TW_SERVER_WRITE_TIMEOUT (%v); got %v", cfg.Server.WriteTimeout, cfg.RemoteApps.ProxyTimeout)
+	}
+
+	return nil
 }
 
 // ServerConfig represents the configuration for the HTTP server.
@@ -477,7 +489,9 @@ func (cfg *EdupassConfig) validate() error {
 // RemoteAppsConfig represents the configuration for the remote apps. Each app
 // must have either all of its values set, which registers it, or none.
 type RemoteAppsConfig struct {
-	SignedTokenTTL time.Duration `dotenv:"TW_REMOTE_SIGNED_TOKEN_TTL"`
+	SignedTokenTTL     time.Duration `dotenv:"TW_REMOTE_SIGNED_TOKEN_TTL"`
+	ProxyTimeout       time.Duration `dotenv:"TW_REMOTE_PROXY_TIMEOUT"`
+	ProxyStreamTimeout time.Duration `dotenv:"TW_REMOTE_PROXY_STREAM_TIMEOUT"`
 
 	PostsManifestURL       *url.URL `dotenv:"TW_REMOTE_POSTS_MANIFEST_URL"`
 	PostsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_POSTS_BACKEND_BASE_URL"`
@@ -493,6 +507,12 @@ func (cfg RemoteAppsConfig) validate() error {
 
 	if cfg.SignedTokenTTL < time.Second {
 		errs = append(errs, fmt.Errorf("TW_REMOTE_SIGNED_TOKEN_TTL must be at least 1s; got %v", cfg.SignedTokenTTL))
+	}
+	if cfg.ProxyTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_REMOTE_PROXY_TIMEOUT must be > 0; got %v", cfg.ProxyTimeout))
+	}
+	if cfg.ProxyStreamTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_REMOTE_PROXY_STREAM_TIMEOUT must be > 0; got %v", cfg.ProxyStreamTimeout))
 	}
 
 	if cfg.PostsManifestURL != nil || cfg.PostsBackendBaseURL != nil || cfg.PostsBackendSigningKey != "" {
