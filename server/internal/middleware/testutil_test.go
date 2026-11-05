@@ -41,6 +41,12 @@ func (w *statusRecordingWriter) WriteHeader(status int) {
 	w.ResponseRecorder.WriteHeader(status)
 }
 
+// unflushableWriter is a ResponseWriter whose response cannot be flushed, as
+// it has only the methods of [http.ResponseWriter].
+type unflushableWriter struct {
+	http.ResponseWriter
+}
+
 // hijackableWriter is an [httptest.ResponseRecorder] whose connection can be
 // hijacked. Hijack hands over conn and records the response headers as they
 // were at that moment.
