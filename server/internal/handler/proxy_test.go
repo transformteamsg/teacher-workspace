@@ -737,6 +737,25 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		}
 	})
 
+	t.Run("strips the CSRF token from the forwarded request", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, strings.Join(r.Header.Values("X-CSRF-Token"), ","))
+		}))
+
+		req := httptest.NewRequest(http.MethodPost, "/hello", nil)
+		req.Header.Set("X-CSRF-Token", "csrf-token")
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+		if got := rec.Body.String(); got != "" {
+			t.Errorf("want X-CSRF-Token: empty; got: %q", got)
+		}
+	})
+
 	t.Run("strips Set-Cookie from the remote backend response", func(t *testing.T) {
 		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.SetCookie(w, &http.Cookie{Name: "backend-name", Value: "backend-value"})
