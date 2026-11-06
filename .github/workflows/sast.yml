@@ -1,0 +1,50 @@
+name: SAST
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  # A pull request shares one group, so a new push cancels the scan of the
+  # previous one. Every other run gets a group of its own, so no scan of `main`
+  # is cancelled or dropped from the queue.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - actions
+          - go
+          - javascript-typescript
+
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # CodeQL builds the Go code to analyse it, so it needs the version `go.mod` asks for.
+      - name: Setup Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
