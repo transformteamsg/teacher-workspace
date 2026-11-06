@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -311,7 +310,7 @@ func TestSession(t *testing.T) {
 
 		Session(store, opts)(next).ServeHTTP(rec, req)
 
-		records := decodeLogRecords(t, &logs)
+		records := decodeLogRecords[sessionLogRecord](t, &logs)
 		if want, got := 1, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
 		}
@@ -398,7 +397,7 @@ func TestSession(t *testing.T) {
 
 		Session(store, opts)(next).ServeHTTP(rec, req)
 
-		records := decodeLogRecords(t, &logs)
+		records := decodeLogRecords[sessionLogRecord](t, &logs)
 		if want, got := 1, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
 		}
@@ -792,7 +791,7 @@ func TestSession(t *testing.T) {
 
 		Session(store, opts)(next).ServeHTTP(rec, req)
 
-		records := decodeLogRecords(t, &logs)
+		records := decodeLogRecords[sessionLogRecord](t, &logs)
 		if want, got := 1, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
 		}
@@ -1298,7 +1297,7 @@ func TestSession(t *testing.T) {
 
 		Session(store, opts)(next).ServeHTTP(rec, req)
 
-		records := decodeLogRecords(t, &logs)
+		records := decodeLogRecords[sessionLogRecord](t, &logs)
 		if want, got := 1, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
 		}
@@ -1872,35 +1871,9 @@ func (s *fakeStore) Delete(ctx context.Context, id string) error {
 	return s.Store.Delete(ctx, id)
 }
 
-// statusRecordingWriter is an [httptest.ResponseRecorder] that records every
-// status passed to WriteHeader, including those the recorder ignores because
-// a status was already sent.
-type statusRecordingWriter struct {
-	*httptest.ResponseRecorder
-
-	statuses []int
-}
-
-func (w *statusRecordingWriter) WriteHeader(status int) {
-	w.statuses = append(w.statuses, status)
-	w.ResponseRecorder.WriteHeader(status)
-}
-
-// hijackableWriter is an [httptest.ResponseRecorder] whose connection can be
-// hijacked. Hijack hands over conn and records the response headers as they
-// were at that moment.
-type hijackableWriter struct {
-	*httptest.ResponseRecorder
-
-	conn net.Conn
-
-	hijacked       bool
-	hijackedHeader http.Header
-}
-
-func (w *hijackableWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	w.hijacked = true
-	w.hijackedHeader = w.Header().Clone()
-
-	return w.conn, bufio.NewReadWriter(bufio.NewReader(w.conn), bufio.NewWriter(w.conn)), nil
+// sessionLogRecord is one record written by [Session].
+type sessionLogRecord struct {
+	Level string `json:"level"`
+	Msg   string `json:"msg"`
+	Err   string `json:"err"`
 }

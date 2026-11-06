@@ -323,7 +323,7 @@ func TestCSRF(t *testing.T) {
 
 		CSRF(reject)(next).ServeHTTP(rec, req)
 
-		records := decodeLogRecords(t, &logs)
+		records := decodeLogRecords[csrfLogRecord](t, &logs)
 		if want, got := 1, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
 		}
@@ -356,7 +356,7 @@ func TestCSRF(t *testing.T) {
 
 		CSRF(reject)(next).ServeHTTP(rec, req)
 
-		records := decodeLogRecords(t, &logs)
+		records := decodeLogRecords[csrfLogRecord](t, &logs)
 		if want, got := 1, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
 		}
@@ -406,7 +406,7 @@ func TestCSRF(t *testing.T) {
 
 		CSRF(reject)(next).ServeHTTP(rec, req)
 
-		records := decodeLogRecords(t, &logs)
+		records := decodeLogRecords[csrfLogRecord](t, &logs)
 		if want, got := 1, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
 		}
@@ -417,4 +417,11 @@ func TestCSRF(t *testing.T) {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
 	})
+}
+
+// csrfLogRecord is one record written by [CSRF].
+type csrfLogRecord struct {
+	Level string `json:"level"`
+	Msg   string `json:"msg"`
+	Err   string `json:"err"`
 }
