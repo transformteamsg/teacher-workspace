@@ -137,8 +137,6 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          # Shows Posts and Student groups on dev. TODO(#306): remove.
-          build-args: PUBLIC_HIDE_PG_FEATURES=false
           platforms: linux/arm64
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
@@ -146,30 +144,28 @@ jobs:
           cache-from: type=gha,scope=teacher-workspace
           cache-to: type=gha,mode=max,scope=teacher-workspace
 
-      # Builds an image with Posts and Student groups hidden, as releases are.
+      # Builds an image with Posts and Student groups shown, for testing them on dev.
       # TODO(#306): remove this step and the next.
-      - name: Extract metadata for image with Posts and Student groups hidden
-        id: metadata-pg-hidden
+      - name: Extract metadata for image with Posts and Student groups shown
+        id: metadata-pg-shown
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         env:
           DOCKER_METADATA_PR_HEAD_SHA: true
         with:
           images: ${{ steps.login-ecr.outputs.registry }}/transform/teacher-workspace
           tags: |
-            type=ref,event=pr,suffix=-{{sha}}-pg-hidden
-            type=ref,event=pr,suffix=-latest-pg-hidden
+            type=ref,event=pr,suffix=-{{sha}}-pg-shown
+            type=ref,event=pr,suffix=-latest-pg-shown
 
-      # Each build replaces the cache scope that release builds also read, so
-      # building the Dockerfile default last lets a release reuse its layers.
-      - name: Build and push image with Posts and Student groups hidden
+      - name: Build and push image with Posts and Student groups shown
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: ./Dockerfile
-          build-args: PUBLIC_HIDE_PG_FEATURES=true
+          build-args: PUBLIC_HIDE_PG_FEATURES=false
           platforms: linux/arm64
           push: true
-          tags: ${{ steps.metadata-pg-hidden.outputs.tags }}
-          labels: ${{ steps.metadata-pg-hidden.outputs.labels }}
+          tags: ${{ steps.metadata-pg-shown.outputs.tags }}
+          labels: ${{ steps.metadata-pg-shown.outputs.labels }}
           cache-from: type=gha,scope=teacher-workspace
           cache-to: type=gha,mode=max,scope=teacher-workspace
