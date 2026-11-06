@@ -17,8 +17,8 @@ import (
 // missing or names the request's host.
 //
 // The middleware must run inside [Session], which attaches the session it
-// reads. If the request has no session, it responds with 500 and does not
-// serve either handler.
+// reads. If a request that passes the origin check has no session, it responds
+// with 500 and does not serve either handler.
 func CSRF(reject http.HandlerFunc) Middleware {
 	origin := http.NewCrossOriginProtection()
 
@@ -32,16 +32,16 @@ func CSRF(reject http.HandlerFunc) Middleware {
 
 			logger := LoggerFromContext(r.Context())
 
+			if err := origin.Check(r); err != nil {
+				logger.Warn("rejected cross-origin request", "err", err)
+				reject(w, r)
+				return
+			}
+
 			sess, ok := SessionFromContext(r.Context())
 			if !ok {
 				logger.Error("no session found in context")
 				httputil.RenderPlain(w, logger, http.StatusInternalServerError)
-				return
-			}
-
-			if err := origin.Check(r); err != nil {
-				logger.Warn("rejected cross-origin request", "err", err)
-				reject(w, r)
 				return
 			}
 
