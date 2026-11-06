@@ -119,18 +119,23 @@ export function AppSidebar() {
             <NavMenuItems items={studentInsightsItems} />
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Communications</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <NavMenuItems items={communicationsItems} />
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Manage</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <NavMenuItems items={manageItems} />
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* TODO(#306): remove the condition. */}
+        {import.meta.env.PUBLIC_HIDE_PG_FEATURES !== 'true' && (
+          <>
+            <SidebarGroup>
+              <SidebarGroupLabel>Communications</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <NavMenuItems items={communicationsItems} />
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>Manage</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <NavMenuItems items={manageItems} />
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        )}
       </SidebarContent>
 
       <SidebarFooter>

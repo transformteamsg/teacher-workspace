@@ -5,7 +5,8 @@ import { Button } from '~/components/ui/button';
 
 const suggestedLinks = [
   { label: 'Student Insights', to: '/students' },
-  { label: 'Posts', to: '/posts' },
+  // TODO(#306): remove the condition.
+  ...(import.meta.env.PUBLIC_HIDE_PG_FEATURES === 'true' ? [] : [{ label: 'Posts', to: '/posts' }]),
 ];
 
 export function NotFoundView() {

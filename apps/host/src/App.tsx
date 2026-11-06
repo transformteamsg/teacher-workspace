@@ -62,32 +62,37 @@ export default function App() {
                 </ErrorBoundary>
               }
             />
-            <Route
-              path="/posts/*"
-              element={
-                <ErrorBoundary
-                  key="posts"
-                  fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
-                >
-                  <React.Suspense fallback={null}>
-                    <RemotePostsView />
-                  </React.Suspense>
-                </ErrorBoundary>
-              }
-            />
-            <Route
-              path="/groups/*"
-              element={
-                <ErrorBoundary
-                  key="groups"
-                  fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
-                >
-                  <React.Suspense fallback={null}>
-                    <RemoteGroupsView />
-                  </React.Suspense>
-                </ErrorBoundary>
-              }
-            />
+            {/* TODO(#306): remove the condition. */}
+            {import.meta.env.PUBLIC_HIDE_PG_FEATURES !== 'true' && (
+              <>
+                <Route
+                  path="/posts/*"
+                  element={
+                    <ErrorBoundary
+                      key="posts"
+                      fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
+                    >
+                      <React.Suspense fallback={null}>
+                        <RemotePostsView />
+                      </React.Suspense>
+                    </ErrorBoundary>
+                  }
+                />
+                <Route
+                  path="/groups/*"
+                  element={
+                    <ErrorBoundary
+                      key="groups"
+                      fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
+                    >
+                      <React.Suspense fallback={null}>
+                        <RemoteGroupsView />
+                      </React.Suspense>
+                    </ErrorBoundary>
+                  }
+                />
+              </>
+            )}
           </Route>
           <Route path="*" element={<NotFoundView />} />
         </Routes>
