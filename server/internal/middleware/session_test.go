@@ -1722,6 +1722,72 @@ func TestSessionResponseWriter_Flush(t *testing.T) {
 	})
 }
 
+func TestSessionResponseWriter_FlushError(t *testing.T) {
+	t.Run("runs finalise before flushing", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		rw := &sessionResponseWriter{
+			ResponseWriter: rec,
+			finalise: func(h http.Header) error {
+				h.Add("Set-Cookie", "sid=id-1")
+				return nil
+			},
+			initialHeader: http.Header{},
+			logger:        slog.New(slog.DiscardHandler),
+		}
+
+		err := rw.FlushError()
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if !rec.Flushed {
+			t.Error("want rec.Flushed: true; got: false")
+		}
+		if want, got := []string{"sid=id-1"}, rec.Result().Header.Values("Set-Cookie"); !slices.Equal(want, got) {
+			t.Errorf("want Set-Cookie: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("reports http.ErrNotSupported when the response cannot be flushed", func(t *testing.T) {
+		rw := &sessionResponseWriter{
+			ResponseWriter: unflushableWriter{ResponseWriter: httptest.NewRecorder()},
+			finalise: func(h http.Header) error {
+				return nil
+			},
+			initialHeader: http.Header{},
+			logger:        slog.New(slog.DiscardHandler),
+		}
+
+		err := rw.FlushError()
+
+		if !errors.Is(err, http.ErrNotSupported) {
+			t.Errorf("want err: %v; got: %v", http.ErrNotSupported, err)
+		}
+	})
+
+	t.Run("rejects the flush when finalise fails", func(t *testing.T) {
+		finaliseErr := errors.New("store unavailable")
+		rec := httptest.NewRecorder()
+		rw := &sessionResponseWriter{
+			ResponseWriter: rec,
+			finalise: func(h http.Header) error {
+				return finaliseErr
+			},
+			initialHeader: http.Header{},
+			logger:        slog.New(slog.DiscardHandler),
+		}
+
+		err := rw.FlushError()
+
+		if !errors.Is(err, finaliseErr) {
+			t.Errorf("want err: %v; got: %v", finaliseErr, err)
+		}
+		if rec.Flushed {
+			t.Error("want rec.Flushed: false; got: true")
+		}
+	})
+}
+
 func TestSessionResponseWriter_Hijack(t *testing.T) {
 	t.Run("runs finalise before handing over the connection", func(t *testing.T) {
 		conn, peer := net.Pipe()

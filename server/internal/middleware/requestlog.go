@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bufio"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -89,11 +90,22 @@ func (rw *requestLogResponseWriter) Write(b []byte) (int, error) {
 	return rw.ResponseWriter.Write(b)
 }
 
-// Flush flushes the response, which commits 200 if no status has been committed.
+// Flush is [requestLogResponseWriter.FlushError] without the error, for callers
+// that use [http.Flusher].
 func (rw *requestLogResponseWriter) Flush() {
-	rw.setStatus(http.StatusOK)
+	_ = rw.FlushError()
+}
 
-	_ = http.NewResponseController(rw.ResponseWriter).Flush()
+// FlushError flushes the response, which commits 200 if no status has been
+// committed. If the response cannot be flushed, it returns an error wrapping
+// [http.ErrNotSupported] and commits nothing.
+func (rw *requestLogResponseWriter) FlushError() error {
+	err := http.NewResponseController(rw.ResponseWriter).Flush()
+	if !errors.Is(err, http.ErrNotSupported) {
+		rw.setStatus(http.StatusOK)
+	}
+
+	return err
 }
 
 // Hijack hands over the connection. Once it succeeds, the final status no longer
