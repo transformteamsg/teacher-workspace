@@ -545,7 +545,7 @@ func TestHandler_proxy(t *testing.T) {
 				}
 
 				want := jwt.RegisteredClaims{
-					Issuer:    "tw",
+					Issuer:    "TW",
 					Subject:   "staff-1",
 					Audience:  test.wantAudience,
 					IssuedAt:  jwt.NewNumericDate(now),

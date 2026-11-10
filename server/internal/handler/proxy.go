@@ -94,7 +94,7 @@ func (h *Handler) proxy() http.Handler {
 			SchoolCode    string   `json:"school_code"`
 			Attributes    []string `json:"attributes"`
 		}{
-			Issuer:    "tw",
+			Issuer:    "TW",
 			Subject:   u.ID,
 			Audience:  jwt.ClaimStrings{b.audience},
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(h.cfg.RemoteApps.SignedTokenTTL)),
