@@ -16,6 +16,11 @@ func (h *Handler) index() http.Handler {
 	if h.cfg.RemoteApps.IsPostsRegistered() {
 		remotes = append(remotes, Remote{Name: "pg", Entry: h.cfg.RemoteApps.PostsManifestURL.String()})
 	}
+	// Groups shares the Posts manifest, which exposes both modules, so it
+	// registers under the same remote name.
+	if h.cfg.RemoteApps.IsGroupsRegistered() {
+		remotes = append(remotes, Remote{Name: "pg", Entry: h.cfg.RemoteApps.GroupsManifestURL.String()})
+	}
 	if h.cfg.RemoteApps.IsStudentInsightsRegistered() {
 		remotes = append(remotes, Remote{Name: "student_insights", Entry: h.cfg.RemoteApps.StudentInsightsManifestURL.String()})
 	}
