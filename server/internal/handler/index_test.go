@@ -100,11 +100,15 @@ func TestHandler_index(t *testing.T) {
 					PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
 					PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
 
+					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.groups.example.com"},
+					GroupsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
 					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
 				},
-				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"},{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
 			},
 			{
 				name: "posts remote only",
@@ -114,6 +118,15 @@ func TestHandler_index(t *testing.T) {
 					PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
 				},
 				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}]`,
+			},
+			{
+				name: "groups remote only",
+				remoteApps: config.RemoteAppsConfig{
+					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.groups.example.com"},
+					GroupsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+				},
+				want: `[{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"}]`,
 			},
 			{
 				name: "student insights remote only",
