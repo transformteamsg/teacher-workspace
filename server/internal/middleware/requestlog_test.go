@@ -439,16 +439,13 @@ func TestRequestLog(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/users", nil).WithContext(ctx)
 		rec := httptest.NewRecorder()
 
-		func() {
-			defer func() {
-				if recover() == nil {
-					t.Fatal("want ServeHTTP: panic; got: nil")
-				}
-			}()
-
+		recovered := panicValue(func() {
 			RequestLog(next).ServeHTTP(rec, req)
-		}()
+		})
 
+		if recovered == nil {
+			t.Fatal("want ServeHTTP: panic; got: nil")
+		}
 		records := decodeLogRecords[requestLogRecord](t, &logs)
 		if want, got := 1, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
@@ -483,16 +480,13 @@ func TestRequestLog(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 		rec := httptest.NewRecorder()
 
-		func() {
-			defer func() {
-				if recover() == nil {
-					t.Fatal("want ServeHTTP: panic; got: nil")
-				}
-			}()
-
+		recovered := panicValue(func() {
 			RequestLog(next).ServeHTTP(rec, req)
-		}()
+		})
 
+		if recovered == nil {
+			t.Fatal("want ServeHTTP: panic; got: nil")
+		}
 		records := decodeLogRecords[requestLogRecord](t, &logs)
 		if len(records) == 0 {
 			t.Fatal("want records: non-empty; got: empty")
@@ -529,16 +523,13 @@ func TestRequestLog(t *testing.T) {
 				req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 				rec := httptest.NewRecorder()
 
-				func() {
-					defer func() {
-						if recover() == nil {
-							t.Fatal("want ServeHTTP: panic; got: nil")
-						}
-					}()
-
+				recovered := panicValue(func() {
 					RequestLog(test.next).ServeHTTP(rec, req)
-				}()
+				})
 
+				if recovered == nil {
+					t.Fatal("want ServeHTTP: panic; got: nil")
+				}
 				records := decodeLogRecords[map[string]any](t, &logs)
 				if len(records) == 0 {
 					t.Fatal("want records: non-empty; got: empty")
@@ -577,16 +568,13 @@ func TestRequestLog(t *testing.T) {
 				req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 				rec := httptest.NewRecorder()
 
-				func() {
-					defer func() {
-						if recover() == nil {
-							t.Fatal("want ServeHTTP: panic; got: nil")
-						}
-					}()
-
+				recovered := panicValue(func() {
 					RequestLog(test.next).ServeHTTP(rec, req)
-				}()
+				})
 
+				if recovered == nil {
+					t.Fatal("want ServeHTTP: panic; got: nil")
+				}
 				records := decodeLogRecords[requestLogRecord](t, &logs)
 				if len(records) == 0 {
 					t.Fatal("want records: non-empty; got: empty")
@@ -611,16 +599,13 @@ func TestRequestLog(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 		rec := newHijackableWriter(t)
 
-		func() {
-			defer func() {
-				if recover() == nil {
-					t.Fatal("want ServeHTTP: panic; got: nil")
-				}
-			}()
-
+		recovered := panicValue(func() {
 			RequestLog(next).ServeHTTP(rec, req)
-		}()
+		})
 
+		if recovered == nil {
+			t.Fatal("want ServeHTTP: panic; got: nil")
+		}
 		if !rec.hijacked {
 			t.Fatal("want rec.hijacked: true; got: false")
 		}
@@ -694,14 +679,9 @@ func TestRequestLog(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 		rec := httptest.NewRecorder()
 
-		var recovered any
-		func() {
-			defer func() {
-				recovered = recover()
-			}()
-
+		recovered := panicValue(func() {
 			RequestLog(next).ServeHTTP(rec, req)
-		}()
+		})
 
 		if want := http.ErrAbortHandler; want != recovered {
 			t.Errorf("want recovered: %v; got: %v", want, recovered)
@@ -719,21 +699,4 @@ type requestLogRecord struct {
 	Hijacked   bool   `json:"hijacked"`
 	Aborted    bool   `json:"aborted"`
 	DurationMS int64  `json:"duration_ms"`
-}
-
-// newHijackableWriter returns a [hijackableWriter] over an in-memory connection
-// that is closed when the test ends.
-func newHijackableWriter(t *testing.T) *hijackableWriter {
-	t.Helper()
-
-	conn, peer := net.Pipe()
-	t.Cleanup(func() {
-		_ = conn.Close()
-		_ = peer.Close()
-	})
-
-	return &hijackableWriter{
-		ResponseRecorder: httptest.NewRecorder(),
-		conn:             conn,
-	}
 }
