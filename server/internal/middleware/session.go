@@ -61,8 +61,9 @@ type SessionOptions struct {
 //
 // If the store fails to load the session, the request goes no further and the
 // response is a 500. If the session cannot be saved, or a destroyed session
-// cannot be removed, the handler's response is replaced with a 500. If the
-// client disconnects before the session loads, nothing is written.
+// cannot be removed, the handler's response is replaced with a 500, and from
+// then on its writes, flushes, and hijacks return an error. If the client
+// disconnects before the session loads, nothing is written.
 func Session(store session.Store, opts SessionOptions) Middleware {
 	name := opts.Name
 	if opts.Secure {
@@ -241,15 +242,22 @@ func (rw *sessionResponseWriter) Write(b []byte) (int, error) {
 	return rw.ResponseWriter.Write(b)
 }
 
-// Flush runs finalise, then flushes the response. If finalise failed, it
-// returns without flushing.
+// Flush is [sessionResponseWriter.FlushError] without the error, for callers
+// that use [http.Flusher].
 func (rw *sessionResponseWriter) Flush() {
+	_ = rw.FlushError()
+}
+
+// FlushError runs finalise, then flushes the response. If finalise failed, it
+// returns finalise's error without flushing. If the response cannot be flushed,
+// it returns an error wrapping [http.ErrNotSupported].
+func (rw *sessionResponseWriter) FlushError() error {
 	rw.finaliseOnce()
 	if rw.finaliseErr != nil {
-		return
+		return rw.finaliseErr
 	}
 
-	_ = http.NewResponseController(rw.ResponseWriter).Flush()
+	return http.NewResponseController(rw.ResponseWriter).Flush()
 }
 
 // Hijack runs finalise, then hands over the connection. If finalise failed, it
