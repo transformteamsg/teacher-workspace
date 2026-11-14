@@ -1,3 +1,8 @@
 {
-  "recommendations": ["oxc.oxc-vscode", "golang.go", "hverlin.mise-vscode"]
+  "recommendations": [
+    "oxc.oxc-vscode",
+    "golang.go",
+    "hverlin.mise-vscode",
+    "bradlc.vscode-tailwindcss"
+  ]
 }
