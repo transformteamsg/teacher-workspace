@@ -144,6 +144,15 @@ func TestDefault(t *testing.T) {
 		if got := cfg.RemoteApps.PostsBackendSigningKey; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
+		if got := cfg.RemoteApps.GroupsManifestURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.RemoteApps.GroupsBackendBaseURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.RemoteApps.GroupsBackendSigningKey; got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
 		if got := cfg.RemoteApps.StudentInsightsManifestURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
@@ -157,7 +166,7 @@ func TestDefault(t *testing.T) {
 }
 
 // validConfig returns Default with the fields that have no default filled in,
-// and both remote apps registered, so it passes Validate.
+// and every remote app registered, so it passes Validate.
 func validConfig() Config {
 	cfg := Default()
 	cfg.Edupass = EdupassConfig{
@@ -178,6 +187,9 @@ func validConfig() Config {
 	cfg.RemoteApps.PostsManifestURL = &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"}
 	cfg.RemoteApps.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com"}
 	cfg.RemoteApps.PostsBackendSigningKey = "a-string-secret-at-least-256-bits-long"
+	cfg.RemoteApps.GroupsManifestURL = &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"}
+	cfg.RemoteApps.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com"}
+	cfg.RemoteApps.GroupsBackendSigningKey = "a-string-secret-at-least-256-bits-long"
 	cfg.RemoteApps.StudentInsightsManifestURL = &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"}
 	cfg.RemoteApps.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com"}
 	cfg.RemoteApps.StudentInsightsBackendSigningKey = "a-string-secret-at-least-256-bits-long"
@@ -1299,6 +1311,8 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				cfg := validConfig().RemoteApps
 				cfg.PostsManifestURL = &url.URL{Scheme: scheme, Host: "posts.example.com", Path: "/mf-manifest.json"}
 				cfg.PostsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.posts.example.com"}
+				cfg.GroupsManifestURL = &url.URL{Scheme: scheme, Host: "groups.example.com", Path: "/mf-manifest.json"}
+				cfg.GroupsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.groups.example.com"}
 				cfg.StudentInsightsManifestURL = &url.URL{Scheme: scheme, Host: "student-insights.example.com", Path: "/mf-manifest.json"}
 				cfg.StudentInsightsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.student-insights.example.com"}
 
@@ -1321,6 +1335,12 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				},
 			},
 			{
+				name: "groups backend base URL with a path",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com", Path: "/v1"}
+				},
+			},
+			{
 				name: "student insights backend base URL with a path",
 				mutate: func(c *RemoteAppsConfig) {
 					c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com", Path: "/v1"}
@@ -1329,6 +1349,10 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 			{
 				name:   "posts backend signing key of exactly 32 bytes",
 				mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = strings.Repeat("k", 32) },
+			},
+			{
+				name:   "groups backend signing key of exactly 32 bytes",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = strings.Repeat("k", 32) },
 			},
 			{
 				name:   "student insights backend signing key of exactly 32 bytes",
@@ -1430,6 +1454,64 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				want:   "TW_REMOTE_POSTS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
 			},
 			{
+				name:   "missing groups manifest URL",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsManifestURL = nil },
+				want:   "TW_REMOTE_GROUPS_MANIFEST_URL is required to register the groups remote",
+			},
+			{
+				name: "groups manifest URL with a non-HTTP scheme",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsManifestURL = &url.URL{Scheme: "ftp", Host: "groups.example.com", Path: "/mf-manifest.json"}
+				},
+				want: `TW_REMOTE_GROUPS_MANIFEST_URL must use scheme http or https; got "ftp://groups.example.com/mf-manifest.json"`,
+			},
+			{
+				name:   "groups manifest URL without a host",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"} },
+				want:   `TW_REMOTE_GROUPS_MANIFEST_URL must include host[:port]; got "https:///mf-manifest.json"`,
+			},
+			{
+				name:   "missing groups backend base URL",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendBaseURL = nil },
+				want:   "TW_REMOTE_GROUPS_BACKEND_BASE_URL is required to register the groups remote",
+			},
+			{
+				name: "groups backend base URL with a non-HTTP scheme",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsBackendBaseURL = &url.URL{Scheme: "ftp", Host: "api.groups.example.com"}
+				},
+				want: `TW_REMOTE_GROUPS_BACKEND_BASE_URL must use scheme http or https; got "ftp://api.groups.example.com"`,
+			},
+			{
+				name:   "groups backend base URL without a host",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendBaseURL = &url.URL{Scheme: "http"} },
+				want:   `TW_REMOTE_GROUPS_BACKEND_BASE_URL must include host[:port]; got "http:"`,
+			},
+			{
+				name: "groups backend base URL with a query",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com", RawQuery: "key=abc"}
+				},
+				want: `TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a query; got "https://api.groups.example.com?key=abc"`,
+			},
+			{
+				name: "groups backend base URL with a fragment",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com", Fragment: "frag"}
+				},
+				want: `TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a fragment; got "https://api.groups.example.com#frag"`,
+			},
+			{
+				name:   "empty groups backend signing key",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = "" },
+				want:   "TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY is required to register the groups remote",
+			},
+			{
+				name:   "short groups backend signing key",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = strings.Repeat("k", 31) },
+				want:   "TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
+			},
+			{
 				name:   "missing student insights manifest URL",
 				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsManifestURL = nil },
 				want:   "TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL is required to register the student insights remote",
@@ -1522,9 +1604,10 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 		}
 	})
 
-	t.Run("reports both remote apps in one error", func(t *testing.T) {
+	t.Run("reports every remote app in one error", func(t *testing.T) {
 		cfg := validConfig().RemoteApps
 		cfg.PostsManifestURL = &url.URL{Scheme: "ftp", Host: "posts.example.com", Path: "/mf-manifest.json"}
+		cfg.GroupsBackendSigningKey = ""
 		cfg.StudentInsightsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"}
 
 		err := cfg.validate()
@@ -1532,7 +1615,7 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		for _, want := range []string{"TW_REMOTE_POSTS_MANIFEST_URL", "TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"} {
+		for _, want := range []string{"TW_REMOTE_POSTS_MANIFEST_URL", "TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY", "TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("want err: containing %q; got: %q", want, err)
 			}
@@ -1581,6 +1664,53 @@ func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
 			test.mutate(&cfg)
 
 			if want, got := test.want, cfg.IsPostsRegistered(); want != got {
+				t.Errorf("want: %t; got: %t", want, got)
+			}
+		})
+	}
+}
+
+func TestRemoteAppsConfig_IsGroupsRegistered(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*RemoteAppsConfig)
+		want   bool
+	}{
+		{
+			name:   "all values set",
+			mutate: func(c *RemoteAppsConfig) {},
+			want:   true,
+		},
+		{
+			name: "no values set",
+			mutate: func(c *RemoteAppsConfig) {
+				c.GroupsManifestURL = nil
+				c.GroupsBackendBaseURL = nil
+				c.GroupsBackendSigningKey = ""
+			},
+			want: false,
+		},
+		{
+			name:   "missing manifest URL",
+			mutate: func(c *RemoteAppsConfig) { c.GroupsManifestURL = nil },
+			want:   false,
+		},
+		{
+			name:   "missing backend base URL",
+			mutate: func(c *RemoteAppsConfig) { c.GroupsBackendBaseURL = nil },
+			want:   false,
+		},
+		{
+			name:   "empty backend signing key",
+			mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = "" },
+			want:   false,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := validConfig().RemoteApps
+			test.mutate(&cfg)
+
+			if want, got := test.want, cfg.IsGroupsRegistered(); want != got {
 				t.Errorf("want: %t; got: %t", want, got)
 			}
 		})

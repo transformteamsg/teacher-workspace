@@ -32,6 +32,13 @@ func (h *Handler) proxy() http.Handler {
 			audience:   "pg",
 		}
 	}
+	if h.cfg.RemoteApps.IsGroupsRegistered() {
+		remoteBackends["groups"] = remoteBackend{
+			proxy:      newRemoteBackendProxy(h.cfg.RemoteApps.GroupsBackendBaseURL),
+			signingKey: h.cfg.RemoteApps.GroupsBackendSigningKey,
+			audience:   "pg",
+		}
+	}
 	if h.cfg.RemoteApps.IsStudentInsightsRegistered() {
 		remoteBackends["student-insights"] = remoteBackend{
 			proxy:      newRemoteBackendProxy(h.cfg.RemoteApps.StudentInsightsBackendBaseURL),

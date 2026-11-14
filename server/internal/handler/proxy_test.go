@@ -42,6 +42,9 @@ func TestHandler_proxy(t *testing.T) {
 		postsBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, "posts:"+r.URL.RequestURI())
 		}))
+		groupsBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, "groups:"+r.URL.RequestURI())
+		}))
 		studentInsightsBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, "student-insights:"+r.URL.RequestURI())
 		}))
@@ -54,6 +57,10 @@ func TestHandler_proxy(t *testing.T) {
 					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
 					PostsBackendBaseURL:    postsBackendURL,
 					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+
+					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:    groupsBackendURL,
+					GroupsBackendSigningKey: "groups-string-secret-at-least-256-bits-long",
 
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    studentInsightsBackendURL,
@@ -71,6 +78,11 @@ func TestHandler_proxy(t *testing.T) {
 				name:   "posts",
 				target: "/api/posts/hello",
 				want:   "posts:/hello",
+			},
+			{
+				name:   "groups",
+				target: "/api/groups/hello",
+				want:   "groups:/hello",
 			},
 			{
 				name:   "student insights",
@@ -478,6 +490,10 @@ func TestHandler_proxy(t *testing.T) {
 					PostsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
 					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
 
+					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
+					GroupsBackendSigningKey: "groups-string-secret-at-least-256-bits-long",
+
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
 					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
@@ -495,6 +511,12 @@ func TestHandler_proxy(t *testing.T) {
 				name:         "posts",
 				target:       "/api/posts/hello",
 				signingKey:   "posts-string-secret-at-least-256-bits-long",
+				wantAudience: jwt.ClaimStrings{"pg"},
+			},
+			{
+				name:         "groups",
+				target:       "/api/groups/hello",
+				signingKey:   "groups-string-secret-at-least-256-bits-long",
 				wantAudience: jwt.ClaimStrings{"pg"},
 			},
 			{

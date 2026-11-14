@@ -483,6 +483,10 @@ type RemoteAppsConfig struct {
 	PostsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_POSTS_BACKEND_BASE_URL"`
 	PostsBackendSigningKey string   `dotenv:"TW_REMOTE_POSTS_BACKEND_SIGNING_KEY"`
 
+	GroupsManifestURL       *url.URL `dotenv:"TW_REMOTE_GROUPS_MANIFEST_URL"`
+	GroupsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_GROUPS_BACKEND_BASE_URL"`
+	GroupsBackendSigningKey string   `dotenv:"TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY"`
+
 	StudentInsightsManifestURL       *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"`
 	StudentInsightsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL"`
 	StudentInsightsBackendSigningKey string   `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY"`
@@ -532,6 +536,43 @@ func (cfg RemoteAppsConfig) validate() error {
 		}
 	}
 
+	if cfg.GroupsManifestURL != nil || cfg.GroupsBackendBaseURL != nil || cfg.GroupsBackendSigningKey != "" {
+		if cfg.GroupsManifestURL == nil {
+			errs = append(errs, errors.New("TW_REMOTE_GROUPS_MANIFEST_URL is required to register the groups remote"))
+		} else {
+			if cfg.GroupsManifestURL.Scheme != "http" && cfg.GroupsManifestURL.Scheme != "https" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_MANIFEST_URL must use scheme http or https; got %q", cfg.GroupsManifestURL))
+			}
+			if cfg.GroupsManifestURL.Host == "" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_MANIFEST_URL must include host[:port]; got %q", cfg.GroupsManifestURL))
+			}
+		}
+		if cfg.GroupsBackendBaseURL == nil {
+			errs = append(errs, errors.New("TW_REMOTE_GROUPS_BACKEND_BASE_URL is required to register the groups remote"))
+		} else {
+			if cfg.GroupsBackendBaseURL.Scheme != "http" && cfg.GroupsBackendBaseURL.Scheme != "https" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must use scheme http or https; got %q", cfg.GroupsBackendBaseURL))
+			}
+			if cfg.GroupsBackendBaseURL.Host == "" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must include host[:port]; got %q", cfg.GroupsBackendBaseURL))
+			}
+			if cfg.GroupsBackendBaseURL.RawQuery != "" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a query; got %q", cfg.GroupsBackendBaseURL))
+			}
+			if cfg.GroupsBackendBaseURL.Fragment != "" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a fragment; got %q", cfg.GroupsBackendBaseURL))
+			}
+		}
+		if cfg.GroupsBackendSigningKey == "" {
+			errs = append(errs, errors.New("TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY is required to register the groups remote"))
+		} else {
+			// RFC 7518, section 3.2 requires a key at least as big as hash output (HS256).
+			if keyLength := len(cfg.GroupsBackendSigningKey); keyLength < sha256.Size {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, keyLength))
+			}
+		}
+	}
+
 	if cfg.StudentInsightsManifestURL != nil || cfg.StudentInsightsBackendBaseURL != nil || cfg.StudentInsightsBackendSigningKey != "" {
 		if cfg.StudentInsightsManifestURL == nil {
 			errs = append(errs, errors.New("TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL is required to register the student insights remote"))
@@ -575,6 +616,11 @@ func (cfg RemoteAppsConfig) validate() error {
 // IsPostsRegistered reports whether the posts remote app has all of its values set.
 func (cfg RemoteAppsConfig) IsPostsRegistered() bool {
 	return cfg.PostsManifestURL != nil && cfg.PostsBackendBaseURL != nil && cfg.PostsBackendSigningKey != ""
+}
+
+// IsGroupsRegistered reports whether the groups remote app has all of its values set.
+func (cfg RemoteAppsConfig) IsGroupsRegistered() bool {
+	return cfg.GroupsManifestURL != nil && cfg.GroupsBackendBaseURL != nil && cfg.GroupsBackendSigningKey != ""
 }
 
 // IsStudentInsightsRegistered reports whether the student insights remote app
