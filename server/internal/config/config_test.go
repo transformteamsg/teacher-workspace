@@ -11,14 +11,20 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/pem"
+	"fmt"
 	"log/slog"
+	"maps"
 	"math/big"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/transformteamsg/teacher-workspace/server/pkg/dotenv"
 )
 
 func TestDefault(t *testing.T) {
@@ -167,6 +173,11 @@ func TestDefault(t *testing.T) {
 		}
 		if got := cfg.RemoteApps.StudentInsightsBackendSigningKey; got != "" {
 			t.Errorf("want: empty; got: %q", got)
+		}
+		for _, a := range cfg.RemoteApps.Allowlists() {
+			if got := a.Allowlist; got != "" {
+				t.Errorf("want %s: empty; got: %q", a.Setting, got)
+			}
 		}
 	})
 }
@@ -1683,6 +1694,66 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("rejects an invalid allowlist with an error naming its setting", func(t *testing.T) {
+		for _, a := range validConfig().RemoteApps.Allowlists() {
+			t.Run(a.App, func(t *testing.T) {
+				t.Chdir(t.TempDir())
+				t.Setenv(a.Setting, "12A4")
+				cfg := Default()
+				if err := dotenv.Load(&cfg); err != nil {
+					t.Fatalf("dotenv.Load: %v", err)
+				}
+
+				err := cfg.RemoteApps.validate()
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if want := a.Setting + ` must contain only 4-digit school codes; got "12A4"`; !strings.Contains(err.Error(), want) {
+					t.Errorf("want err: containing %q; got: %q", want, err)
+				}
+			})
+		}
+	})
+}
+
+func TestRemoteAppsConfig_Allowlists(t *testing.T) {
+	t.Run("returns every allowlist field under the setting it is read from", func(t *testing.T) {
+		cfg := RemoteAppsConfig{}
+		want := map[string]SchoolAllowlist{}
+		v := reflect.ValueOf(&cfg).Elem()
+		for i := range v.NumField() {
+			if field := v.Type().Field(i); field.Type == reflect.TypeFor[SchoolAllowlist]() {
+				// A distinct value per field shows a row reading the wrong field.
+				allowlist := SchoolAllowlist(fmt.Sprintf("%04d", i))
+				v.Field(i).Set(reflect.ValueOf(allowlist))
+				want[field.Tag.Get("dotenv")] = allowlist
+			}
+		}
+
+		allowlists := cfg.Allowlists()
+
+		got := map[string]SchoolAllowlist{}
+		for _, a := range allowlists {
+			got[a.Setting] = a.Allowlist
+		}
+		if !maps.Equal(want, got) || len(allowlists) != len(want) {
+			t.Errorf("want allowlists by setting: %v; got: %v", want, got)
+		}
+	})
+
+	t.Run("returns the apps in the order they are shown", func(t *testing.T) {
+		allowlists := RemoteAppsConfig{}.Allowlists()
+
+		apps := make([]string, 0, len(allowlists))
+		for _, a := range allowlists {
+			apps = append(apps, a.App)
+		}
+		if want := []string{"posts", "groups", "meetings", "students"}; !slices.Equal(want, apps) {
+			t.Errorf("want apps: %q; got: %q", want, apps)
+		}
+	})
 }
 
 func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
@@ -1851,6 +1922,71 @@ func TestSchoolAllowlist_Allows(t *testing.T) {
 
 				if test.want != allowed {
 					t.Errorf("want allowlist.Allows(%q): %t; got: %t", test.schoolCode, test.want, allowed)
+				}
+			})
+		}
+	})
+}
+
+func TestSchoolAllowlist_validate(t *testing.T) {
+	t.Run("accepts a valid list", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			allowlist SchoolAllowlist
+		}{
+			{name: "when unset", allowlist: ""},
+			{name: "when blank", allowlist: "   "},
+			{name: "with one code", allowlist: "0001"},
+			{name: "with several codes", allowlist: "0001,0002"},
+			{name: "with spaces around codes", allowlist: " 0001 , 0002 "},
+			{name: "with a repeated code", allowlist: "0001,0001"},
+			{name: "with a leading zero", allowlist: "0718"},
+			{name: "with * alone", allowlist: "*"},
+			{name: "with * and exclusions", allowlist: "*,!0001,!0002"},
+			{name: "with a repeated exclusion", allowlist: "*,!0001,!0001"},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				err := test.allowlist.validate("TW_SETTING")
+
+				if err != nil {
+					t.Errorf("want err: nil; got: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("rejects an invalid list with an error naming the setting and the item", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			allowlist SchoolAllowlist
+			want      string
+		}{
+			{name: "with a letter in a code", allowlist: "12A4", want: `TW_SETTING must contain only 4-digit school codes; got "12A4"`},
+			{name: "with a 3-digit code", allowlist: "123", want: `TW_SETTING must contain only 4-digit school codes; got "123"`},
+			{name: "with a code missing its leading zero", allowlist: "718", want: `TW_SETTING must contain only 4-digit school codes; got "718"`},
+			{name: "with a 5-digit code", allowlist: "12345", want: `TW_SETTING must contain only 4-digit school codes; got "12345"`},
+			{name: "with a word", allowlist: "all", want: `TW_SETTING must contain only 4-digit school codes; got "all"`},
+			{name: "with an empty item between codes", allowlist: "0001,,0002", want: `TW_SETTING must not contain an empty item; got "0001,,0002"`},
+			{name: "with a trailing comma", allowlist: "0001,", want: `TW_SETTING must not contain an empty item; got "0001,"`},
+			{name: "with a leading comma", allowlist: ",0001", want: `TW_SETTING must not contain an empty item; got ",0001"`},
+			{name: "with an exclusion alone", allowlist: "!0001", want: `TW_SETTING must start with * to exclude a code; got "!0001"`},
+			{name: "with an exclusion after a code", allowlist: "0001,!0002", want: `TW_SETTING must start with * to exclude a code; got "!0002"`},
+			{name: "with a code after *", allowlist: "*,0001", want: `TW_SETTING must list only excluded codes after *; got "0001"`},
+			{name: "with * after a code", allowlist: "0001,*", want: `TW_SETTING must have * only as its first item; got "0001,*"`},
+			{name: "with * twice", allowlist: "*,*", want: `TW_SETTING must have * only as its first item; got "*,*"`},
+			{name: "with an invalid excluded code", allowlist: "*,!12A4", want: `TW_SETTING must contain only 4-digit school codes; got "!12A4"`},
+			{name: "with an exclusion missing its code", allowlist: "*,!", want: `TW_SETTING must contain only 4-digit school codes; got "!"`},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				err := test.allowlist.validate("TW_SETTING")
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if got := err.Error(); test.want != got {
+					t.Errorf("want err: %q; got: %q", test.want, got)
 				}
 			})
 		}
