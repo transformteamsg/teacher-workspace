@@ -71,9 +71,7 @@ func (h *Handler) proxy() http.Handler {
 		name, _, found := strings.Cut(strings.TrimPrefix(r.URL.Path, "/api/"), "/")
 		b, ok := remoteBackends[name]
 		if !found || !ok {
-			httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
-				Message: http.StatusText(http.StatusNotFound),
-			})
+			renderNotFound(w, r)
 			return
 		}
 

@@ -437,6 +437,14 @@ func renderForbidden(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// renderNotFound writes a 404 JSON error response.
+func renderNotFound(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.LoggerFromContext(r.Context())
+	httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
+		Message: http.StatusText(http.StatusNotFound),
+	})
+}
+
 // safeReturnTo returns candidate if it is safe to redirect to, and fallback
 // otherwise. A safe candidate is at most 1024 bytes long, and a redirect to it
 // lands on exactly that path on this site.
