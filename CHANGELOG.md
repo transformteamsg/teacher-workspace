@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.0.7 (2026-11-16)
+
+Ends the teacher's Edupass session on sign-out, rejects state-changing `/api/` requests that are cross-origin or carry no valid CSRF token, times out requests to remote app backends, and answers a handler panic with a 500. Groups becomes its own remote app, though release images now hide Posts and Student groups until Parents Gateway launches. The TW JWT's `attributes` claim now keeps only the Edupass attributes granted at the teacher's base role location.
+
+Two settings are now required: set `TW_EDUPASS_END_SESSION_URL` and `TW_EDUPASS_POST_LOGOUT_REDIRECT_URL` in each deployed environment before deploying this version, and register the second with Edupass as a redirect URI ([#292](https://github.com/transformteamsg/teacher-workspace/pull/292)). The session cookie's name gains a `__Host-` prefix when `TW_SESSION_SECURE` is `true`, so teachers signed in before the upgrade have to sign in again ([#283](https://github.com/transformteamsg/teacher-workspace/pull/283)), and remote apps must send the session's CSRF token in `X-CSRF-Token` on state-changing `/api/` requests, which otherwise get a 403 ([#289](https://github.com/transformteamsg/teacher-workspace/pull/289)).
+
+Versions stay in the `0.0.x` series while the host shell is pre-release, so this is a patch bump despite the features below.
+
+### Features ✨
+
+- feat(`server/handler`): time out proxied requests, with a longer limit for event streams and WebSockets ([#310](https://github.com/transformteamsg/teacher-workspace/pull/310)) ([e5c21f1](https://github.com/transformteamsg/teacher-workspace/commit/e5c21f1))
+- feat(`server`): add the Groups remote app ([#325](https://github.com/transformteamsg/teacher-workspace/pull/325)) ([6177840](https://github.com/transformteamsg/teacher-workspace/commit/6177840))
+- feat(`server/middleware`): respond with a 500 and log the panic when a handler panics ([#300](https://github.com/transformteamsg/teacher-workspace/pull/300)) ([17f72f9](https://github.com/transformteamsg/teacher-workspace/commit/17f72f9))
+- feat(`host`): hide Posts and Student groups in release images ([#305](https://github.com/transformteamsg/teacher-workspace/pull/305)) ([8e770fc](https://github.com/transformteamsg/teacher-workspace/commit/8e770fc))
+- feat(`server/middleware`): reject cross-origin and unverified state-changing `/api/` requests ([#289](https://github.com/transformteamsg/teacher-workspace/pull/289)) ([027244c](https://github.com/transformteamsg/teacher-workspace/commit/027244c))
+- feat(`HomeView.tsx`): remove Student Insights from the Student Information app group ([#308](https://github.com/transformteamsg/teacher-workspace/pull/308)) ([4777e19](https://github.com/transformteamsg/teacher-workspace/commit/4777e19))
+- feat(`server/internal/handler`): keep Edupass attributes only at the base role's location ([#296](https://github.com/transformteamsg/teacher-workspace/pull/296)) ([a1fc08c](https://github.com/transformteamsg/teacher-workspace/commit/a1fc08c))
+- feat(`HomeView.tsx`): rename the Professional Development section to Professional Learning ([#304](https://github.com/transformteamsg/teacher-workspace/pull/304)) ([0ec218c](https://github.com/transformteamsg/teacher-workspace/commit/0ec218c))
+- feat(`auth`): redirect to the Edupass end-session endpoint on sign-out ([#292](https://github.com/transformteamsg/teacher-workspace/pull/292)) ([5d06a2b](https://github.com/transformteamsg/teacher-workspace/commit/5d06a2b))
+- feat(`server/config`): require server timeouts to be positive ([#298](https://github.com/transformteamsg/teacher-workspace/pull/298)) ([64b6ade](https://github.com/transformteamsg/teacher-workspace/commit/64b6ade))
+- feat(`LoginView.tsx`): update copy to SSOE Service Desk in the failed sign-in alert ([#290](https://github.com/transformteamsg/teacher-workspace/pull/290)) ([641be5e](https://github.com/transformteamsg/teacher-workspace/commit/641be5e))
+
+### Bug Fixes 🐛
+
+- fix(`server/middleware`): return flush errors from the `Session`, `RequestLog`, and `Recover` response writers ([#309](https://github.com/transformteamsg/teacher-workspace/pull/309)) ([990a805](https://github.com/transformteamsg/teacher-workspace/commit/990a805))
+- fix(`server/middleware`): log the committed response status and aborted or hijacked requests ([#299](https://github.com/transformteamsg/teacher-workspace/pull/299)) ([10073ee](https://github.com/transformteamsg/teacher-workspace/commit/10073ee))
+- fix(`host`): reset the error boundary when navigating between remote routes ([#291](https://github.com/transformteamsg/teacher-workspace/pull/291)) ([89f7b80](https://github.com/transformteamsg/teacher-workspace/commit/89f7b80))
+- fix(`server/session`): stop a session's user sharing its attributes with callers ([#285](https://github.com/transformteamsg/teacher-workspace/pull/285)) ([aa0a014](https://github.com/transformteamsg/teacher-workspace/commit/aa0a014))
+- fix(`server/middleware`): prefix the session cookie with `__Host-` when `TW_SESSION_SECURE` is true ([#283](https://github.com/transformteamsg/teacher-workspace/pull/283)) ([86b5975](https://github.com/transformteamsg/teacher-workspace/commit/86b5975))
+
+### Refactors ♻️
+
+- refactor(`server/internal/middleware`): rename `require_auth.go` to `requireauth.go` ([#311](https://github.com/transformteamsg/teacher-workspace/pull/311)) ([459e7b7](https://github.com/transformteamsg/teacher-workspace/commit/459e7b7))
+
+### Chores 🧹
+
+- chore(`sast.yml`): add CodeQL scanning for Go, TypeScript and workflows ([#314](https://github.com/transformteamsg/teacher-workspace/pull/314)) ([5a3b215](https://github.com/transformteamsg/teacher-workspace/commit/5a3b215))
+- chore(`auth`): log the Edupass ID and CES email on sign-in lines written after the claims are decoded ([#288](https://github.com/transformteamsg/teacher-workspace/pull/288)) ([66e6b4f](https://github.com/transformteamsg/teacher-workspace/commit/66e6b4f))
+
 ## 0.0.6 (2026-10-29)
 
 Updates the sidebar, header and home page to the new design, adds the favicon, shows specific alerts when sign-in is refused, and carries the teacher's school code to remote app backends as a `school_code` claim in the TW JWT. Sign-in now rejects Edupass base roles whose location code is not four digits, and signing out no longer lets a request in flight restore the session. No required configuration changes, but the default `TW_SESSION_DEFAULT_TTL` drops from `3h` to `1h`: set it explicitly to keep the old lifetime ([#279](https://github.com/transformteamsg/teacher-workspace/pull/279)). Sessions signed in before the upgrade carry no school code, so remote app requests from them fail until the teacher signs in again.
