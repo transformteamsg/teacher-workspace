@@ -13,6 +13,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/transformteamsg/teacher-workspace/server/internal/config"
+	"github.com/transformteamsg/teacher-workspace/server/internal/edupass"
 	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
 	"github.com/transformteamsg/teacher-workspace/server/internal/session"
@@ -536,20 +537,6 @@ func isRecognizedEdupassAttribute(code string) bool {
 	}
 }
 
-// isEdupassLocationCode reports whether code is a school's location code:
-// exactly four ASCII digits.
-func isEdupassLocationCode(code string) bool {
-	if len(code) != 4 {
-		return false
-	}
-	for i := 0; i < len(code); i++ {
-		if code[i] < '0' || code[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
 // isMKSchoolCode reports whether code is the location code of a MOE
 // Kindergarten (MK) school. The cases are the full list of known MK school
 // codes; add new codes here as they're assigned.
@@ -648,7 +635,7 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 			switch {
 			case app != string(appCode) ||
 				!recognized ||
-				!isEdupassLocationCode(location):
+				!edupass.IsLocationCode(location):
 				unrecognized = append(unrecognized, entry)
 			case isMKSchoolCode(location):
 				unrecognized = append(unrecognized, entry)
@@ -664,7 +651,7 @@ func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGr
 			location, app, code := splitEdupassEntry(entry, edupassAttrInfix)
 			if app != string(appCode) ||
 				!isRecognizedEdupassAttribute(code) ||
-				!isEdupassLocationCode(location) {
+				!edupass.IsLocationCode(location) {
 				unrecognized = append(unrecognized, entry)
 			} else {
 				attributeCandidates = append(attributeCandidates, edupassAttribute{location: location, code: code, entry: entry})
