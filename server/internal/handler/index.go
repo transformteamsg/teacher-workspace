@@ -11,24 +11,6 @@ import (
 )
 
 func (h *Handler) index() http.Handler {
-	remotes := []Remote{}
-	apps := []string{}
-
-	if h.cfg.RemoteApps.IsPostsRegistered() {
-		remotes = append(remotes, Remote{Name: "pg", Entry: h.cfg.RemoteApps.PostsManifestURL.String()})
-		apps = append(apps, "posts")
-	}
-	// Groups shares the Posts manifest, which exposes both modules, so it
-	// registers under the same remote name.
-	if h.cfg.RemoteApps.IsGroupsRegistered() {
-		remotes = append(remotes, Remote{Name: "pg", Entry: h.cfg.RemoteApps.GroupsManifestURL.String()})
-		apps = append(apps, "groups")
-	}
-	if h.cfg.RemoteApps.IsStudentInsightsRegistered() {
-		remotes = append(remotes, Remote{Name: "student_insights", Entry: h.cfg.RemoteApps.StudentInsightsManifestURL.String()})
-		apps = append(apps, "students")
-	}
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := middleware.LoggerFromContext(r.Context())
 
@@ -41,8 +23,8 @@ func (h *Handler) index() http.Handler {
 
 		state := &PreloadedState{
 			CSRFToken: sess.CSRFToken(),
-			Remotes:   remotes,
-			Apps:      apps,
+			Remotes:   []Remote{},
+			Apps:      []string{},
 		}
 		if user, ok := sess.User(); ok {
 			state.User = &User{
@@ -53,10 +35,35 @@ func (h *Handler) index() http.Handler {
 			if name, ok := h.schoolNames[user.SchoolCode]; ok {
 				state.User.School = name
 			}
+			state.Remotes, state.Apps = h.allowedApps(user.SchoolCode)
 		}
 
 		h.renderIndexTemplate(w, r, state)
 	})
+}
+
+// allowedApps returns the remotes and app keys the page offers the school with schoolCode: each app that is registered and whose allowlist allows the school.
+func (h *Handler) allowedApps(schoolCode string) ([]Remote, []string) {
+	cfg := h.cfg.RemoteApps
+	remotes := []Remote{}
+	apps := []string{}
+
+	if cfg.IsPostsRegistered() && cfg.PostsAllowedSchoolCodes.Allows(schoolCode) {
+		remotes = append(remotes, Remote{Name: "pg", Entry: cfg.PostsManifestURL.String()})
+		apps = append(apps, "posts")
+	}
+	// Groups shares the Posts manifest, which exposes both modules, so it
+	// registers under the same remote name.
+	if cfg.IsGroupsRegistered() && cfg.GroupsAllowedSchoolCodes.Allows(schoolCode) {
+		remotes = append(remotes, Remote{Name: "pg", Entry: cfg.GroupsManifestURL.String()})
+		apps = append(apps, "groups")
+	}
+	if cfg.IsStudentInsightsRegistered() && cfg.StudentsAllowedSchoolCodes.Allows(schoolCode) {
+		remotes = append(remotes, Remote{Name: "student_insights", Entry: cfg.StudentInsightsManifestURL.String()})
+		apps = append(apps, "students")
+	}
+
+	return remotes, apps
 }
 
 func (h *Handler) static(w http.ResponseWriter, r *http.Request) {

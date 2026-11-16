@@ -97,17 +97,20 @@ func TestHandler_index(t *testing.T) {
 			{
 				name: "all remotes configured",
 				remoteApps: config.RemoteAppsConfig{
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
-					PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     &url.URL{Scheme: "https", Host: "api.posts.example.com"},
+					PostsBackendSigningKey:  "a-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 
-					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.groups.example.com"},
-					GroupsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:     &url.URL{Scheme: "https", Host: "api.groups.example.com"},
+					GroupsBackendSigningKey:  "a-string-secret-at-least-256-bits-long",
+					GroupsAllowedSchoolCodes: "*",
 
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
 					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+					StudentsAllowedSchoolCodes:       "*",
 				},
 				wantRemotes: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"},{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
 				wantApps:    `["posts","groups","students"]`,
@@ -115,9 +118,10 @@ func TestHandler_index(t *testing.T) {
 			{
 				name: "posts remote only",
 				remoteApps: config.RemoteAppsConfig{
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
-					PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     &url.URL{Scheme: "https", Host: "api.posts.example.com"},
+					PostsBackendSigningKey:  "a-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 				wantRemotes: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}]`,
 				wantApps:    `["posts"]`,
@@ -125,9 +129,10 @@ func TestHandler_index(t *testing.T) {
 			{
 				name: "groups remote only",
 				remoteApps: config.RemoteAppsConfig{
-					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.groups.example.com"},
-					GroupsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:     &url.URL{Scheme: "https", Host: "api.groups.example.com"},
+					GroupsBackendSigningKey:  "a-string-secret-at-least-256-bits-long",
+					GroupsAllowedSchoolCodes: "*",
 				},
 				wantRemotes: `[{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"}]`,
 				wantApps:    `["groups"]`,
@@ -138,6 +143,7 @@ func TestHandler_index(t *testing.T) {
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
 					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+					StudentsAllowedSchoolCodes:       "*",
 				},
 				wantRemotes: `[{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
 				wantApps:    `["students"]`,
@@ -157,7 +163,9 @@ func TestHandler_index(t *testing.T) {
 					indexTemplate: newPreloadedStateTemplate(),
 				}
 
-				ctx := middleware.WithSession(t.Context(), session.New())
+				sess := session.New()
+				sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: "1234"})
+				ctx := middleware.WithSession(t.Context(), sess)
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
