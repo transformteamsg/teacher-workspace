@@ -55,6 +55,20 @@ export default function LoginView() {
     ? `/auth/edupass?return_to=${encodeURIComponent(returnTo)}`
     : '/auth/edupass';
 
+  // The server redirects a signed-in user away from /login, but pressing back
+  // after sign-in can restore this page from the back/forward cache without a
+  // request. Reloading sends the request, so the server decides what to show.
+  useEffect(() => {
+    function reloadIfRestored(event: PageTransitionEvent) {
+      if (event.persisted) {
+        window.location.reload();
+      }
+    }
+
+    window.addEventListener('pageshow', reloadIfRestored);
+    return () => window.removeEventListener('pageshow', reloadIfRestored);
+  }, []);
+
   useEffect(() => {
     if (loginError) {
       alertRef.current?.focus();
