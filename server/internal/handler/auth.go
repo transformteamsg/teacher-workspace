@@ -621,7 +621,7 @@ type edupassGroups struct {
 //
 // resolveEdupassGroups doesn't decide whether sign-in proceeds: the caller
 // refuses unless roles holds exactly one entry.
-func resolveEdupassGroups(raw []string, appCode config.EdupassAppCode) edupassGroups {
+func resolveEdupassGroups(raw []string, appCode edupass.AppCode) edupassGroups {
 	roles := []edupassRole{}
 	attributeCandidates := []edupassAttribute{}
 	unrecognized := []string{}

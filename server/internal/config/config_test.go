@@ -19,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/transformteamsg/teacher-workspace/server/internal/edupass"
 )
 
 func TestDefault(t *testing.T) {
@@ -73,7 +75,7 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 
-		if want, got := EdupassAppCodeTW, cfg.Edupass.AppCode; want != got {
+		if want, got := edupass.AppCodeTW, cfg.Edupass.AppCode; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
 
@@ -185,7 +187,7 @@ func validConfig() Config {
 		RedirectURL:           &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
 		PostLogoutRedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/login"},
 
-		AppCode: EdupassAppCodeTW,
+		AppCode: edupass.AppCodeTW,
 
 		ClientAuthMethod: OAuth2ClientAuthMethodClientSecretPost,
 		ClientSecret:     "teacher-workspace-secret",
@@ -753,7 +755,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 	})
 
 	t.Run("accepts the production and pre-prod app codes", func(t *testing.T) {
-		for _, appCode := range []EdupassAppCode{EdupassAppCodeTW, EdupassAppCodeTWSTG} {
+		for _, appCode := range []edupass.AppCode{edupass.AppCodeTW, edupass.AppCodeTWSTG} {
 			t.Run(string(appCode), func(t *testing.T) {
 				cfg := validConfig().Edupass
 				cfg.AppCode = appCode
