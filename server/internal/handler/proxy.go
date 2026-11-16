@@ -39,7 +39,11 @@ func (h *Handler) proxy() http.Handler {
 	}
 	if h.cfg.RemoteApps.IsGroupsRegistered() {
 		remoteBackends["groups"] = remoteBackend{
-			proxy:      newRemoteBackendProxy(h.cfg.RemoteApps.GroupsBackendBaseURL),
+			proxy: newRemoteBackendProxy(
+				h.cfg.RemoteApps.GroupsBackendBaseURL,
+				h.cfg.RemoteApps.ProxyTimeout,
+				h.cfg.RemoteApps.ProxyStreamTimeout,
+			),
 			signingKey: h.cfg.RemoteApps.GroupsBackendSigningKey,
 			audience:   "pg",
 		}
