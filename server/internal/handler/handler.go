@@ -145,6 +145,10 @@ type PreloadedState struct {
 	// non-nil, even when empty, since the page rejects a null list.
 	Remotes []Remote `json:"remotes"`
 
+	// Apps contains the keys of the apps the page offers, such as "posts". It
+	// must be non-nil, even when empty, so the page always receives a list.
+	Apps []string `json:"apps"`
+
 	// User is the signed-in user, or nil when the page is served to a user who
 	// is not logged in.
 	User *User `json:"user,omitempty"`
