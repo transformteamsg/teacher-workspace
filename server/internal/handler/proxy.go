@@ -22,6 +22,7 @@ type remoteBackend struct {
 	proxy      http.Handler
 	signingKey string
 	audience   string
+	app        string
 	allowlist  config.SchoolAllowlist
 }
 
@@ -37,6 +38,7 @@ func (h *Handler) proxy() http.Handler {
 			),
 			signingKey: h.cfg.RemoteApps.PostsBackendSigningKey,
 			audience:   "pg",
+			app:        "posts",
 			allowlist:  h.cfg.RemoteApps.PostsAllowedSchoolCodes,
 		}
 	}
@@ -49,6 +51,7 @@ func (h *Handler) proxy() http.Handler {
 			),
 			signingKey: h.cfg.RemoteApps.GroupsBackendSigningKey,
 			audience:   "pg",
+			app:        "groups",
 			allowlist:  h.cfg.RemoteApps.GroupsAllowedSchoolCodes,
 		}
 	}
@@ -61,6 +64,7 @@ func (h *Handler) proxy() http.Handler {
 			),
 			signingKey: h.cfg.RemoteApps.StudentInsightsBackendSigningKey,
 			audience:   "si",
+			app:        "students",
 			allowlist:  h.cfg.RemoteApps.StudentsAllowedSchoolCodes,
 		}
 	}
@@ -107,6 +111,11 @@ func (h *Handler) proxy() http.Handler {
 
 		// A refused app answers like an unknown one, so its existence isn't revealed.
 		if !b.allowlist.Allows(u.SchoolCode) {
+			logger.Warn("school not allowed to use remote app",
+				"app", b.app,
+				"edupass_id", u.ID,
+				"school_code", u.SchoolCode,
+			)
 			renderNotFound(w, r)
 			return
 		}
