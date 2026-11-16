@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/transformteamsg/teacher-workspace/server/internal/config"
+	"github.com/transformteamsg/teacher-workspace/server/internal/edupass"
 	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
 )
@@ -43,7 +44,7 @@ func (h *Handler) index() http.Handler {
 			state.User = &User{
 				Name:  user.Name,
 				Email: user.Email,
-				Role:  edupassRoleLabel(user.Role),
+				Role:  edupass.RoleLabel(user.Role),
 			}
 		}
 
