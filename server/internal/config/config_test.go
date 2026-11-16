@@ -1928,6 +1928,31 @@ func TestSchoolAllowlist_Allows(t *testing.T) {
 	})
 }
 
+func TestSchoolAllowlist_IsEmpty(t *testing.T) {
+	t.Run("reports whether the list allows no school", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			allowlist SchoolAllowlist
+			want      bool
+		}{
+			{name: "when unset", allowlist: "", want: true},
+			{name: "when blank", allowlist: "   ", want: true},
+			{name: "when the list has a code", allowlist: "0001", want: false},
+			{name: "when the list has a code surrounded by spaces", allowlist: " 0001 ", want: false},
+			{name: "when the list is *", allowlist: "*", want: false},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				empty := test.allowlist.IsEmpty()
+
+				if test.want != empty {
+					t.Errorf("want allowlist.IsEmpty(): %t; got: %t", test.want, empty)
+				}
+			})
+		}
+	})
+}
+
 func TestSchoolAllowlist_validate(t *testing.T) {
 	t.Run("accepts a valid list", func(t *testing.T) {
 		tests := []struct {
