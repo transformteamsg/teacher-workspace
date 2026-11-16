@@ -87,11 +87,12 @@ func TestHandler_index(t *testing.T) {
 		}
 	})
 
-	t.Run("embeds configured remotes in preloaded state", func(t *testing.T) {
+	t.Run("embeds configured remotes and apps in preloaded state", func(t *testing.T) {
 		tests := []struct {
-			name       string
-			remoteApps config.RemoteAppsConfig
-			want       string
+			name        string
+			remoteApps  config.RemoteAppsConfig
+			wantRemotes string
+			wantApps    string
 		}{
 			{
 				name: "all remotes configured",
@@ -108,7 +109,8 @@ func TestHandler_index(t *testing.T) {
 					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
 					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
 				},
-				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"},{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				wantRemotes: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"},{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				wantApps:    `["posts","groups","students"]`,
 			},
 			{
 				name: "posts remote only",
@@ -117,7 +119,8 @@ func TestHandler_index(t *testing.T) {
 					PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
 					PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
 				},
-				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}]`,
+				wantRemotes: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}]`,
+				wantApps:    `["posts"]`,
 			},
 			{
 				name: "groups remote only",
@@ -126,7 +129,8 @@ func TestHandler_index(t *testing.T) {
 					GroupsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.groups.example.com"},
 					GroupsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
 				},
-				want: `[{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"}]`,
+				wantRemotes: `[{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"}]`,
+				wantApps:    `["groups"]`,
 			},
 			{
 				name: "student insights remote only",
@@ -135,12 +139,14 @@ func TestHandler_index(t *testing.T) {
 					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
 					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
 				},
-				want: `[{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				wantRemotes: `[{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				wantApps:    `["students"]`,
 			},
 			{
-				name:       "no remotes configured",
-				remoteApps: config.RemoteAppsConfig{},
-				want:       `[]`,
+				name:        "no remotes configured",
+				remoteApps:  config.RemoteAppsConfig{},
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
 			},
 		}
 
@@ -159,8 +165,11 @@ func TestHandler_index(t *testing.T) {
 				h.index().ServeHTTP(rec, req)
 
 				state := decodePreloadedState(t, rec.Body.String())
-				if want, got := test.want, string(state.Remotes); want != got {
-					t.Errorf("want: %q; got: %q", want, got)
+				if want, got := test.wantRemotes, string(state.Remotes); want != got {
+					t.Errorf("want remotes: %s; got: %s", want, got)
+				}
+				if want, got := test.wantApps, string(state.Apps); want != got {
+					t.Errorf("want apps: %s; got: %s", want, got)
 				}
 			})
 		}
