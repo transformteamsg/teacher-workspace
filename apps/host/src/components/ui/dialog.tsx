@@ -26,7 +26,7 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        'tw:fixed tw:inset-0 tw:isolate tw:z-50 tw:bg-black/60 tw:duration-100 tw:data-closed:animate-out tw:data-closed:fade-out-0 tw:data-open:animate-in tw:data-open:fade-in-0 tw:supports-backdrop-filter:backdrop-blur-xs',
+        'tw:fixed tw:inset-0 tw:isolate tw:z-50 tw:bg-black/60 tw:duration-100 tw:supports-backdrop-filter:backdrop-blur-xs tw:data-open:animate-in tw:data-open:fade-in-0 tw:data-closed:animate-out tw:data-closed:fade-out-0',
         className,
       )}
       {...props}
@@ -49,7 +49,7 @@ function DialogContent({
         <DialogPrimitive.Popup
           data-slot="dialog-content"
           className={cn(
-            'tw:grid tw:max-h-full tw:w-full tw:gap-4 tw:overflow-y-auto tw:rounded-xl tw:bg-popover tw:p-4 tw:text-sm tw:text-popover-foreground tw:ring-1 tw:ring-foreground/10 tw:duration-100 tw:outline-none tw:data-closed:animate-out tw:data-closed:fade-out-0 tw:data-closed:zoom-out-95 tw:data-open:animate-in tw:data-open:fade-in-0 tw:data-open:zoom-in-95 tw:sm:max-w-sm',
+            'tw:grid tw:max-h-full tw:w-full tw:gap-4 tw:overflow-y-auto tw:rounded-xl tw:bg-popover tw:p-4 tw:text-sm tw:text-popover-foreground tw:ring-1 tw:ring-foreground/10 tw:duration-100 tw:outline-none tw:sm:max-w-sm tw:data-open:animate-in tw:data-open:fade-in-0 tw:data-open:zoom-in-95 tw:data-closed:animate-out tw:data-closed:fade-out-0 tw:data-closed:zoom-out-95',
             className,
           )}
           {...props}
