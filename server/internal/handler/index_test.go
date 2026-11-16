@@ -87,70 +87,97 @@ func TestHandler_index(t *testing.T) {
 		}
 	})
 
-	t.Run("embeds configured remotes and apps in preloaded state", func(t *testing.T) {
+	t.Run("offers only the registered apps the session's school is allowed", func(t *testing.T) {
+		const (
+			postsRemote    = `{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}`
+			groupsRemote   = `{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"}`
+			studentsRemote = `{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}`
+		)
+		allowAll := func(c *config.RemoteAppsConfig) {
+			c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes, c.StudentsAllowedSchoolCodes = "*", "*", "*"
+		}
 		tests := []struct {
 			name        string
-			remoteApps  config.RemoteAppsConfig
+			mutate      func(*config.RemoteAppsConfig)
+			noUser      bool
 			wantRemotes string
 			wantApps    string
 		}{
 			{
-				name: "all remotes configured",
-				remoteApps: config.RemoteAppsConfig{
-					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:     &url.URL{Scheme: "https", Host: "api.posts.example.com"},
-					PostsBackendSigningKey:  "a-string-secret-at-least-256-bits-long",
-					PostsAllowedSchoolCodes: "*",
-
-					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:     &url.URL{Scheme: "https", Host: "api.groups.example.com"},
-					GroupsBackendSigningKey:  "a-string-secret-at-least-256-bits-long",
-					GroupsAllowedSchoolCodes: "*",
-
-					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
-					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
-					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
-					StudentsAllowedSchoolCodes:       "*",
-				},
-				wantRemotes: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"},{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				name:        "when every app allows every school",
+				mutate:      allowAll,
+				wantRemotes: "[" + postsRemote + "," + groupsRemote + "," + studentsRemote + "]",
 				wantApps:    `["posts","groups","students"]`,
 			},
 			{
-				name: "posts remote only",
-				remoteApps: config.RemoteAppsConfig{
-					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:     &url.URL{Scheme: "https", Host: "api.posts.example.com"},
-					PostsBackendSigningKey:  "a-string-secret-at-least-256-bits-long",
-					PostsAllowedSchoolCodes: "*",
-				},
-				wantRemotes: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}]`,
+				name:        "when only Posts allows the school",
+				mutate:      func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = "1234" },
+				wantRemotes: "[" + postsRemote + "]",
 				wantApps:    `["posts"]`,
 			},
 			{
-				name: "groups remote only",
-				remoteApps: config.RemoteAppsConfig{
-					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:     &url.URL{Scheme: "https", Host: "api.groups.example.com"},
-					GroupsBackendSigningKey:  "a-string-secret-at-least-256-bits-long",
-					GroupsAllowedSchoolCodes: "*",
-				},
-				wantRemotes: `[{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"}]`,
+				name:        "when only Groups allows the school",
+				mutate:      func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = "1234" },
+				wantRemotes: "[" + groupsRemote + "]",
 				wantApps:    `["groups"]`,
 			},
 			{
-				name: "student insights remote only",
-				remoteApps: config.RemoteAppsConfig{
-					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
-					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
-					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
-					StudentsAllowedSchoolCodes:       "*",
-				},
-				wantRemotes: `[{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				name:        "when only Student Insights allows the school",
+				mutate:      func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "1234" },
+				wantRemotes: "[" + studentsRemote + "]",
 				wantApps:    `["students"]`,
 			},
 			{
-				name:        "no remotes configured",
-				remoteApps:  config.RemoteAppsConfig{},
+				name: "when no list includes the school",
+				mutate: func(c *config.RemoteAppsConfig) {
+					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes, c.StudentsAllowedSchoolCodes = "0001", "0001", "0001"
+				},
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
+			},
+			{
+				name:        "when every list is unset",
+				mutate:      func(c *config.RemoteAppsConfig) {},
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
+			},
+			{
+				name: "when Student Insights excludes the school",
+				mutate: func(c *config.RemoteAppsConfig) {
+					allowAll(c)
+					c.StudentsAllowedSchoolCodes = "*,!1234"
+				},
+				wantRemotes: "[" + postsRemote + "," + groupsRemote + "]",
+				wantApps:    `["posts","groups"]`,
+			},
+			{
+				name:        "when only Meetings allows every school",
+				mutate:      func(c *config.RemoteAppsConfig) { c.MeetingsAllowedSchoolCodes = "*" },
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
+			},
+			{
+				name: "when no app is registered",
+				mutate: func(c *config.RemoteAppsConfig) {
+					*c = config.RemoteAppsConfig{}
+					allowAll(c)
+				},
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
+			},
+			{
+				name: "when Student Insights is only partly registered",
+				mutate: func(c *config.RemoteAppsConfig) {
+					c.StudentInsightsBackendBaseURL = nil
+					c.StudentsAllowedSchoolCodes = "*"
+				},
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
+			},
+			{
+				name:        "when the session has no user",
+				mutate:      allowAll,
+				noUser:      true,
 				wantRemotes: `[]`,
 				wantApps:    `[]`,
 			},
@@ -158,13 +185,17 @@ func TestHandler_index(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
+				remoteApps := registeredRemoteApps()
+				test.mutate(&remoteApps)
 				h := &Handler{
-					cfg:           &config.Config{Env: config.EnvProduction, RemoteApps: test.remoteApps},
+					cfg:           &config.Config{Env: config.EnvProduction, RemoteApps: remoteApps},
 					indexTemplate: newPreloadedStateTemplate(),
 				}
 
 				sess := session.New()
-				sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: "1234"})
+				if !test.noUser {
+					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: "1234"})
+				}
 				ctx := middleware.WithSession(t.Context(), sess)
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
@@ -449,4 +480,21 @@ func TestHandler_static(t *testing.T) {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
 	})
+}
+
+// registeredRemoteApps returns a remote apps config with Posts, Groups and Student Insights registered and no allowlist set.
+func registeredRemoteApps() config.RemoteAppsConfig {
+	return config.RemoteAppsConfig{
+		PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+		PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
+		PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+
+		GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+		GroupsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.groups.example.com"},
+		GroupsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+
+		StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
+		StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
+		StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+	}
 }
