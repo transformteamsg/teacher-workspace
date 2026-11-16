@@ -61,17 +61,20 @@ func TestHandler_proxy(t *testing.T) {
 					ProxyTimeout:       5 * time.Minute,
 					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    postsBackendURL,
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     postsBackendURL,
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 
-					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:    groupsBackendURL,
-					GroupsBackendSigningKey: "groups-string-secret-at-least-256-bits-long",
+					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:     groupsBackendURL,
+					GroupsBackendSigningKey:  "groups-string-secret-at-least-256-bits-long",
+					GroupsAllowedSchoolCodes: "*",
 
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    studentInsightsBackendURL,
 					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+					StudentsAllowedSchoolCodes:       "*",
 				},
 			},
 		}
@@ -155,9 +158,10 @@ func TestHandler_proxy(t *testing.T) {
 					ProxyTimeout:       5 * time.Minute,
 					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    postsBackendURL,
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     postsBackendURL,
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -237,7 +241,8 @@ func TestHandler_proxy(t *testing.T) {
 					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 						calls++
 					})),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -363,9 +368,10 @@ func TestHandler_proxy(t *testing.T) {
 					ProxyTimeout:       5 * time.Minute,
 					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    newRemoteBackend(t, http.NotFoundHandler()),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     newRemoteBackend(t, http.NotFoundHandler()),
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -501,17 +507,20 @@ func TestHandler_proxy(t *testing.T) {
 					ProxyTimeout:       5 * time.Minute,
 					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     newRemoteBackend(t, echoAuthorization),
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 
-					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
-					GroupsBackendSigningKey: "groups-string-secret-at-least-256-bits-long",
+					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:     newRemoteBackend(t, echoAuthorization),
+					GroupsBackendSigningKey:  "groups-string-secret-at-least-256-bits-long",
+					GroupsAllowedSchoolCodes: "*",
 
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
 					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+					StudentsAllowedSchoolCodes:       "*",
 				},
 			},
 		}
@@ -608,7 +617,8 @@ func TestHandler_proxy(t *testing.T) {
 					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						_, _ = io.WriteString(w, r.Header.Get("Authorization"))
 					})),
-					PostsBackendSigningKey: signingKey,
+					PostsBackendSigningKey:  signingKey,
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}

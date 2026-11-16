@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/transformteamsg/teacher-workspace/server/internal/config"
 	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
 )
@@ -21,6 +22,7 @@ type remoteBackend struct {
 	proxy      http.Handler
 	signingKey string
 	audience   string
+	allowlist  config.SchoolAllowlist
 }
 
 func (h *Handler) proxy() http.Handler {
@@ -35,6 +37,7 @@ func (h *Handler) proxy() http.Handler {
 			),
 			signingKey: h.cfg.RemoteApps.PostsBackendSigningKey,
 			audience:   "pg",
+			allowlist:  h.cfg.RemoteApps.PostsAllowedSchoolCodes,
 		}
 	}
 	if h.cfg.RemoteApps.IsGroupsRegistered() {
@@ -46,6 +49,7 @@ func (h *Handler) proxy() http.Handler {
 			),
 			signingKey: h.cfg.RemoteApps.GroupsBackendSigningKey,
 			audience:   "pg",
+			allowlist:  h.cfg.RemoteApps.GroupsAllowedSchoolCodes,
 		}
 	}
 	if h.cfg.RemoteApps.IsStudentInsightsRegistered() {
@@ -57,6 +61,7 @@ func (h *Handler) proxy() http.Handler {
 			),
 			signingKey: h.cfg.RemoteApps.StudentInsightsBackendSigningKey,
 			audience:   "si",
+			allowlist:  h.cfg.RemoteApps.StudentsAllowedSchoolCodes,
 		}
 	}
 
@@ -97,6 +102,12 @@ func (h *Handler) proxy() http.Handler {
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
 				Message: http.StatusText(http.StatusInternalServerError),
 			})
+			return
+		}
+
+		// A refused app answers like an unknown one, so its existence isn't revealed.
+		if !b.allowlist.Allows(u.SchoolCode) {
+			renderNotFound(w, r)
 			return
 		}
 
