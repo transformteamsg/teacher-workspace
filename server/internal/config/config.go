@@ -707,9 +707,14 @@ func (l SchoolAllowlist) Allows(schoolCode string) bool {
 	return slices.Contains(items, schoolCode)
 }
 
+// IsEmpty reports whether the list is blank, and so allows no school.
+func (l SchoolAllowlist) IsEmpty() bool {
+	return strings.TrimSpace(string(l)) == ""
+}
+
 // validate returns an error naming setting and the first invalid item, or nil if the list is a valid form of [SchoolAllowlist.Allows]. Repeated codes are accepted.
 func (l SchoolAllowlist) validate(setting string) error {
-	if strings.TrimSpace(string(l)) == "" {
+	if l.IsEmpty() {
 		return nil
 	}
 
