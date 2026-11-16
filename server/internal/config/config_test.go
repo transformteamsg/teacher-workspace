@@ -1825,3 +1825,34 @@ func TestRemoteAppsConfig_IsStudentInsightsRegistered(t *testing.T) {
 		})
 	}
 }
+
+func TestSchoolAllowlist_Allows(t *testing.T) {
+	t.Run("reports whether the list allows the school", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			allowlist  SchoolAllowlist
+			schoolCode string
+			want       bool
+		}{
+			{name: "when the school is listed", allowlist: "0001,0002", schoolCode: "0002", want: true},
+			{name: "when the school is not listed", allowlist: "0001,0002", schoolCode: "0003", want: false},
+			{name: "when spaces surround the listed codes", allowlist: " 0001 , 0002 ", schoolCode: "0002", want: true},
+			{name: "when the codes differ only by a leading zero", allowlist: "0718", schoolCode: "718", want: false},
+			{name: "under * alone", allowlist: "*", schoolCode: "0001", want: true},
+			{name: "under * when the school is excluded", allowlist: "*,!0001", schoolCode: "0001", want: false},
+			{name: "under * when the school is not excluded", allowlist: "*,!0001", schoolCode: "0002", want: true},
+			{name: "under * when spaces surround the exclusions", allowlist: " * , !0001 ", schoolCode: "0001", want: false},
+			{name: "when the list is unset", allowlist: "", schoolCode: "0001", want: false},
+			{name: "when the list is blank", allowlist: "   ", schoolCode: "0001", want: false},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				allowed := test.allowlist.Allows(test.schoolCode)
+
+				if test.want != allowed {
+					t.Errorf("want allowlist.Allows(%q): %t; got: %t", test.schoolCode, test.want, allowed)
+				}
+			})
+		}
+	})
+}
