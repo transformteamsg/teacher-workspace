@@ -16,6 +16,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -225,6 +226,113 @@ func TestHandler_proxy(t *testing.T) {
 
 		if want := 0; want != calls {
 			t.Errorf("want: %d; got: %d", want, calls)
+		}
+	})
+
+	t.Run("answers a refused school like an unknown app, without calling the remote backend", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			mutate func(*config.RemoteAppsConfig)
+			target string
+		}{
+			{
+				name:   "when Posts does not list the school",
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = "0001" },
+				target: "/api/posts/hello",
+			},
+			{
+				name:   "when Posts allows no school",
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = "" },
+				target: "/api/posts/hello",
+			},
+			{
+				name: "when Groups refuses the school and Posts allows it",
+				mutate: func(c *config.RemoteAppsConfig) {
+					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes = "*", "0001"
+				},
+				target: "/api/groups/hello",
+			},
+			{
+				name: "when Posts refuses the school and Groups allows it",
+				mutate: func(c *config.RemoteAppsConfig) {
+					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes = "0001", "*"
+				},
+				target: "/api/posts/hello",
+			},
+			{
+				name:   "when Student Insights excludes the school",
+				mutate: func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "*,!1234" },
+				target: "/api/student-insights/hello",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				var calls atomic.Int32
+				backendURL := newRemoteBackend(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+					calls.Add(1)
+				}))
+
+				remoteApps := config.RemoteAppsConfig{
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
+
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     backendURL,
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
+
+					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:     backendURL,
+					GroupsBackendSigningKey:  "groups-string-secret-at-least-256-bits-long",
+					GroupsAllowedSchoolCodes: "*",
+
+					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
+					StudentInsightsBackendBaseURL:    backendURL,
+					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+					StudentsAllowedSchoolCodes:       "*",
+				}
+				test.mutate(&remoteApps)
+				h := &Handler{cfg: &config.Config{RemoteApps: remoteApps}}
+
+				serve := func(target string) *httptest.ResponseRecorder {
+					sess := session.New()
+					sess.SetUser(session.User{
+						ID:         "staff-2",
+						Email:      "teacher@example.com",
+						Role:       "ROLE_TEACHER",
+						SchoolCode: "1234",
+						Attributes: []string{},
+					})
+					ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+					ctx = middleware.WithSession(ctx, sess)
+
+					req := httptest.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+					rec := httptest.NewRecorder()
+					h.proxy().ServeHTTP(rec, req)
+					return rec
+				}
+				unknown := serve("/api/does-not-exist/hello")
+				if want, got := http.StatusNotFound, unknown.Code; want != got {
+					t.Fatalf("serve unknown app: want rec.Code: %d; got: %d", want, got)
+				}
+
+				refused := serve(test.target)
+
+				if want, got := unknown.Code, refused.Code; want != got {
+					t.Errorf("want rec.Code: %d; got: %d", want, got)
+				}
+				if want, got := unknown.Body.String(), refused.Body.String(); want != got {
+					t.Errorf("want body: %q; got: %q", want, got)
+				}
+				if want, got := unknown.Header().Get("Content-Type"), refused.Header().Get("Content-Type"); want != got {
+					t.Errorf("want Content-Type: %q; got: %q", want, got)
+				}
+				if got := calls.Load(); got != 0 {
+					t.Errorf("want remote backend calls: 0; got: %d", got)
+				}
+			})
 		}
 	})
 
