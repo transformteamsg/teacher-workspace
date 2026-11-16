@@ -15,6 +15,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/transformteamsg/teacher-workspace/server/internal/edupass"
 )
 
 type Environment string
@@ -505,6 +507,15 @@ type RemoteAppsConfig struct {
 	StudentInsightsManifestURL       *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"`
 	StudentInsightsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL"`
 	StudentInsightsBackendSigningKey string   `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY"`
+
+	// PostsAllowedSchoolCodes is the schools allowed to use Posts.
+	PostsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES"`
+	// GroupsAllowedSchoolCodes is the schools allowed to use Groups.
+	GroupsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES"`
+	// MeetingsAllowedSchoolCodes is the schools allowed to use Meetings.
+	MeetingsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES"`
+	// StudentsAllowedSchoolCodes is the schools allowed to use Student Insights.
+	StudentsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES"`
 }
 
 func (cfg RemoteAppsConfig) validate() error {
@@ -631,7 +642,30 @@ func (cfg RemoteAppsConfig) validate() error {
 		}
 	}
 
+	for _, a := range cfg.Allowlists() {
+		errs = append(errs, a.Allowlist.validate(a.Setting))
+	}
+
 	return errors.Join(errs...)
+}
+
+// AppAllowlist is the school allowlist of one remote app.
+type AppAllowlist struct {
+	// App is the app's key, such as "posts".
+	App string
+	// Setting is the environment variable the allowlist is read from.
+	Setting   string
+	Allowlist SchoolAllowlist
+}
+
+// Allowlists returns the allowlist of every remote app, in the order the apps are shown.
+func (cfg RemoteAppsConfig) Allowlists() []AppAllowlist {
+	return []AppAllowlist{
+		{App: "posts", Setting: "TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.PostsAllowedSchoolCodes},
+		{App: "groups", Setting: "TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.GroupsAllowedSchoolCodes},
+		{App: "meetings", Setting: "TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.MeetingsAllowedSchoolCodes},
+		{App: "students", Setting: "TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.StudentsAllowedSchoolCodes},
+	}
 }
 
 // IsPostsRegistered reports whether the posts remote app has all of its values set.
@@ -671,6 +705,40 @@ func (l SchoolAllowlist) Allows(schoolCode string) bool {
 		return !slices.Contains(items[1:], "!"+schoolCode)
 	}
 	return slices.Contains(items, schoolCode)
+}
+
+// validate returns an error naming setting and the first invalid item, or nil if the list is a valid form of [SchoolAllowlist.Allows]. Repeated codes are accepted.
+func (l SchoolAllowlist) validate(setting string) error {
+	if strings.TrimSpace(string(l)) == "" {
+		return nil
+	}
+
+	items := strings.Split(string(l), ",")
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+
+	excluding := items[0] == "*"
+	if excluding {
+		items = items[1:]
+	}
+
+	for _, item := range items {
+		code, excluded := strings.CutPrefix(item, "!")
+		switch {
+		case item == "":
+			return fmt.Errorf("%s must not contain an empty item; got %q", setting, l)
+		case item == "*":
+			return fmt.Errorf("%s must have * only as its first item; got %q", setting, l)
+		case excluded && !excluding:
+			return fmt.Errorf("%s must start with * to exclude a code; got %q", setting, item)
+		case !excluded && excluding:
+			return fmt.Errorf("%s must list only excluded codes after *; got %q", setting, item)
+		case !edupass.IsLocationCode(code):
+			return fmt.Errorf("%s must contain only 4-digit school codes; got %q", setting, item)
+		}
+	}
+	return nil
 }
 
 // must is a helper function to panic if an error is not nil.
