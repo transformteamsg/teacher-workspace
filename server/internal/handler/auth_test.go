@@ -2944,28 +2944,28 @@ func TestResolveEdupassGroups(t *testing.T) {
 	t.Run("resolves a single base role to its code and location", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER"}, edupass.AppCodeTW)
 
-		if want, got := []edupassRole{{location: "1234", code: "ROLE_TEACHER"}}, resolved.roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		if want, got := []edupassRole{{Location: "1234", Code: "ROLE_TEACHER"}}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Roles: %+v; got: %+v", want, got)
 		}
-		if want, got := []string{}, resolved.attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		if want, got := []string{}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Attributes: %q; got: %q", want, got)
 		}
-		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
 	t.Run("splits roles and attributes and strips the app code", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_PG_ADMIN", "1234_TW_ATTR_CCE"}, edupass.AppCodeTW)
 
-		if want, got := []edupassRole{{location: "1234", code: "ROLE_TEACHER"}}, resolved.roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		if want, got := []edupassRole{{Location: "1234", Code: "ROLE_TEACHER"}}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Roles: %+v; got: %+v", want, got)
 		}
-		if want, got := []string{"ATTR_PG_ADMIN", "ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		if want, got := []string{"ATTR_PG_ADMIN", "ATTR_CCE"}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Attributes: %q; got: %q", want, got)
 		}
-		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
@@ -2981,8 +2981,8 @@ func TestResolveEdupassGroups(t *testing.T) {
 	t.Run("resolves no base role when none is recognized", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_ATTR_CCE"}, edupass.AppCodeTW)
 
-		if want, got := []edupassRole{}, resolved.roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		if want, got := []edupassRole{}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Roles: %+v; got: %+v", want, got)
 		}
 	})
 
@@ -2996,24 +2996,24 @@ func TestResolveEdupassGroups(t *testing.T) {
 				name: "when more than one shares a location",
 				raw:  []string{"1234_TW_ROLE_PRINCIPAL", "1234_TW_ROLE_TEACHER"},
 				want: []edupassRole{
-					{location: "1234", code: "ROLE_PRINCIPAL"},
-					{location: "1234", code: "ROLE_TEACHER"},
+					{Location: "1234", Code: "ROLE_PRINCIPAL"},
+					{Location: "1234", Code: "ROLE_TEACHER"},
 				},
 			},
 			{
 				name: "when they span more than one location",
 				raw:  []string{"1234_TW_ROLE_TEACHER", "5678_TW_ROLE_TEACHER"},
 				want: []edupassRole{
-					{location: "1234", code: "ROLE_TEACHER"},
-					{location: "5678", code: "ROLE_TEACHER"},
+					{Location: "1234", Code: "ROLE_TEACHER"},
+					{Location: "5678", Code: "ROLE_TEACHER"},
 				},
 			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
 				resolved := resolveEdupassGroups(test.raw, edupass.AppCodeTW)
 
-				if want, got := test.want, resolved.roles; !reflect.DeepEqual(want, got) {
-					t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+				if want, got := test.want, resolved.Roles; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.Roles: %+v; got: %+v", want, got)
 				}
 			})
 		}
@@ -3022,22 +3022,22 @@ func TestResolveEdupassGroups(t *testing.T) {
 	t.Run("drops and reports an unrecognized code without affecting the rest", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_SUPERINTENDENT"}, edupass.AppCodeTW)
 
-		if want, got := []edupassRole{{location: "1234", code: "ROLE_TEACHER"}}, resolved.roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		if want, got := []edupassRole{{Location: "1234", Code: "ROLE_TEACHER"}}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Roles: %+v; got: %+v", want, got)
 		}
-		if want, got := []string{"1234_TW_ROLE_SUPERINTENDENT"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{"1234_TW_ROLE_SUPERINTENDENT"}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
 	t.Run("treats a base role at an MK school as unrecognized", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"6101_TW_ROLE_HOD", "1234_TW_ROLE_TEACHER"}, edupass.AppCodeTW)
 
-		if want, got := []edupassRole{{location: "1234", code: "ROLE_TEACHER"}}, resolved.roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		if want, got := []edupassRole{{Location: "1234", Code: "ROLE_TEACHER"}}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Roles: %+v; got: %+v", want, got)
 		}
-		if want, got := []string{"6101_TW_ROLE_HOD"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{"6101_TW_ROLE_HOD"}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
@@ -3083,9 +3083,9 @@ func TestResolveEdupassGroups(t *testing.T) {
 				resolved := resolveEdupassGroups([]string{test.entry}, edupass.AppCodeTW)
 
 				want := edupassGroups{
-					roles:        []edupassRole{},
-					attributes:   []string{},
-					unrecognized: []string{test.entry},
+					Roles:        []edupassRole{},
+					Attributes:   []string{},
+					Unrecognized: []string{test.entry},
 				}
 				if !reflect.DeepEqual(want, resolved) {
 					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
@@ -3097,11 +3097,11 @@ func TestResolveEdupassGroups(t *testing.T) {
 	t.Run("reports a base role at a global location without affecting a valid one", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "X_TW_ROLE_PRINCIPAL"}, edupass.AppCodeTW)
 
-		if want, got := []edupassRole{{location: "1234", code: "ROLE_TEACHER"}}, resolved.roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		if want, got := []edupassRole{{Location: "1234", Code: "ROLE_TEACHER"}}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Roles: %+v; got: %+v", want, got)
 		}
-		if want, got := []string{"X_TW_ROLE_PRINCIPAL"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{"X_TW_ROLE_PRINCIPAL"}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
@@ -3122,7 +3122,7 @@ func TestResolveEdupassGroups(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				resolved := resolveEdupassGroups([]string{test.entry}, edupass.AppCodeTW)
 
-				want := edupassGroups{roles: []edupassRole{}, attributes: []string{}, unrecognized: []string{test.entry}}
+				want := edupassGroups{Roles: []edupassRole{}, Attributes: []string{}, Unrecognized: []string{test.entry}}
 				if !reflect.DeepEqual(want, resolved) {
 					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
 				}
@@ -3176,9 +3176,9 @@ func TestResolveEdupassGroups(t *testing.T) {
 				resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", test.entry}, edupass.AppCodeTW)
 
 				want := edupassGroups{
-					roles:        []edupassRole{{location: "1234", code: "ROLE_TEACHER"}},
-					attributes:   []string{},
-					unrecognized: []string{test.entry},
+					Roles:        []edupassRole{{Location: "1234", Code: "ROLE_TEACHER"}},
+					Attributes:   []string{},
+					Unrecognized: []string{test.entry},
 				}
 				if !reflect.DeepEqual(want, resolved) {
 					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
@@ -3190,33 +3190,33 @@ func TestResolveEdupassGroups(t *testing.T) {
 	t.Run("reports an attribute at another school's location as unrecognized without affecting one at the base role's location", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "5678_TW_ATTR_SDE"}, edupass.AppCodeTW)
 
-		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		if want, got := []string{"ATTR_CCE"}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Attributes: %q; got: %q", want, got)
 		}
-		if want, got := []string{"5678_TW_ATTR_SDE"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{"5678_TW_ATTR_SDE"}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
 	t.Run("reports an attribute with an unrecognized code as unrecognized without affecting a valid one", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_ROLE_TEACHER", "1234_TW_ATTR_CCE", "1234_TW_ATTR_NOPE"}, edupass.AppCodeTW)
 
-		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		if want, got := []string{"ATTR_CCE"}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Attributes: %q; got: %q", want, got)
 		}
-		if want, got := []string{"1234_TW_ATTR_NOPE"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{"1234_TW_ATTR_NOPE"}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
 	t.Run("matches an attribute against the base role's location even when the attribute arrives first", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_ATTR_CCE", "1234_TW_ROLE_TEACHER"}, edupass.AppCodeTW)
 
-		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		if want, got := []string{"ATTR_CCE"}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Attributes: %q; got: %q", want, got)
 		}
-		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
@@ -3228,11 +3228,11 @@ func TestResolveEdupassGroups(t *testing.T) {
 			"1234_TW_ATTR_CCE",
 		}, edupass.AppCodeTW)
 
-		if want, got := []string{"ATTR_CCE", "ATTR_SDE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		if want, got := []string{"ATTR_CCE", "ATTR_SDE"}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Attributes: %q; got: %q", want, got)
 		}
-		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
@@ -3243,14 +3243,14 @@ func TestResolveEdupassGroups(t *testing.T) {
 			"1234_TW_ROLE_TEACHER",
 		}, edupass.AppCodeTW)
 
-		if want, got := []edupassRole{{location: "1234", code: "ROLE_TEACHER"}}, resolved.roles; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.roles: %+v; got: %+v", want, got)
+		if want, got := []edupassRole{{Location: "1234", Code: "ROLE_TEACHER"}}, resolved.Roles; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Roles: %+v; got: %+v", want, got)
 		}
-		if want, got := []string{"ATTR_CCE"}, resolved.attributes; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+		if want, got := []string{"ATTR_CCE"}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Attributes: %q; got: %q", want, got)
 		}
-		if want, got := []string{}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
@@ -3279,11 +3279,11 @@ func TestResolveEdupassGroups(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				resolved := resolveEdupassGroups(test.raw, edupass.AppCodeTW)
 
-				if want, got := []string{}, resolved.attributes; !reflect.DeepEqual(want, got) {
-					t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+				if want, got := []string{}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.Attributes: %q; got: %q", want, got)
 				}
-				if want, got := test.wantUnrecognized, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-					t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+				if want, got := test.wantUnrecognized, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 				}
 			})
 		}
@@ -3292,8 +3292,8 @@ func TestResolveEdupassGroups(t *testing.T) {
 	t.Run("reports an MK removal when a recognized base role is at an MK school", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"6101_TW_ROLE_TEACHER"}, edupass.AppCodeTW)
 
-		if !resolved.removedMKRole {
-			t.Error("want resolved.removedMKRole: true; got: false")
+		if !resolved.RemovedMKRole {
+			t.Error("want resolved.RemovedMKRole: true; got: false")
 		}
 	})
 
@@ -3322,8 +3322,8 @@ func TestResolveEdupassGroups(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				resolved := resolveEdupassGroups(test.groups, edupass.AppCodeTW)
 
-				if resolved.removedMKRole {
-					t.Error("want resolved.removedMKRole: false; got: true")
+				if resolved.RemovedMKRole {
+					t.Error("want resolved.RemovedMKRole: false; got: true")
 				}
 			})
 		}
@@ -3332,8 +3332,8 @@ func TestResolveEdupassGroups(t *testing.T) {
 	t.Run("reports an entry matching neither infix as unrecognized", func(t *testing.T) {
 		resolved := resolveEdupassGroups([]string{"1234_TW_SOMETHING_ELSE"}, edupass.AppCodeTW)
 
-		if want, got := []string{"1234_TW_SOMETHING_ELSE"}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-			t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+		if want, got := []string{"1234_TW_SOMETHING_ELSE"}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+			t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 		}
 	})
 
@@ -3355,9 +3355,9 @@ func TestResolveEdupassGroups(t *testing.T) {
 				resolved := resolveEdupassGroups(test.raw, edupass.AppCodeTW)
 
 				want := edupassGroups{
-					roles:        []edupassRole{},
-					attributes:   []string{},
-					unrecognized: []string{},
+					Roles:        []edupassRole{},
+					Attributes:   []string{},
+					Unrecognized: []string{},
 				}
 				if !reflect.DeepEqual(want, resolved) {
 					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
@@ -3388,9 +3388,9 @@ func TestResolveEdupassGroups(t *testing.T) {
 				resolved := resolveEdupassGroups([]string{test.entry}, edupass.AppCodeTW)
 
 				want := edupassGroups{
-					roles:        []edupassRole{},
-					attributes:   []string{},
-					unrecognized: []string{test.entry},
+					Roles:        []edupassRole{},
+					Attributes:   []string{},
+					Unrecognized: []string{test.entry},
 				}
 				if !reflect.DeepEqual(want, resolved) {
 					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
@@ -3420,9 +3420,9 @@ func TestResolveEdupassGroups(t *testing.T) {
 				resolved := resolveEdupassGroups([]string{test.entry}, test.appCode)
 
 				want := edupassGroups{
-					roles:        []edupassRole{},
-					attributes:   []string{},
-					unrecognized: []string{test.entry},
+					Roles:        []edupassRole{},
+					Attributes:   []string{},
+					Unrecognized: []string{test.entry},
 				}
 				if !reflect.DeepEqual(want, resolved) {
 					t.Errorf("want resolved: %+v; got: %+v", want, resolved)
@@ -3454,11 +3454,11 @@ func TestResolveEdupassGroups(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				resolved := resolveEdupassGroups([]string{test.baseRole, test.attribute}, test.appCode)
 
-				if want, got := []string{}, resolved.attributes; !reflect.DeepEqual(want, got) {
-					t.Errorf("want resolved.attributes: %q; got: %q", want, got)
+				if want, got := []string{}, resolved.Attributes; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.Attributes: %q; got: %q", want, got)
 				}
-				if want, got := []string{test.attribute}, resolved.unrecognized; !reflect.DeepEqual(want, got) {
-					t.Errorf("want resolved.unrecognized: %q; got: %q", want, got)
+				if want, got := []string{test.attribute}, resolved.Unrecognized; !reflect.DeepEqual(want, got) {
+					t.Errorf("want resolved.Unrecognized: %q; got: %q", want, got)
 				}
 			})
 		}

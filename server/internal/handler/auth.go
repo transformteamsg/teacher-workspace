@@ -356,28 +356,28 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 	logger = logger.With("edupass_id", claims.ID, "email", claims.CESEmail)
 
 	resolved := resolveEdupassGroups(claims.Groups, h.cfg.Edupass.AppCode)
-	if len(resolved.unrecognized) > 0 {
+	if len(resolved.Unrecognized) > 0 {
 		logger.Warn(
 			"discarded unrecognized Edupass role/attribute codes",
-			"codes", resolved.unrecognized,
+			"codes", resolved.Unrecognized,
 		)
 	}
-	if len(resolved.roles) != 1 {
+	if len(resolved.Roles) != 1 {
 		errCode := loginErrNoRole
 		switch {
-		case len(resolved.roles) > 1:
+		case len(resolved.Roles) > 1:
 			errCode = loginErrMultipleRoles
-		case resolved.removedMKRole:
+		case resolved.RemovedMKRole:
 			errCode = loginErrUnsupportedSchoolMK
 		}
 
 		reason := errCode
-		roleCodes := make([]string, 0, len(resolved.roles))
-		locations := make([]string, 0, len(resolved.roles))
-		for _, role := range resolved.roles {
-			roleCodes = append(roleCodes, role.code)
-			locations = append(locations, role.location)
-			if role.location != resolved.roles[0].location {
+		roleCodes := make([]string, 0, len(resolved.Roles))
+		locations := make([]string, 0, len(resolved.Roles))
+		for _, role := range resolved.Roles {
+			roleCodes = append(roleCodes, role.Code)
+			locations = append(locations, role.Location)
+			if role.Location != resolved.Roles[0].Location {
 				reason = logReasonMultipleLocations
 			}
 		}
@@ -397,9 +397,9 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		ID:         claims.ID,
 		Name:       claims.Name,
 		Email:      claims.CESEmail,
-		Role:       resolved.roles[0].code,
-		SchoolCode: resolved.roles[0].location,
-		Attributes: resolved.attributes,
+		Role:       resolved.Roles[0].Code,
+		SchoolCode: resolved.Roles[0].Location,
+		Attributes: resolved.Attributes,
 	})
 
 	logger.Info("user logged in")
@@ -556,11 +556,11 @@ func isMKSchoolCode(code string) bool {
 
 // edupassRole is a base role resolved from one Edupass `groups` entry.
 type edupassRole struct {
-	// location is the location code the role was granted at.
-	location string
-	// code is the base role code with the location and app code stripped, such
+	// Location is the location code the role was granted at.
+	Location string
+	// Code is the base role code with the location and app code stripped, such
 	// as "ROLE_TEACHER".
-	code string
+	Code string
 }
 
 // edupassAttribute is an attribute resolved from one Edupass `groups` entry,
@@ -578,24 +578,24 @@ type edupassAttribute struct {
 // edupassGroups is the outcome of resolving one staff member's Edupass
 // `groups` claim.
 type edupassGroups struct {
-	// roles contains every recognized base role, each once, in arrival order.
+	// Roles contains every recognized base role, each once, in arrival order.
 	// More than one entry means Edupass returned conflicting base roles, whether
 	// for one location or spread across several.
-	roles []edupassRole
-	// attributes contains every recognized attribute granted at the location of
+	Roles []edupassRole
+	// Attributes contains every recognized attribute granted at the location of
 	// the single base role, stripped of its location code and app code, each
 	// once, unranked and in arrival order.
-	attributes []string
-	// unrecognized contains, verbatim and for logging, every raw entry that
+	Attributes []string
+	// Unrecognized contains, verbatim and for logging, every raw entry that
 	// didn't resolve into a recognized base role or attribute. That includes
 	// entries whose code is recognized:
 	//   - a base role at a MOE Kindergarten (MK) school
 	//   - a base role or attribute at a location that is not four digits
 	//   - an attribute at a location other than the single base role's
 	//   - every attribute when there is not exactly one base role
-	unrecognized []string
-	// removedMKRole reports whether a base role at an MK school was dropped.
-	removedMKRole bool
+	Unrecognized []string
+	// RemovedMKRole reports whether a base role at an MK school was dropped.
+	RemovedMKRole bool
 }
 
 // resolveEdupassGroups splits raw (an Edupass `groups` claim) into recognized
@@ -609,18 +609,18 @@ type edupassGroups struct {
 // repeats it. An attribute is kept only when granted at the single base role's
 // location, also once however often Edupass repeats it.
 //
-// These entries are reported in unrecognized rather than blocking resolution,
+// These entries are reported in Unrecognized rather than blocking resolution,
 // since Edupass can add codes between Teacher Workspace releases:
 //   - a code absent from the reference lists
 //   - an app_code other than appCode, or extra segments ahead of it, such as
 //     1234_5_TW_ROLE_TEACHER
 //   - a location that is not four digits, such as the global X
-//   - a base role at a MOE Kindergarten (MK) school, which also sets removedMKRole
+//   - a base role at a MOE Kindergarten (MK) school, which also sets RemovedMKRole
 //   - an attribute at a location other than the single base role's
 //   - every attribute when there is not exactly one base role
 //
 // resolveEdupassGroups doesn't decide whether sign-in proceeds: the caller
-// refuses unless roles holds exactly one entry.
+// refuses unless Roles holds exactly one entry.
 func resolveEdupassGroups(raw []string, appCode edupass.AppCode) edupassGroups {
 	roles := []edupassRole{}
 	attributeCandidates := []edupassAttribute{}
@@ -642,7 +642,7 @@ func resolveEdupassGroups(raw []string, appCode edupass.AppCode) edupassGroups {
 				removedMKRole = true
 			default:
 				// A repeat of a role already kept is dropped without being reported.
-				role := edupassRole{location: location, code: code}
+				role := edupassRole{Location: location, Code: code}
 				if !slices.Contains(roles, role) {
 					roles = append(roles, role)
 				}
@@ -665,7 +665,7 @@ func resolveEdupassGroups(raw []string, appCode edupass.AppCode) edupassGroups {
 	// only known once every entry has been seen.
 	attributes := []string{}
 	for _, candidate := range attributeCandidates {
-		if len(roles) != 1 || candidate.location != roles[0].location {
+		if len(roles) != 1 || candidate.location != roles[0].Location {
 			unrecognized = append(unrecognized, candidate.entry)
 			continue
 		}
@@ -676,10 +676,10 @@ func resolveEdupassGroups(raw []string, appCode edupass.AppCode) edupassGroups {
 	}
 
 	return edupassGroups{
-		roles:         roles,
-		attributes:    attributes,
-		unrecognized:  unrecognized,
-		removedMKRole: removedMKRole,
+		Roles:         roles,
+		Attributes:    attributes,
+		Unrecognized:  unrecognized,
+		RemovedMKRole: removedMKRole,
 	}
 }
 
