@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -647,6 +648,29 @@ func (cfg RemoteAppsConfig) IsGroupsRegistered() bool {
 // has all of its values set.
 func (cfg RemoteAppsConfig) IsStudentInsightsRegistered() bool {
 	return cfg.StudentInsightsManifestURL != nil && cfg.StudentInsightsBackendBaseURL != nil && cfg.StudentInsightsBackendSigningKey != ""
+}
+
+// SchoolAllowlist is the schools allowed to use a remote app.
+type SchoolAllowlist string
+
+// Allows reports whether the school with schoolCode may use the app.
+//
+// The list takes one of two forms, with spaces around each item ignored:
+//   - "0001,0002" allows only the listed schools.
+//   - "*" allows every school, and "*,!0001,!0002" every school except those excluded.
+//
+// Unset, empty or blank allows no school, and schoolCode must be non-empty.
+// Codes are compared as strings, so "0718" and "718" are different schools.
+func (l SchoolAllowlist) Allows(schoolCode string) bool {
+	items := strings.Split(string(l), ",")
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+
+	if items[0] == "*" {
+		return !slices.Contains(items[1:], "!"+schoolCode)
+	}
+	return slices.Contains(items, schoolCode)
 }
 
 // must is a helper function to panic if an error is not nil.
