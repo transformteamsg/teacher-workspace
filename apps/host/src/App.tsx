@@ -39,6 +39,24 @@ const RemoteGroupsView = React.lazy(async () => {
   return module;
 });
 
+function remoteRoute(key: string, path: string, View: React.ComponentType) {
+  return (
+    <Route
+      path={path}
+      element={
+        <ErrorBoundary
+          key={key}
+          fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
+        >
+          <React.Suspense fallback={null}>
+            <View />
+          </React.Suspense>
+        </ErrorBoundary>
+      }
+    />
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -49,48 +67,12 @@ export default function App() {
           <Route path="/login" element={<LoginView />} />
           <Route element={<RootLayout />}>
             <Route path="/" element={<HomeView />} />
-            <Route
-              path="/students/*"
-              element={
-                <ErrorBoundary
-                  key="students"
-                  fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
-                >
-                  <React.Suspense fallback={null}>
-                    <RemoteStudentInsightsView />
-                  </React.Suspense>
-                </ErrorBoundary>
-              }
-            />
+            {remoteRoute('students', '/students/*', RemoteStudentInsightsView)}
             {/* TODO(#306): remove the condition. */}
             {import.meta.env.PUBLIC_HIDE_PG_FEATURES !== 'true' && (
               <>
-                <Route
-                  path="/posts/*"
-                  element={
-                    <ErrorBoundary
-                      key="posts"
-                      fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
-                    >
-                      <React.Suspense fallback={null}>
-                        <RemotePostsView />
-                      </React.Suspense>
-                    </ErrorBoundary>
-                  }
-                />
-                <Route
-                  path="/groups/*"
-                  element={
-                    <ErrorBoundary
-                      key="groups"
-                      fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
-                    >
-                      <React.Suspense fallback={null}>
-                        <RemoteGroupsView />
-                      </React.Suspense>
-                    </ErrorBoundary>
-                  }
-                />
+                {remoteRoute('posts', '/posts/*', RemotePostsView)}
+                {remoteRoute('groups', '/groups/*', RemoteGroupsView)}
               </>
             )}
           </Route>
