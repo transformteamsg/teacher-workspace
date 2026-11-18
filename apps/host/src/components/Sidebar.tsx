@@ -74,6 +74,17 @@ function NavMenuItems({ items }: { items: NavItem[] }) {
   );
 }
 
+function NavGroup({ label, items }: { label: string; items: NavItem[] }) {
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <NavMenuItems items={items} />
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 export function AppSidebar() {
   return (
     <SidebarRoot collapsible="icon">
@@ -113,27 +124,12 @@ export function AppSidebar() {
             <NavMenuItems items={mainNavItems} />
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Student Insights</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <NavMenuItems items={studentInsightsItems} />
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavGroup label="Student Insights" items={studentInsightsItems} />
         {/* TODO(#306): remove the condition. */}
         {import.meta.env.PUBLIC_HIDE_PG_FEATURES !== 'true' && (
           <>
-            <SidebarGroup>
-              <SidebarGroupLabel>Communications</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <NavMenuItems items={communicationsItems} />
-              </SidebarGroupContent>
-            </SidebarGroup>
-            <SidebarGroup>
-              <SidebarGroupLabel>Manage</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <NavMenuItems items={manageItems} />
-              </SidebarGroupContent>
-            </SidebarGroup>
+            <NavGroup label="Communications" items={communicationsItems} />
+            <NavGroup label="Manage" items={manageItems} />
           </>
         )}
       </SidebarContent>
