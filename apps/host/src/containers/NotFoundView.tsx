@@ -13,6 +13,8 @@ const suggestedLinks: { label: string; to: string; app: AppKey }[] = [
 ];
 
 export function NotFoundView() {
+  const allowedLinks = suggestedLinks.filter((link) => isAppAllowed(link.app));
+
   return (
     <main className="tw:flex tw:min-h-svh tw:flex-col-reverse tw:items-center tw:justify-center tw:gap-8 tw:bg-background tw:px-6 tw:py-10 tw:lg:flex-row tw:lg:gap-16 tw:lg:px-8">
       <div className="tw:w-full tw:max-w-sm">
@@ -26,12 +28,11 @@ export function NotFoundView() {
         <Button className="tw:mt-8" render={<Link to="/" />}>
           Back to home
         </Button>
-        <div className="tw:mt-10">
-          <p className="tw:text-sm tw:text-muted-foreground">Or try:</p>
-          <ul className="tw:mt-3 tw:flex tw:flex-col tw:gap-1.5">
-            {suggestedLinks
-              .filter((link) => isAppAllowed(link.app))
-              .map((link) => (
+        {allowedLinks.length > 0 && (
+          <div className="tw:mt-10">
+            <p className="tw:text-sm tw:text-muted-foreground">Or try:</p>
+            <ul className="tw:mt-3 tw:flex tw:flex-col tw:gap-1.5">
+              {allowedLinks.map((link) => (
                 <li key={link.to}>
                   <Link
                     to={link.to}
@@ -41,8 +42,9 @@ export function NotFoundView() {
                   </Link>
                 </li>
               ))}
-          </ul>
-        </div>
+            </ul>
+          </div>
+        )}
       </div>
       <img
         src={illustration}
