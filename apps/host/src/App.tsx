@@ -6,6 +6,7 @@ import { ErrorBoundary } from '~/components/ErrorBoundary';
 import { Toaster } from '~/components/ui/toast';
 import { TooltipProvider } from '~/components/ui/tooltip';
 import { NotFoundView } from '~/containers/NotFoundView';
+import { type AppKey, isAppAllowed } from '~/stores/preloaded-state';
 
 const LoginView = React.lazy(() => import('~/containers/LoginView'));
 const RootLayout = React.lazy(() => import('~/containers/RootLayout'));
@@ -39,13 +40,18 @@ const RemoteGroupsView = React.lazy(async () => {
   return module;
 });
 
-function remoteRoute(key: string, path: string, View: React.ComponentType) {
+// A refused app's route falls through to the 404 page, so its remote never loads.
+function remoteRoute(app: AppKey, path: string, View: React.ComponentType) {
+  if (!isAppAllowed(app)) {
+    return null;
+  }
+
   return (
     <Route
       path={path}
       element={
         <ErrorBoundary
-          key={key}
+          key={app}
           fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
         >
           <React.Suspense fallback={null}>
