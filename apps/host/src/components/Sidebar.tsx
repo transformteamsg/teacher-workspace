@@ -18,23 +18,30 @@ import {
   useSidebar,
 } from '~/components/ui/sidebar';
 import { cn } from '~/helpers/cn';
+import { type AppKey, isAppAllowed } from '~/stores/preloaded-state';
 
 interface NavItem {
   title: string;
   icon: LucideIcon;
   to: string;
+  /** Shown only when the server allows this app. */
+  app?: AppKey;
 }
 
 const mainNavItems: NavItem[] = [{ title: 'Home', icon: Home, to: '/' }];
 
-const studentInsightsItems: NavItem[] = [{ title: 'Profiles', icon: Users, to: '/students' }];
-
-const communicationsItems: NavItem[] = [
-  { title: 'Posts', icon: Mail, to: '/posts' },
-  { title: 'Meetings', icon: CalendarClock, to: '/meetings' },
+const studentInsightsItems: NavItem[] = [
+  { title: 'Profiles', icon: Users, to: '/students', app: 'students' },
 ];
 
-const manageItems: NavItem[] = [{ title: 'Student groups', icon: Layers, to: '/groups' }];
+const communicationsItems: NavItem[] = [
+  { title: 'Posts', icon: Mail, to: '/posts', app: 'posts' },
+  { title: 'Meetings', icon: CalendarClock, to: '/meetings', app: 'meetings' },
+];
+
+const manageItems: NavItem[] = [
+  { title: 'Student groups', icon: Layers, to: '/groups', app: 'groups' },
+];
 
 // Text that exists only in the expanded rail. Collapsing: fade and blur out in
 // 100ms so nothing is caught mid-truncate while the width moves. Expanding:
@@ -75,11 +82,16 @@ function NavMenuItems({ items }: { items: NavItem[] }) {
 }
 
 function NavGroup({ label, items }: { label: string; items: NavItem[] }) {
+  const allowedItems = items.filter((item) => item.app === undefined || isAppAllowed(item.app));
+  if (allowedItems.length === 0) {
+    return null;
+  }
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{label}</SidebarGroupLabel>
       <SidebarGroupContent>
-        <NavMenuItems items={items} />
+        <NavMenuItems items={allowedItems} />
       </SidebarGroupContent>
     </SidebarGroup>
   );
