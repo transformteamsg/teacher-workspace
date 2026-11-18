@@ -6,10 +6,7 @@ import { type AppKey, isAppAllowed } from '~/stores/preloaded-state';
 
 const suggestedLinks: { label: string; to: string; app: AppKey }[] = [
   { label: 'Student Insights', to: '/students', app: 'students' },
-  // TODO(#306): remove the condition.
-  ...(import.meta.env.PUBLIC_HIDE_PG_FEATURES === 'true'
-    ? []
-    : [{ label: 'Posts', to: '/posts', app: 'posts' } as const]),
+  { label: 'Posts', to: '/posts', app: 'posts' },
 ];
 
 export function NotFoundView() {

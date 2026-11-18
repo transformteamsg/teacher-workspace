@@ -137,13 +137,8 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <NavGroup label="Student Insights" items={studentInsightsItems} />
-        {/* TODO(#306): remove the condition. */}
-        {import.meta.env.PUBLIC_HIDE_PG_FEATURES !== 'true' && (
-          <>
-            <NavGroup label="Communications" items={communicationsItems} />
-            <NavGroup label="Manage" items={manageItems} />
-          </>
-        )}
+        <NavGroup label="Communications" items={communicationsItems} />
+        <NavGroup label="Manage" items={manageItems} />
       </SidebarContent>
 
       <SidebarFooter>

@@ -74,13 +74,8 @@ export default function App() {
           <Route element={<RootLayout />}>
             <Route path="/" element={<HomeView />} />
             {remoteRoute('students', '/students/*', RemoteStudentInsightsView)}
-            {/* TODO(#306): remove the condition. */}
-            {import.meta.env.PUBLIC_HIDE_PG_FEATURES !== 'true' && (
-              <>
-                {remoteRoute('posts', '/posts/*', RemotePostsView)}
-                {remoteRoute('groups', '/groups/*', RemoteGroupsView)}
-              </>
-            )}
+            {remoteRoute('posts', '/posts/*', RemotePostsView)}
+            {remoteRoute('groups', '/groups/*', RemoteGroupsView)}
           </Route>
           <Route path="*" element={<NotFoundView />} />
         </Routes>
