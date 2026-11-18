@@ -33,6 +33,10 @@ type Handler struct {
 	edupassOAuth2Config    *oauth2.Config
 	edupassIDTokenVerifier *oidc.IDTokenVerifier
 
+	// schoolNames contains the name of each school the configured Edupass
+	// grants roles at, by location code.
+	schoolNames map[string]string
+
 	// now is the time source for signed tokens. Nil means [time.Now].
 	now func() time.Time
 }
@@ -61,6 +65,7 @@ func New(cfg *config.Config) (*Handler, error) {
 			),
 			&oidc.Config{ClientID: cfg.Edupass.ClientID},
 		),
+		schoolNames: schoolNamesFor(cfg.Edupass.AppCode),
 	}
 
 	switch cfg.Env {
@@ -161,6 +166,10 @@ type User struct {
 
 	// Role is the resolved role's display label, such as "Teacher".
 	Role string `json:"role"`
+
+	// School is the name of the school the role was granted at, or empty when
+	// the school's code has no known name.
+	School string `json:"school,omitempty"`
 }
 
 // renderIndexTemplate writes a 200 HTML response whose body is the index

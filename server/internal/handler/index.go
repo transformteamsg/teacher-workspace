@@ -45,6 +45,9 @@ func (h *Handler) index() http.Handler {
 				Email: user.Email,
 				Role:  edupassRoleLabel(user.Role),
 			}
+			if name, ok := h.schoolNames[user.SchoolCode]; ok {
+				state.User.School = name
+			}
 		}
 
 		h.renderIndexTemplate(w, r, state)

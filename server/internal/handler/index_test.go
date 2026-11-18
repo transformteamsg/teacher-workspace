@@ -205,6 +205,86 @@ func TestHandler_index(t *testing.T) {
 		}
 	})
 
+	t.Run("embeds the name of the user's school in preloaded state", func(t *testing.T) {
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction},
+			indexTemplate: newPreloadedStateTemplate(),
+			schoolNames:   map[string]string{"3015": "Whitley Secondary School"},
+		}
+
+		sess := session.New()
+		sess.SetUser(session.User{
+			ID:         "a1b2c3",
+			Name:       "Tan Mei Ling",
+			Email:      "tan_mei_ling@schools.gov.sg",
+			Role:       "ROLE_TEACHER",
+			SchoolCode: "3015",
+			Attributes: []string{"ATTR_PG_USER"},
+		})
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		h.index().ServeHTTP(rec, req)
+
+		payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
+		var state struct {
+			User *struct {
+				School string `json:"school"`
+			} `json:"user"`
+		}
+		if err := json.Unmarshal([]byte(payload), &state); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if state.User == nil {
+			t.Fatal("want state.User: non-nil; got: nil")
+		}
+		if want, got := "Whitley Secondary School", state.User.School; want != got {
+			t.Errorf("want state.User.School: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("omits the school name from preloaded state when the user's school has no known name", func(t *testing.T) {
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction},
+			indexTemplate: newPreloadedStateTemplate(),
+			schoolNames:   map[string]string{"3015": "Whitley Secondary School"},
+		}
+
+		sess := session.New()
+		sess.SetUser(session.User{
+			ID:         "a1b2c3",
+			Name:       "Tan Mei Ling",
+			Email:      "tan_mei_ling@schools.gov.sg",
+			Role:       "ROLE_TEACHER",
+			SchoolCode: "1001",
+			Attributes: []string{"ATTR_PG_USER"},
+		})
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, sess)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		h.index().ServeHTTP(rec, req)
+
+		payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
+		var state struct {
+			User map[string]json.RawMessage `json:"user"`
+		}
+		if err := json.Unmarshal([]byte(payload), &state); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if state.User == nil {
+			t.Fatal("want state.User: non-nil; got: nil")
+		}
+		if got, ok := state.User["school"]; ok {
+			t.Errorf("want state.User[\"school\"] ok: false; got: %s", got)
+		}
+	})
+
 	t.Run("omits the user from preloaded state when the session is unauthenticated", func(t *testing.T) {
 		h := &Handler{
 			cfg:           &config.Config{Env: config.EnvProduction},
