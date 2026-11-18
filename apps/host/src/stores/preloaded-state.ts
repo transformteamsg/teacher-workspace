@@ -18,12 +18,14 @@ export interface Remote {
 /**
  * The signed-in teacher, absent when the session is unauthenticated. `role`
  * is their resolved role's display label, such as "Teacher", not its Edupass
- * code.
+ * code. `school` is the name of the school the role was granted at, absent
+ * when the school's code has no known name.
  */
 export interface User {
   name: string;
   email: string;
   role: string;
+  school?: string;
 }
 
 const INVALID_PRELOADED_STATE = 'Page has no valid preloaded state';
@@ -67,7 +69,9 @@ function isUser(value: unknown): value is User {
     value !== null &&
     typeof (value as Partial<User>).name === 'string' &&
     typeof (value as Partial<User>).email === 'string' &&
-    typeof (value as Partial<User>).role === 'string'
+    typeof (value as Partial<User>).role === 'string' &&
+    ((value as Partial<User>).school === undefined ||
+      typeof (value as Partial<User>).school === 'string')
   );
 }
 
