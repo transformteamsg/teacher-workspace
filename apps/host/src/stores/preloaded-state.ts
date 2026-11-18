@@ -89,3 +89,13 @@ function isRemote(value: unknown): value is Remote {
 }
 
 export const preloadedState: Readonly<PreloadedState> = readPreloadedState();
+
+/** An app the server may allow. */
+export type AppKey = 'posts' | 'groups' | 'meetings' | 'students';
+
+/**
+ * Reports whether the server allows this session to use app.
+ */
+export function isAppAllowed(app: AppKey): boolean {
+  return preloadedState.apps.includes(app);
+}
