@@ -29,7 +29,7 @@ var stagingSchoolNames = map[string]string{
 }
 
 // productionSchoolNames contains the name of each school production Edupass
-// grants roles at, by location code, from Honeyjar's School cockpit.
+// grants roles at, by location code. Add new codes here as they're assigned.
 var productionSchoolNames = map[string]string{
 	"0701": "National Junior College",
 	"0702": "Temasek Junior College",
