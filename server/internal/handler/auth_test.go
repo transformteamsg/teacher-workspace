@@ -1502,6 +1502,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			"groups":   []string{"1234_TW_ROLE_TEACHER"},
 		})
 
+		h.schoolNames = map[string]string{"1234": "Whitley Secondary School"}
+
 		var logs bytes.Buffer
 		sess := session.New()
 		sess.Set(sessionKeyEdupassState, "test-state")
@@ -1528,6 +1530,48 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 		}
 		if want, got := "john.smith@example.com", records[0].Email; want != got {
 			t.Errorf("want records[0].Email: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("logs a warning when the user's school has no known name", func(t *testing.T) {
+		h := newHandlerIssuingIDToken(t, newEdupassConfig(), jwt.MapClaims{
+			"cesEmail": "john.smith@example.com",
+			"groups":   []string{"1234_TW_ROLE_TEACHER"},
+		})
+		h.schoolNames = map[string]string{"3015": "Whitley Secondary School"}
+
+		var logs bytes.Buffer
+		sess := session.New()
+		sess.Set(sessionKeyEdupassState, "test-state")
+		sess.Set(sessionKeyEdupassNonce, "test-nonce")
+		sess.Set(sessionKeyEdupassCodeVerifier, "test-verifier")
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+		ctx = middleware.WithSession(ctx, sess)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass/callback?code=test-code&state=test-state", nil)
+
+		h.authEdupassCallback(httptest.NewRecorder(), req)
+
+		records := decodeLogRecords(t, &logs)
+		if want, got := 2, len(records); want != got {
+			t.Fatalf("want len(records): %d; got: %d", want, got)
+		}
+		if want, got := slog.LevelWarn.String(), records[0].Level; want != got {
+			t.Errorf("want records[0].Level: %q; got: %q", want, got)
+		}
+		if want, got := "no school name for location code", records[0].Msg; want != got {
+			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
+		}
+		if want, got := "1234", records[0].Location; want != got {
+			t.Errorf("want records[0].Location: %q; got: %q", want, got)
+		}
+		if want, got := "test-id", records[0].EdupassID; want != got {
+			t.Errorf("want records[0].EdupassID: %q; got: %q", want, got)
+		}
+		if want, got := "john.smith@example.com", records[0].Email; want != got {
+			t.Errorf("want records[0].Email: %q; got: %q", want, got)
+		}
+		if want, got := "user logged in", records[1].Msg; want != got {
+			t.Errorf("want records[1].Msg: %q; got: %q", want, got)
 		}
 	})
 
@@ -2399,6 +2443,8 @@ func TestHandler_authEdupassCallback(t *testing.T) {
 			"cesEmail": "john.smith@example.com",
 			"groups":   []string{"1234_TW_ROLE_TEACHER", "1234_TW_ROLE_SUPERINTENDENT"},
 		})
+
+		h.schoolNames = map[string]string{"1234": "Whitley Secondary School"}
 
 		var logs bytes.Buffer
 		sess := session.New()
@@ -3569,6 +3615,7 @@ type logRecord struct {
 	Codes     []string `json:"codes"`
 	Roles     []string `json:"roles"`
 	Reason    string   `json:"reason"`
+	Location  string   `json:"location"`
 	Locations []string `json:"locations"`
 	Groups    []string `json:"groups"`
 }
