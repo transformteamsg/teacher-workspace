@@ -496,26 +496,22 @@ type RemoteAppsConfig struct {
 	ProxyTimeout       time.Duration `dotenv:"TW_REMOTE_PROXY_TIMEOUT"`
 	ProxyStreamTimeout time.Duration `dotenv:"TW_REMOTE_PROXY_STREAM_TIMEOUT"`
 
-	PostsManifestURL       *url.URL `dotenv:"TW_REMOTE_POSTS_MANIFEST_URL"`
-	PostsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_POSTS_BACKEND_BASE_URL"`
-	PostsBackendSigningKey string   `dotenv:"TW_REMOTE_POSTS_BACKEND_SIGNING_KEY"`
-
-	GroupsManifestURL       *url.URL `dotenv:"TW_REMOTE_GROUPS_MANIFEST_URL"`
-	GroupsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_GROUPS_BACKEND_BASE_URL"`
-	GroupsBackendSigningKey string   `dotenv:"TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY"`
-
-	StudentInsightsManifestURL       *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"`
-	StudentInsightsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL"`
-	StudentInsightsBackendSigningKey string   `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY"`
-
-	// PostsAllowedSchoolCodes is the schools allowed to use Posts.
+	PostsManifestURL        *url.URL        `dotenv:"TW_REMOTE_POSTS_MANIFEST_URL"`
+	PostsBackendBaseURL     *url.URL        `dotenv:"TW_REMOTE_POSTS_BACKEND_BASE_URL"`
+	PostsBackendSigningKey  string          `dotenv:"TW_REMOTE_POSTS_BACKEND_SIGNING_KEY"`
 	PostsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES"`
-	// GroupsAllowedSchoolCodes is the schools allowed to use Groups.
+
+	GroupsManifestURL        *url.URL        `dotenv:"TW_REMOTE_GROUPS_MANIFEST_URL"`
+	GroupsBackendBaseURL     *url.URL        `dotenv:"TW_REMOTE_GROUPS_BACKEND_BASE_URL"`
+	GroupsBackendSigningKey  string          `dotenv:"TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY"`
 	GroupsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES"`
-	// MeetingsAllowedSchoolCodes is the schools allowed to use Meetings.
+
 	MeetingsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES"`
-	// StudentsAllowedSchoolCodes is the schools allowed to use Student Insights.
-	StudentsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES"`
+
+	StudentInsightsManifestURL       *url.URL        `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"`
+	StudentInsightsBackendBaseURL    *url.URL        `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL"`
+	StudentInsightsBackendSigningKey string          `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY"`
+	StudentsAllowedSchoolCodes       SchoolAllowlist `dotenv:"TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES"`
 }
 
 func (cfg RemoteAppsConfig) validate() error {

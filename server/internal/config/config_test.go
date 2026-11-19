@@ -1695,7 +1695,7 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects an invalid allowlist with an error naming its setting", func(t *testing.T) {
-		for _, a := range validConfig().RemoteApps.Allowlists() {
+		for _, a := range (RemoteAppsConfig{}).Allowlists() {
 			t.Run(a.App, func(t *testing.T) {
 				t.Chdir(t.TempDir())
 				t.Setenv(a.Setting, "12A4")
