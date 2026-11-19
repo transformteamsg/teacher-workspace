@@ -719,21 +719,21 @@ func (l SchoolAllowlist) validate(setting string) error {
 		items[i] = strings.TrimSpace(items[i])
 	}
 
-	excluding := items[0] == "*"
-	if excluding {
+	allowsEverySchool := items[0] == "*"
+	if allowsEverySchool {
 		items = items[1:]
 	}
 
 	for _, item := range items {
-		code, excluded := strings.CutPrefix(item, "!")
+		code, excludesSchool := strings.CutPrefix(item, "!")
 		switch {
 		case item == "":
 			return fmt.Errorf("%s must not contain an empty item; got %q", setting, l)
 		case item == "*":
 			return fmt.Errorf("%s must have * only as its first item; got %q", setting, l)
-		case excluded && !excluding:
+		case excludesSchool && !allowsEverySchool:
 			return fmt.Errorf("%s must start with * to exclude a code; got %q", setting, item)
-		case !excluded && excluding:
+		case !excludesSchool && allowsEverySchool:
 			return fmt.Errorf("%s must list only excluded codes after *; got %q", setting, item)
 		case !edupass.IsLocationCode(code):
 			return fmt.Errorf("%s must contain only 4-digit school codes; got %q", setting, item)
