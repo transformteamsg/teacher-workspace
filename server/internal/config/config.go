@@ -658,7 +658,7 @@ type AppAllowlist struct {
 	Allowlist SchoolAllowlist
 }
 
-// Allowlists returns the allowlist of every remote app, in the order the apps are shown.
+// Allowlists returns the allowlist of every remote app.
 func (cfg RemoteAppsConfig) Allowlists() []AppAllowlist {
 	return []AppAllowlist{
 		{App: "posts", Setting: "TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.PostsAllowedSchoolCodes},

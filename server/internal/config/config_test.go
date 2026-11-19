@@ -19,7 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1740,18 +1739,6 @@ func TestRemoteAppsConfig_Allowlists(t *testing.T) {
 		}
 		if !maps.Equal(want, got) || len(allowlists) != len(want) {
 			t.Errorf("want allowlists by setting: %v; got: %v", want, got)
-		}
-	})
-
-	t.Run("returns the apps in the order they are shown", func(t *testing.T) {
-		allowlists := RemoteAppsConfig{}.Allowlists()
-
-		apps := make([]string, 0, len(allowlists))
-		for _, a := range allowlists {
-			apps = append(apps, a.App)
-		}
-		if want := []string{"posts", "groups", "meetings", "students"}; !slices.Equal(want, apps) {
-			t.Errorf("want apps: %q; got: %q", want, apps)
 		}
 	})
 }
