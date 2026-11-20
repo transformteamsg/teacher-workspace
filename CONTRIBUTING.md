@@ -105,7 +105,7 @@ In production the server parses `apps/host/dist/index.html` once at startup and 
 
 ### Running against a local remote
 
-Posts and Groups are served by the `pg` remote, and Student Insights by `student_insights`. Neither is compiled into the host: the server reads their manifest URLs at startup and embeds them in the page. Unset, a remote is not registered and its route renders the unavailable fallback.
+Posts and Groups are served by the `pg` remote, and Student Insights by `student_insights`. Neither is compiled into the host: the server reads their manifest URLs at startup and embeds them in the page. Unset, a remote is not registered and its route shows the 404 page.
 
 An app is registered only when its manifest URL, backend base URL and backend signing key are all set, and is offered only to the schools its allowlist allows. An unset allowlist allows no school, and `*` allows every school.
 

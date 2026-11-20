@@ -2,14 +2,16 @@ import { Link } from 'react-router';
 
 import illustration from '~/assets/images/not-found.png';
 import { Button } from '~/components/ui/button';
+import { type AppKey, isAppAllowed } from '~/stores/preloaded-state';
 
-const suggestedLinks = [
-  { label: 'Student Insights', to: '/students' },
-  // TODO(#306): remove the condition.
-  ...(import.meta.env.PUBLIC_HIDE_PG_FEATURES === 'true' ? [] : [{ label: 'Posts', to: '/posts' }]),
+const suggestedLinks: { label: string; to: string; app: AppKey }[] = [
+  { label: 'Student Insights', to: '/students', app: 'students' },
+  { label: 'Posts', to: '/posts', app: 'posts' },
 ];
 
 export function NotFoundView() {
+  const allowedLinks = suggestedLinks.filter((link) => isAppAllowed(link.app));
+
   return (
     <main className="tw:flex tw:min-h-svh tw:flex-col-reverse tw:items-center tw:justify-center tw:gap-8 tw:bg-background tw:px-6 tw:py-10 tw:lg:flex-row tw:lg:gap-16 tw:lg:px-8">
       <div className="tw:w-full tw:max-w-sm">
@@ -23,21 +25,23 @@ export function NotFoundView() {
         <Button className="tw:mt-8" render={<Link to="/" />}>
           Back to home
         </Button>
-        <div className="tw:mt-10">
-          <p className="tw:text-sm tw:text-muted-foreground">Or try:</p>
-          <ul className="tw:mt-3 tw:flex tw:flex-col tw:gap-1.5">
-            {suggestedLinks.map((link) => (
-              <li key={link.to}>
-                <Link
-                  to={link.to}
-                  className="tw:text-sm tw:font-medium tw:text-primary tw:hover:underline"
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {allowedLinks.length > 0 && (
+          <div className="tw:mt-10">
+            <p className="tw:text-sm tw:text-muted-foreground">Or try:</p>
+            <ul className="tw:mt-3 tw:flex tw:flex-col tw:gap-1.5">
+              {allowedLinks.map((link) => (
+                <li key={link.to}>
+                  <Link
+                    to={link.to}
+                    className="tw:text-sm tw:font-medium tw:text-primary tw:hover:underline"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
       <img
         src={illustration}

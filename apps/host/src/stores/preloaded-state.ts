@@ -4,6 +4,8 @@
 export interface PreloadedState {
   csrfToken: string;
   remotes: readonly Remote[];
+  /** The keys of the apps the server allows this session, such as "posts". */
+  apps: readonly string[];
   user?: User;
 }
 
@@ -58,6 +60,8 @@ function isPreloadedState(value: unknown): value is PreloadedState {
     typeof (value as Partial<PreloadedState>).csrfToken === 'string' &&
     Array.isArray((value as Partial<PreloadedState>).remotes) &&
     (value as PreloadedState).remotes.every(isRemote) &&
+    Array.isArray((value as Partial<PreloadedState>).apps) &&
+    (value as PreloadedState).apps.every((app) => typeof app === 'string') &&
     ((value as Partial<PreloadedState>).user === undefined ||
       isUser((value as PreloadedState).user))
   );
@@ -85,3 +89,14 @@ function isRemote(value: unknown): value is Remote {
 }
 
 export const preloadedState: Readonly<PreloadedState> = readPreloadedState();
+
+/**
+ * An app the server may allow. The keys must match the ones `allowedApps` sends in
+ * `server/internal/handler/index.go`, or the host hides the app.
+ */
+export type AppKey = 'posts' | 'groups' | 'meetings' | 'students';
+
+/** Reports whether the server allows this session to use `app`. */
+export function isAppAllowed(app: AppKey): boolean {
+  return preloadedState.apps.includes(app);
+}
