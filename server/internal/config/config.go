@@ -542,6 +542,7 @@ func (cfg RemoteAppsConfig) validate() error {
 // An app with none of its registration values set, such as Meetings, has only an allowlist.
 type RemoteApp struct {
 	// App is the app's key in the page's allowed apps and in logs, such as "students".
+	// It must match an AppKey in apps/host/src/stores/preloaded-state.ts, or the host hides the app.
 	App string
 	// Path is the app's path segment under /api/, such as "student-insights".
 	Path string
