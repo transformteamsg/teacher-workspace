@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/transformteamsg/teacher-workspace/server/internal/config"
 	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
 )
@@ -21,6 +22,8 @@ type remoteBackend struct {
 	proxy      http.Handler
 	signingKey string
 	audience   string
+	app        string
+	allowlist  config.SchoolAllowlist
 }
 
 func (h *Handler) proxy() http.Handler {
@@ -35,6 +38,8 @@ func (h *Handler) proxy() http.Handler {
 			),
 			signingKey: h.cfg.RemoteApps.PostsBackendSigningKey,
 			audience:   "pg",
+			app:        "posts",
+			allowlist:  h.cfg.RemoteApps.PostsAllowedSchoolCodes,
 		}
 	}
 	if h.cfg.RemoteApps.IsGroupsRegistered() {
@@ -46,6 +51,8 @@ func (h *Handler) proxy() http.Handler {
 			),
 			signingKey: h.cfg.RemoteApps.GroupsBackendSigningKey,
 			audience:   "pg",
+			app:        "groups",
+			allowlist:  h.cfg.RemoteApps.GroupsAllowedSchoolCodes,
 		}
 	}
 	if h.cfg.RemoteApps.IsStudentInsightsRegistered() {
@@ -57,6 +64,8 @@ func (h *Handler) proxy() http.Handler {
 			),
 			signingKey: h.cfg.RemoteApps.StudentInsightsBackendSigningKey,
 			audience:   "si",
+			app:        "students",
+			allowlist:  h.cfg.RemoteApps.StudentsAllowedSchoolCodes,
 		}
 	}
 
@@ -71,9 +80,7 @@ func (h *Handler) proxy() http.Handler {
 		name, _, found := strings.Cut(strings.TrimPrefix(r.URL.Path, "/api/"), "/")
 		b, ok := remoteBackends[name]
 		if !found || !ok {
-			httputil.RenderJSON(w, logger, http.StatusNotFound, &httputil.ErrorResponse{
-				Message: http.StatusText(http.StatusNotFound),
-			})
+			renderNotFound(w, r)
 			return
 		}
 
@@ -99,6 +106,17 @@ func (h *Handler) proxy() http.Handler {
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
 				Message: http.StatusText(http.StatusInternalServerError),
 			})
+			return
+		}
+
+		// A refused app answers like an unknown one, so its existence isn't revealed.
+		if !b.allowlist.Allows(u.SchoolCode) {
+			logger.Warn("school not allowed to use remote app",
+				"app", b.app,
+				"edupass_id", u.ID,
+				"school_code", u.SchoolCode,
+			)
+			renderNotFound(w, r)
 			return
 		}
 
@@ -129,7 +147,7 @@ func (h *Handler) proxy() http.Handler {
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		signedToken, err := token.SignedString([]byte(b.signingKey))
 		if err != nil {
-			logger.Error("failed to sign JWT", "app", name, "err", err)
+			logger.Error("failed to sign JWT", "app", b.app, "err", err)
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
 				Message: http.StatusText(http.StatusInternalServerError),
 			})

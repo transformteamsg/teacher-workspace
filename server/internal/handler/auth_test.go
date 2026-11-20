@@ -3609,18 +3609,20 @@ func newEdupassConfig() *config.Config {
 
 // logRecord is one record written by a [slog.JSONHandler].
 type logRecord struct {
-	Level     string   `json:"level"`
-	Msg       string   `json:"msg"`
-	Err       string   `json:"err"`
-	Provider  string   `json:"provider"`
-	EdupassID string   `json:"edupass_id"`
-	Email     string   `json:"email"`
-	Codes     []string `json:"codes"`
-	Roles     []string `json:"roles"`
-	Reason    string   `json:"reason"`
-	Location  string   `json:"location"`
-	Locations []string `json:"locations"`
-	Groups    []string `json:"groups"`
+	Level      string   `json:"level"`
+	Msg        string   `json:"msg"`
+	Err        string   `json:"err"`
+	Provider   string   `json:"provider"`
+	EdupassID  string   `json:"edupass_id"`
+	Email      string   `json:"email"`
+	Codes      []string `json:"codes"`
+	Roles      []string `json:"roles"`
+	Reason     string   `json:"reason"`
+	Location   string   `json:"location"`
+	Locations  []string `json:"locations"`
+	Groups     []string `json:"groups"`
+	App        string   `json:"app"`
+	SchoolCode string   `json:"school_code"`
 }
 
 // decodeLogRecords returns the records in logs, the output of a

@@ -16,6 +16,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -61,17 +62,20 @@ func TestHandler_proxy(t *testing.T) {
 					ProxyTimeout:       5 * time.Minute,
 					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    postsBackendURL,
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     postsBackendURL,
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 
-					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:    groupsBackendURL,
-					GroupsBackendSigningKey: "groups-string-secret-at-least-256-bits-long",
+					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:     groupsBackendURL,
+					GroupsBackendSigningKey:  "groups-string-secret-at-least-256-bits-long",
+					GroupsAllowedSchoolCodes: "*",
 
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    studentInsightsBackendURL,
 					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+					StudentsAllowedSchoolCodes:       "*",
 				},
 			},
 		}
@@ -155,9 +159,10 @@ func TestHandler_proxy(t *testing.T) {
 					ProxyTimeout:       5 * time.Minute,
 					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    postsBackendURL,
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     postsBackendURL,
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -224,6 +229,87 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
+	t.Run("answers a refused school like an unknown app, without calling the remote backend", func(t *testing.T) {
+		const (
+			schoolCode      = "1234"
+			otherSchoolCode = "0001"
+		)
+		tests := []struct {
+			name   string
+			mutate func(*config.RemoteAppsConfig)
+			target string
+		}{
+			{
+				name:   "when Posts does not list the school",
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = otherSchoolCode },
+				target: "/api/posts/hello",
+			},
+			{
+				name:   "when Posts allows no school",
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = "" },
+				target: "/api/posts/hello",
+			},
+			{
+				name:   "when Groups does not list the school",
+				mutate: func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = otherSchoolCode },
+				target: "/api/groups/hello",
+			},
+			{
+				name:   "when Student Insights excludes the school",
+				mutate: func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "*,!" + schoolCode },
+				target: "/api/student-insights/hello",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				var calls atomic.Int32
+				remoteApps := allowAllRemoteApps(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+					calls.Add(1)
+				}))
+				test.mutate(&remoteApps)
+				h := &Handler{cfg: &config.Config{RemoteApps: remoteApps}}
+
+				serve := func(target string) *httptest.ResponseRecorder {
+					sess := session.New()
+					sess.SetUser(session.User{
+						ID:         "staff-2",
+						Email:      "teacher@example.com",
+						Role:       "ROLE_TEACHER",
+						SchoolCode: schoolCode,
+						Attributes: []string{},
+					})
+					ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+					ctx = middleware.WithSession(ctx, sess)
+
+					req := httptest.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+					rec := httptest.NewRecorder()
+					h.proxy().ServeHTTP(rec, req)
+					return rec
+				}
+				unknown := serve("/api/does-not-exist/hello")
+				if unknown.Code != http.StatusNotFound {
+					t.Fatalf("serve unknown app: status %d", unknown.Code)
+				}
+
+				refused := serve(test.target)
+
+				if want, got := unknown.Code, refused.Code; want != got {
+					t.Errorf("want rec.Code: %d; got: %d", want, got)
+				}
+				if want, got := unknown.Body.String(), refused.Body.String(); want != got {
+					t.Errorf("want body: %q; got: %q", want, got)
+				}
+				if want, got := unknown.Header().Get("Content-Type"), refused.Header().Get("Content-Type"); want != got {
+					t.Errorf("want Content-Type: %q; got: %q", want, got)
+				}
+				if got := calls.Load(); got != 0 {
+					t.Errorf("want remote backend calls: 0; got: %d", got)
+				}
+			})
+		}
+	})
+
 	t.Run("responds with 500", func(t *testing.T) {
 		var calls int
 		h := &Handler{
@@ -237,7 +323,8 @@ func TestHandler_proxy(t *testing.T) {
 					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 						calls++
 					})),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -355,6 +442,94 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
+	t.Run("logs a warning when a school is refused", func(t *testing.T) {
+		const (
+			schoolCode      = "1234"
+			otherSchoolCode = "0001"
+		)
+		tests := []struct {
+			name   string
+			mutate func(*config.RemoteAppsConfig)
+			target string
+			want   logRecord
+		}{
+			{
+				name:   "for Posts",
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = otherSchoolCode },
+				target: "/api/posts/hello",
+				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "posts", EdupassID: "staff-2", SchoolCode: schoolCode},
+			},
+			{
+				name:   "for Groups",
+				mutate: func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = otherSchoolCode },
+				target: "/api/groups/hello",
+				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "groups", EdupassID: "staff-2", SchoolCode: schoolCode},
+			},
+			{
+				name:   "for Student Insights",
+				mutate: func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "*,!" + schoolCode },
+				target: "/api/student-insights/hello",
+				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "students", EdupassID: "staff-2", SchoolCode: schoolCode},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				remoteApps := allowAllRemoteApps(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusTeapot)
+				}))
+				test.mutate(&remoteApps)
+				h := &Handler{cfg: &config.Config{RemoteApps: remoteApps}}
+
+				var logs bytes.Buffer
+				sess := session.New()
+				sess.SetUser(session.User{ID: "staff-2", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: schoolCode, Attributes: []string{}})
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
+				rec := httptest.NewRecorder()
+
+				h.proxy().ServeHTTP(rec, req)
+
+				if want, got := http.StatusNotFound, rec.Code; want != got {
+					t.Fatalf("want rec.Code: %d; got: %d", want, got)
+				}
+				records := decodeLogRecords(t, &logs)
+				if want, got := 1, len(records); want != got {
+					t.Fatalf("want len(records): %d; got: %d", want, got)
+				}
+				if want, got := test.want, records[0]; !reflect.DeepEqual(want, got) {
+					t.Errorf("want records[0]: %+v; got: %+v", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("logs nothing when the school is allowed", func(t *testing.T) {
+		h := &Handler{cfg: &config.Config{RemoteApps: allowAllRemoteApps(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}))}}
+
+		var logs bytes.Buffer
+		sess := session.New()
+		sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: "1234", Attributes: []string{}})
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+		ctx = middleware.WithSession(ctx, sess)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		h.proxy().ServeHTTP(rec, req)
+
+		if want, got := http.StatusTeapot, rec.Code; want != got {
+			t.Fatalf("want rec.Code: %d; got: %d", want, got)
+		}
+		if got := logs.String(); got != "" {
+			t.Errorf("want logs: empty; got: %q", got)
+		}
+	})
+
 	t.Run("logs an error", func(t *testing.T) {
 		h := &Handler{
 			cfg: &config.Config{
@@ -363,9 +538,10 @@ func TestHandler_proxy(t *testing.T) {
 					ProxyTimeout:       5 * time.Minute,
 					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    newRemoteBackend(t, http.NotFoundHandler()),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     newRemoteBackend(t, http.NotFoundHandler()),
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -501,17 +677,20 @@ func TestHandler_proxy(t *testing.T) {
 					ProxyTimeout:       5 * time.Minute,
 					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     newRemoteBackend(t, echoAuthorization),
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 
-					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
-					GroupsBackendSigningKey: "groups-string-secret-at-least-256-bits-long",
+					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:     newRemoteBackend(t, echoAuthorization),
+					GroupsBackendSigningKey:  "groups-string-secret-at-least-256-bits-long",
+					GroupsAllowedSchoolCodes: "*",
 
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
 					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+					StudentsAllowedSchoolCodes:       "*",
 				},
 			},
 		}
@@ -608,7 +787,8 @@ func TestHandler_proxy(t *testing.T) {
 					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						_, _ = io.WriteString(w, r.Header.Get("Authorization"))
 					})),
-					PostsBackendSigningKey: signingKey,
+					PostsBackendSigningKey:  signingKey,
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -1181,4 +1361,32 @@ func dialUpgrade(t *testing.T, addr string) (net.Conn, *bufio.Reader) {
 	}
 
 	return conn, reader
+}
+
+// allowAllRemoteApps returns a remote apps config with Posts, Groups and Student Insights registered, every school
+// allowed, and every backend served by backend.
+func allowAllRemoteApps(t *testing.T, backend http.Handler) config.RemoteAppsConfig {
+	t.Helper()
+
+	backendURL := newRemoteBackend(t, backend)
+	return config.RemoteAppsConfig{
+		SignedTokenTTL:     time.Minute,
+		ProxyTimeout:       5 * time.Minute,
+		ProxyStreamTimeout: 5 * time.Minute,
+
+		PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+		PostsBackendBaseURL:     backendURL,
+		PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+		PostsAllowedSchoolCodes: "*",
+
+		GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+		GroupsBackendBaseURL:     backendURL,
+		GroupsBackendSigningKey:  "groups-string-secret-at-least-256-bits-long",
+		GroupsAllowedSchoolCodes: "*",
+
+		StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
+		StudentInsightsBackendBaseURL:    backendURL,
+		StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+		StudentsAllowedSchoolCodes:       "*",
+	}
 }
