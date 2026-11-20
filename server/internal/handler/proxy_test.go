@@ -288,8 +288,8 @@ func TestHandler_proxy(t *testing.T) {
 					return rec
 				}
 				unknown := serve("/api/does-not-exist/hello")
-				if want, got := http.StatusNotFound, unknown.Code; want != got {
-					t.Fatalf("serve unknown app: want rec.Code: %d; got: %d", want, got)
+				if unknown.Code != http.StatusNotFound {
+					t.Fatalf("serve unknown app: status %d", unknown.Code)
 				}
 
 				refused := serve(test.target)
