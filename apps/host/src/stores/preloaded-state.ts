@@ -96,9 +96,7 @@ export const preloadedState: Readonly<PreloadedState> = readPreloadedState();
  */
 export type AppKey = 'posts' | 'groups' | 'meetings' | 'students';
 
-/**
- * Reports whether the server allows this session to use app.
- */
+/** Reports whether the server allows this session to use `app`. */
 export function isAppAllowed(app: AppKey): boolean {
   return preloadedState.apps.includes(app);
 }
