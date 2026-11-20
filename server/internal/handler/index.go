@@ -42,7 +42,8 @@ func (h *Handler) index() http.Handler {
 	})
 }
 
-// allowedApps returns the remotes and app keys the page offers the school with schoolCode: each app that is registered and whose allowlist allows the school.
+// allowedApps returns the remotes and app keys the page offers the school with schoolCode.
+// It offers each app that is registered and whose allowlist allows the school.
 func (h *Handler) allowedApps(schoolCode string) ([]Remote, []string) {
 	cfg := h.cfg.RemoteApps
 	remotes := []Remote{}
