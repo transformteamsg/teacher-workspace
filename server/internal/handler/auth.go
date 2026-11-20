@@ -392,12 +392,19 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A school code with no name fails silently, so it is logged to be
+	// alerted on.
+	location := resolved.roles[0].location
+	if _, ok := h.schoolNames[location]; !ok {
+		logger.Warn("no school name for location code", "location", location)
+	}
+
 	sess.SetUser(session.User{
 		ID:         claims.ID,
 		Name:       claims.Name,
 		Email:      claims.CESEmail,
 		Role:       resolved.roles[0].code,
-		SchoolCode: resolved.roles[0].location,
+		SchoolCode: location,
 		Attributes: resolved.attributes,
 	})
 

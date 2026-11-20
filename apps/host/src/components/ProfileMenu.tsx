@@ -13,9 +13,10 @@ import {
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
+import { cn } from '~/helpers/cn';
 import { preloadedState } from '~/stores/preloaded-state';
 
-function TruncatedText({ text }: { text: string }) {
+function TruncatedText({ text, className }: { text: string; className?: string }) {
   // A callback ref: Base UI types the trigger's ref as a button's, which a
   // `useRef` of the rendered span does not satisfy.
   const label = useRef<HTMLElement | null>(null);
@@ -40,7 +41,7 @@ function TruncatedText({ text }: { text: string }) {
         // A span, not Base UI's default button: a button inside the menu would
         // nest one interactive element in another.
         render={<span />}
-        className="tw:block tw:truncate tw:text-sm tw:text-muted-foreground"
+        className={cn('tw:block tw:truncate tw:text-sm tw:text-muted-foreground', className)}
       >
         {text}
       </TooltipTrigger>
@@ -91,9 +92,14 @@ export function ProfileMenu() {
                 </span>
                 <span className="tw:text-sm tw:text-muted-foreground">{user.role}</span>
                 {/* `-mx-3` cancels the label's padding so the card's edges line
-                    up with the menu items'. The school name goes in here above
-                    the email once the session carries it (follow-up to #161). */}
+                    up with the menu items'. */}
                 <div className="tw:-mx-3 tw:mt-2 tw:flex tw:min-w-0 tw:flex-col tw:rounded-[var(--radius-card)] tw:bg-muted tw:px-3 tw:py-2">
+                  {user.school && (
+                    <TruncatedText
+                      text={user.school}
+                      className="tw:font-semibold tw:text-foreground"
+                    />
+                  )}
                   <TruncatedText text={user.email} />
                 </div>
               </div>
