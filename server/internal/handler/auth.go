@@ -392,8 +392,8 @@ func (h *Handler) authEdupassCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A school with no name only loses its row in the profile menu, which a
-	// teacher may never report, so the warning is how the team learns of it.
+	// A school code with no name fails silently, so it is logged to be
+	// alerted on.
 	location := resolved.roles[0].location
 	if _, ok := h.schoolNames[location]; !ok {
 		logger.Warn("no school name for location code", "location", location)
