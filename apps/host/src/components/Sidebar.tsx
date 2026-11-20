@@ -1,4 +1,4 @@
-import { CalendarClock, CircleHelp, Home, Layers, Mail, Users } from 'lucide-react';
+import { CircleHelp, Home } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Link, useMatch } from 'react-router';
 
@@ -18,6 +18,7 @@ import {
   useSidebar,
 } from '~/components/ui/sidebar';
 import { cn } from '~/helpers/cn';
+import { navGroups, remoteApps } from '~/remote-apps';
 import { type AppKey, isAppAllowed } from '~/stores/preloaded-state';
 
 interface NavItem {
@@ -30,18 +31,17 @@ interface NavItem {
 
 const mainNavItems: NavItem[] = [{ title: 'Home', icon: Home, to: '/' }];
 
-const studentInsightsItems: NavItem[] = [
-  { title: 'Profiles', icon: Users, to: '/students', app: 'students' },
-];
-
-const communicationsItems: NavItem[] = [
-  { title: 'Posts', icon: Mail, to: '/posts', app: 'posts' },
-  { title: 'Meetings', icon: CalendarClock, to: '/meetings', app: 'meetings' },
-];
-
-const manageItems: NavItem[] = [
-  { title: 'Student groups', icon: Layers, to: '/groups', app: 'groups' },
-];
+const navGroupItems = navGroups.map((label) => ({
+  label,
+  items: remoteApps
+    .filter((app) => app.nav.group === label)
+    .map((app): NavItem => ({
+      title: app.nav.title,
+      icon: app.nav.icon,
+      to: app.path,
+      app: app.key,
+    })),
+}));
 
 // Text that exists only in the expanded rail. Collapsing: fade and blur out in
 // 100ms so nothing is caught mid-truncate while the width moves. Expanding:
@@ -136,9 +136,9 @@ export function AppSidebar() {
             <NavMenuItems items={mainNavItems} />
           </SidebarGroupContent>
         </SidebarGroup>
-        <NavGroup label="Student Insights" items={studentInsightsItems} />
-        <NavGroup label="Communications" items={communicationsItems} />
-        <NavGroup label="Manage" items={manageItems} />
+        {navGroupItems.map(({ label, items }) => (
+          <NavGroup key={label} label={label} items={items} />
+        ))}
       </SidebarContent>
 
       <SidebarFooter>
