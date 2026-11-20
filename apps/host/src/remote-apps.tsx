@@ -19,6 +19,8 @@ export interface RemoteApp {
   view?: React.ComponentType;
   /** The app's item in the sidebar, shown under its group in the order the apps are listed. */
   nav: { group: (typeof navGroups)[number]; title: string; icon: LucideIcon };
+  /** The app's name in the 404 page's suggestions, or none to leave it out. */
+  suggestion?: string;
 }
 
 // Loads a remote's exposed module, such as 'pg/Posts', as a lazy view.
@@ -41,12 +43,14 @@ export const remoteApps: readonly RemoteApp[] = [
     path: '/students',
     view: remoteView('student_insights/App'),
     nav: { group: 'Student Insights', title: 'Profiles', icon: Users },
+    suggestion: 'Student Insights',
   },
   {
     key: 'posts',
     path: '/posts',
     view: remoteView('pg/Posts'),
     nav: { group: 'Communications', title: 'Posts', icon: Mail },
+    suggestion: 'Posts',
   },
   {
     key: 'meetings',
