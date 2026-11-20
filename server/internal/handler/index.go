@@ -44,6 +44,7 @@ func (h *Handler) index() http.Handler {
 
 // allowedApps returns the remotes and app keys the page offers the school with schoolCode.
 // It offers each app that is registered and whose allowlist allows the school.
+// The app keys must match AppKey in apps/host/src/stores/preloaded-state.ts, or the host hides the app.
 func (h *Handler) allowedApps(schoolCode string) ([]Remote, []string) {
 	cfg := h.cfg.RemoteApps
 	remotes := []Remote{}
