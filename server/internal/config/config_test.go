@@ -1743,6 +1743,96 @@ func TestRemoteAppsConfig_Allowlists(t *testing.T) {
 	})
 }
 
+func TestRemoteAppsConfig_RemoteApps(t *testing.T) {
+	t.Run("returns every app field under the setting it is read from", func(t *testing.T) {
+		cfg := RemoteAppsConfig{}
+		want := map[string]any{}
+		v := reflect.ValueOf(&cfg).Elem()
+		for i := range v.NumField() {
+			// A distinct value per field shows a row reading the wrong field.
+			var value any
+			switch field := v.Type().Field(i); field.Type {
+			case reflect.TypeFor[*url.URL]():
+				value = &url.URL{Scheme: "https", Host: fmt.Sprintf("app-%d.example.com", i)}
+			case reflect.TypeFor[string]():
+				value = fmt.Sprintf("key-%d", i)
+			case reflect.TypeFor[SchoolAllowlist]():
+				value = SchoolAllowlist(fmt.Sprintf("%04d", i))
+			default:
+				continue
+			}
+			v.Field(i).Set(reflect.ValueOf(value))
+			want[v.Type().Field(i).Tag.Get("dotenv")] = value
+		}
+
+		apps := cfg.RemoteApps()
+
+		got := map[string]any{}
+		for _, a := range apps {
+			if a.SettingPrefix != "" {
+				got[a.SettingPrefix+"_MANIFEST_URL"] = a.ManifestURL
+				got[a.SettingPrefix+"_BACKEND_BASE_URL"] = a.BackendBaseURL
+				got[a.SettingPrefix+"_BACKEND_SIGNING_KEY"] = a.BackendSigningKey
+			}
+			got[a.AllowlistSetting] = a.Allowlist
+		}
+		if !reflect.DeepEqual(want, got) {
+			t.Errorf("want app fields by setting: %v; got: %v", want, got)
+		}
+	})
+}
+
+func TestRemoteApp_IsRegistered(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*RemoteApp)
+		want   bool
+	}{
+		{
+			name:   "all values set",
+			mutate: func(a *RemoteApp) {},
+			want:   true,
+		},
+		{
+			name: "no values set",
+			mutate: func(a *RemoteApp) {
+				a.ManifestURL = nil
+				a.BackendBaseURL = nil
+				a.BackendSigningKey = ""
+			},
+			want: false,
+		},
+		{
+			name:   "missing manifest URL",
+			mutate: func(a *RemoteApp) { a.ManifestURL = nil },
+			want:   false,
+		},
+		{
+			name:   "missing backend base URL",
+			mutate: func(a *RemoteApp) { a.BackendBaseURL = nil },
+			want:   false,
+		},
+		{
+			name:   "empty backend signing key",
+			mutate: func(a *RemoteApp) { a.BackendSigningKey = "" },
+			want:   false,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			app := RemoteApp{
+				ManifestURL:       &url.URL{Scheme: "https", Host: "app.example.com", Path: "/mf-manifest.json"},
+				BackendBaseURL:    &url.URL{Scheme: "https", Host: "api.app.example.com"},
+				BackendSigningKey: "a-string-secret-at-least-256-bits-long",
+			}
+			test.mutate(&app)
+
+			if want, got := test.want, app.IsRegistered(); want != got {
+				t.Errorf("want app.IsRegistered(): %t; got: %t", want, got)
+			}
+		})
+	}
+}
+
 func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
 	for _, test := range []struct {
 		name   string

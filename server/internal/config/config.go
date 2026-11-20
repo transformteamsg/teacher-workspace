@@ -680,6 +680,65 @@ func (cfg RemoteAppsConfig) IsStudentInsightsRegistered() bool {
 	return cfg.StudentInsightsManifestURL != nil && cfg.StudentInsightsBackendBaseURL != nil && cfg.StudentInsightsBackendSigningKey != ""
 }
 
+// RemoteApp is one remote app's settings, with the names each part of the workspace knows it by.
+// An app with none of its registration values set, such as Meetings, has only an allowlist.
+type RemoteApp struct {
+	// App is the app's key in the page's allowed apps and in logs, such as "students".
+	App string
+	// Path is the app's path segment under /api/, such as "student-insights".
+	Path string
+	// RemoteName is the Module Federation name the page registers the app's manifest under, such as "student_insights".
+	RemoteName string
+	// Audience is the audience of the signed token sent to the app's backend, such as "si".
+	Audience string
+	// Label is the app's name in configuration errors, such as "student insights".
+	Label string
+	// SettingPrefix is the prefix of the environment variables that register the app, such as "TW_REMOTE_STUDENT_INSIGHTS".
+	SettingPrefix string
+	// AllowlistSetting is the environment variable the app's allowlist is read from.
+	AllowlistSetting string
+
+	ManifestURL       *url.URL
+	BackendBaseURL    *url.URL
+	BackendSigningKey string
+	Allowlist         SchoolAllowlist
+}
+
+// IsRegistered reports whether the app has all of its registration values set.
+func (a RemoteApp) IsRegistered() bool {
+	return a.ManifestURL != nil && a.BackendBaseURL != nil && a.BackendSigningKey != ""
+}
+
+// RemoteApps returns every remote app, registered or not.
+// Posts and Groups share a Module Federation name, since one manifest exposes both modules.
+func (cfg RemoteAppsConfig) RemoteApps() []RemoteApp {
+	return []RemoteApp{
+		{
+			App: "posts", Path: "posts", RemoteName: "pg", Audience: "pg", Label: "posts",
+			SettingPrefix: "TW_REMOTE_POSTS", AllowlistSetting: "TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES",
+			ManifestURL: cfg.PostsManifestURL, BackendBaseURL: cfg.PostsBackendBaseURL, BackendSigningKey: cfg.PostsBackendSigningKey,
+			Allowlist: cfg.PostsAllowedSchoolCodes,
+		},
+		{
+			App: "groups", Path: "groups", RemoteName: "pg", Audience: "pg", Label: "groups",
+			SettingPrefix: "TW_REMOTE_GROUPS", AllowlistSetting: "TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES",
+			ManifestURL: cfg.GroupsManifestURL, BackendBaseURL: cfg.GroupsBackendBaseURL, BackendSigningKey: cfg.GroupsBackendSigningKey,
+			Allowlist: cfg.GroupsAllowedSchoolCodes,
+		},
+		{
+			App: "meetings", Label: "meetings",
+			AllowlistSetting: "TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES",
+			Allowlist:        cfg.MeetingsAllowedSchoolCodes,
+		},
+		{
+			App: "students", Path: "student-insights", RemoteName: "student_insights", Audience: "si", Label: "student insights",
+			SettingPrefix: "TW_REMOTE_STUDENT_INSIGHTS", AllowlistSetting: "TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES",
+			ManifestURL: cfg.StudentInsightsManifestURL, BackendBaseURL: cfg.StudentInsightsBackendBaseURL, BackendSigningKey: cfg.StudentInsightsBackendSigningKey,
+			Allowlist: cfg.StudentsAllowedSchoolCodes,
+		},
+	}
+}
+
 // SchoolAllowlist is the schools allowed to use a remote app.
 type SchoolAllowlist string
 
