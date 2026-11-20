@@ -99,7 +99,6 @@ func TestHandler_index(t *testing.T) {
 		tests := []struct {
 			name        string
 			mutate      func(*config.RemoteAppsConfig)
-			noUser      bool
 			wantRemotes string
 			wantApps    string
 		}{
@@ -174,13 +173,6 @@ func TestHandler_index(t *testing.T) {
 				wantRemotes: `[]`,
 				wantApps:    `[]`,
 			},
-			{
-				name:        "when the session has no user",
-				mutate:      allowAll,
-				noUser:      true,
-				wantRemotes: `[]`,
-				wantApps:    `[]`,
-			},
 		}
 
 		for _, test := range tests {
@@ -193,9 +185,7 @@ func TestHandler_index(t *testing.T) {
 				}
 
 				sess := session.New()
-				if !test.noUser {
-					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: "1234"})
-				}
+				sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: "1234"})
 				ctx := middleware.WithSession(t.Context(), sess)
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
@@ -211,6 +201,30 @@ func TestHandler_index(t *testing.T) {
 					t.Errorf("want apps: %s; got: %s", want, got)
 				}
 			})
+		}
+	})
+
+	t.Run("offers no apps when the session has no user", func(t *testing.T) {
+		remoteApps := registeredRemoteApps()
+		remoteApps.PostsAllowedSchoolCodes, remoteApps.GroupsAllowedSchoolCodes, remoteApps.StudentsAllowedSchoolCodes = "*", "*", "*"
+		h := &Handler{
+			cfg:           &config.Config{Env: config.EnvProduction, RemoteApps: remoteApps},
+			indexTemplate: newPreloadedStateTemplate(),
+		}
+
+		ctx := middleware.WithSession(t.Context(), session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		h.index().ServeHTTP(rec, req)
+
+		state := decodePreloadedState(t, rec.Body.String())
+		if want, got := `[]`, string(state.Remotes); want != got {
+			t.Errorf("want remotes: %s; got: %s", want, got)
+		}
+		if want, got := `[]`, string(state.Apps); want != got {
+			t.Errorf("want apps: %s; got: %s", want, got)
 		}
 	})
 
