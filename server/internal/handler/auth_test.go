@@ -93,7 +93,7 @@ func TestHandler_login(t *testing.T) {
 		}
 	})
 
-	t.Run("serves the login page with an empty list of remotes", func(t *testing.T) {
+	t.Run("serves the login page with empty lists of remotes and apps", func(t *testing.T) {
 		h := &Handler{indexTemplate: newPreloadedStateTemplate()}
 
 		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
@@ -111,6 +111,9 @@ func TestHandler_login(t *testing.T) {
 		state := decodePreloadedState(t, rec.Body.String())
 		if want, got := `[]`, string(state.Remotes); want != got {
 			t.Errorf("want state.Remotes: %q; got: %q", want, got)
+		}
+		if want, got := `[]`, string(state.Apps); want != got {
+			t.Errorf("want state.Apps: %q; got: %q", want, got)
 		}
 	})
 

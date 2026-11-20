@@ -45,6 +45,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	h.renderIndexTemplate(w, r, &PreloadedState{
 		CSRFToken: sess.CSRFToken(),
 		Remotes:   []Remote{},
+		Apps:      []string{},
 	})
 }
 
