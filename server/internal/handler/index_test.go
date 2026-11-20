@@ -195,10 +195,10 @@ func TestHandler_index(t *testing.T) {
 
 				state := decodePreloadedState(t, rec.Body.String())
 				if want, got := test.wantRemotes, string(state.Remotes); want != got {
-					t.Errorf("want remotes: %s; got: %s", want, got)
+					t.Errorf("want state.Remotes: %s; got: %s", want, got)
 				}
 				if want, got := test.wantApps, string(state.Apps); want != got {
-					t.Errorf("want apps: %s; got: %s", want, got)
+					t.Errorf("want state.Apps: %s; got: %s", want, got)
 				}
 			})
 		}
@@ -221,10 +221,10 @@ func TestHandler_index(t *testing.T) {
 
 		state := decodePreloadedState(t, rec.Body.String())
 		if want, got := `[]`, string(state.Remotes); want != got {
-			t.Errorf("want remotes: %s; got: %s", want, got)
+			t.Errorf("want state.Remotes: %s; got: %s", want, got)
 		}
 		if want, got := `[]`, string(state.Apps); want != got {
-			t.Errorf("want apps: %s; got: %s", want, got)
+			t.Errorf("want state.Apps: %s; got: %s", want, got)
 		}
 	})
 
