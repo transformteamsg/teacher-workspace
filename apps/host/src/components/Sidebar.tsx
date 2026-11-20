@@ -18,8 +18,8 @@ import {
   useSidebar,
 } from '~/components/ui/sidebar';
 import { cn } from '~/helpers/cn';
-import { navGroups, remoteApps } from '~/remote-apps';
-import { type AppKey, isAppAllowed } from '~/stores/preloaded-state';
+import { type AppKey, navGroups, remoteApps } from '~/remote-apps';
+import { isAppAllowed } from '~/stores/preloaded-state';
 
 interface NavItem {
   title: string;

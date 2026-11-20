@@ -3,16 +3,12 @@ import { CalendarClock, Layers, Mail, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import React from 'react';
 
-import type { AppKey } from '~/stores/preloaded-state';
-
 /** The sidebar's labelled groups, in the order they are shown. */
 export const navGroups = ['Student Insights', 'Communications', 'Manage'] as const;
 
-/**
- * An app the host offers when the server allows it.
- */
-export interface RemoteApp {
-  key: AppKey;
+// What the host knows about each app. RemoteApp narrows key to the keys the list uses.
+interface RemoteAppFields {
+  key: string;
   /** Where the app lives in the host, such as "/posts". */
   path: string;
   /** The remote module the app's route renders, or none while the app has no route. */
@@ -36,8 +32,7 @@ function remoteView(id: string) {
   });
 }
 
-/** Every app the host can offer. */
-export const remoteApps: readonly RemoteApp[] = [
+const apps = [
   {
     key: 'students',
     path: '/students',
@@ -63,4 +58,18 @@ export const remoteApps: readonly RemoteApp[] = [
     view: remoteView('pg/Groups'),
     nav: { group: 'Manage', title: 'Student groups', icon: Layers },
   },
-];
+] as const satisfies readonly RemoteAppFields[];
+
+/**
+ * An app the server may allow. The keys must match the `App` keys in `RemoteApps`
+ * (`server/internal/config/config.go`), or the host hides the app.
+ */
+export type AppKey = (typeof apps)[number]['key'];
+
+/** An app the host offers when the server allows it. */
+export interface RemoteApp extends RemoteAppFields {
+  key: AppKey;
+}
+
+/** Every app the host can offer. */
+export const remoteApps: readonly RemoteApp[] = apps;
