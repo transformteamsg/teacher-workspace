@@ -13,32 +13,22 @@ const RootLayout = React.lazy(() => import('~/containers/RootLayout'));
 const HomeView = React.lazy(() => import('~/containers/HomeView'));
 const RemoteLoadFallbackView = React.lazy(() => import('~/containers/RemoteLoadFallbackView'));
 
-const RemoteStudentInsightsView = React.lazy(async () => {
-  const module = await loadRemote<{ default: React.ComponentType }>('student_insights/App');
-  if (!module) {
-    throw new Error('Failed to load remote module');
-  }
+// Loads a remote's exposed module, such as 'pg/Posts', as a lazy view.
+// Call it at module level: a lazy component created during render reloads on every render.
+function remoteView(id: string) {
+  return React.lazy(async () => {
+    const module = await loadRemote<{ default: React.ComponentType }>(id);
+    if (!module) {
+      throw new Error('Failed to load remote module');
+    }
 
-  return module;
-});
+    return module;
+  });
+}
 
-const RemotePostsView = React.lazy(async () => {
-  const module = await loadRemote<{ default: React.ComponentType }>('pg/Posts');
-  if (!module) {
-    throw new Error('Failed to load remote module');
-  }
-
-  return module;
-});
-
-const RemoteGroupsView = React.lazy(async () => {
-  const module = await loadRemote<{ default: React.ComponentType }>('pg/Groups');
-  if (!module) {
-    throw new Error('Failed to load remote module');
-  }
-
-  return module;
-});
+const RemoteStudentInsightsView = remoteView('student_insights/App');
+const RemotePostsView = remoteView('pg/Posts');
+const RemoteGroupsView = remoteView('pg/Groups');
 
 // A refused app's route falls through to the 404 page, so its remote never loads.
 function remoteRoute(app: AppKey, path: string, View: React.ComponentType) {
