@@ -230,6 +230,10 @@ func TestHandler_proxy(t *testing.T) {
 	})
 
 	t.Run("answers a refused school like an unknown app, without calling the remote backend", func(t *testing.T) {
+		const (
+			schoolCode      = "1234"
+			otherSchoolCode = "0001"
+		)
 		tests := []struct {
 			name   string
 			mutate func(*config.RemoteAppsConfig)
@@ -237,7 +241,7 @@ func TestHandler_proxy(t *testing.T) {
 		}{
 			{
 				name:   "when Posts does not list the school",
-				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = "0001" },
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = otherSchoolCode },
 				target: "/api/posts/hello",
 			},
 			{
@@ -248,20 +252,20 @@ func TestHandler_proxy(t *testing.T) {
 			{
 				name: "when Groups refuses the school and Posts allows it",
 				mutate: func(c *config.RemoteAppsConfig) {
-					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes = "*", "0001"
+					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes = "*", otherSchoolCode
 				},
 				target: "/api/groups/hello",
 			},
 			{
 				name: "when Posts refuses the school and Groups allows it",
 				mutate: func(c *config.RemoteAppsConfig) {
-					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes = "0001", "*"
+					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes = otherSchoolCode, "*"
 				},
 				target: "/api/posts/hello",
 			},
 			{
 				name:   "when Student Insights excludes the school",
-				mutate: func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "*,!1234" },
+				mutate: func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "*,!" + schoolCode },
 				target: "/api/student-insights/hello",
 			},
 		}
@@ -281,7 +285,7 @@ func TestHandler_proxy(t *testing.T) {
 						ID:         "staff-2",
 						Email:      "teacher@example.com",
 						Role:       "ROLE_TEACHER",
-						SchoolCode: "1234",
+						SchoolCode: schoolCode,
 						Attributes: []string{},
 					})
 					ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
@@ -448,6 +452,10 @@ func TestHandler_proxy(t *testing.T) {
 	})
 
 	t.Run("logs a warning when a school is refused", func(t *testing.T) {
+		const (
+			schoolCode      = "1234"
+			otherSchoolCode = "0001"
+		)
 		tests := []struct {
 			name   string
 			mutate func(*config.RemoteAppsConfig)
@@ -456,21 +464,21 @@ func TestHandler_proxy(t *testing.T) {
 		}{
 			{
 				name:   "for Posts",
-				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = "0001" },
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = otherSchoolCode },
 				target: "/api/posts/hello",
-				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "posts", EdupassID: "staff-2", SchoolCode: "1234"},
+				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "posts", EdupassID: "staff-2", SchoolCode: schoolCode},
 			},
 			{
 				name:   "for Groups",
-				mutate: func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = "0001" },
+				mutate: func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = otherSchoolCode },
 				target: "/api/groups/hello",
-				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "groups", EdupassID: "staff-2", SchoolCode: "1234"},
+				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "groups", EdupassID: "staff-2", SchoolCode: schoolCode},
 			},
 			{
 				name:   "for Student Insights",
-				mutate: func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "*,!1234" },
+				mutate: func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "*,!" + schoolCode },
 				target: "/api/student-insights/hello",
-				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "students", EdupassID: "staff-2", SchoolCode: "1234"},
+				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "students", EdupassID: "staff-2", SchoolCode: schoolCode},
 			},
 		}
 
@@ -484,7 +492,7 @@ func TestHandler_proxy(t *testing.T) {
 
 				var logs bytes.Buffer
 				sess := session.New()
-				sess.SetUser(session.User{ID: "staff-2", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: "1234", Attributes: []string{}})
+				sess.SetUser(session.User{ID: "staff-2", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: schoolCode, Attributes: []string{}})
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
 				ctx = middleware.WithSession(ctx, sess)
 
