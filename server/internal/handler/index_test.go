@@ -92,6 +92,9 @@ func TestHandler_index(t *testing.T) {
 			postsRemote    = `{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}`
 			groupsRemote   = `{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"}`
 			studentsRemote = `{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}`
+
+			schoolCode      = "1234"
+			otherSchoolCode = "0001"
 		)
 		allowAll := func(c *config.RemoteAppsConfig) {
 			c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes, c.StudentsAllowedSchoolCodes = "*", "*", "*"
@@ -110,26 +113,26 @@ func TestHandler_index(t *testing.T) {
 			},
 			{
 				name:        "when only Posts allows the school",
-				mutate:      func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = "1234" },
+				mutate:      func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = schoolCode },
 				wantRemotes: "[" + postsRemote + "]",
 				wantApps:    `["posts"]`,
 			},
 			{
 				name:        "when only Groups allows the school",
-				mutate:      func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = "1234" },
+				mutate:      func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = schoolCode },
 				wantRemotes: "[" + groupsRemote + "]",
 				wantApps:    `["groups"]`,
 			},
 			{
 				name:        "when only Student Insights allows the school",
-				mutate:      func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "1234" },
+				mutate:      func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = schoolCode },
 				wantRemotes: "[" + studentsRemote + "]",
 				wantApps:    `["students"]`,
 			},
 			{
 				name: "when no list includes the school",
 				mutate: func(c *config.RemoteAppsConfig) {
-					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes, c.StudentsAllowedSchoolCodes = "0001", "0001", "0001"
+					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes, c.StudentsAllowedSchoolCodes = otherSchoolCode, otherSchoolCode, otherSchoolCode
 				},
 				wantRemotes: `[]`,
 				wantApps:    `[]`,
@@ -144,7 +147,7 @@ func TestHandler_index(t *testing.T) {
 				name: "when Student Insights excludes the school",
 				mutate: func(c *config.RemoteAppsConfig) {
 					allowAll(c)
-					c.StudentsAllowedSchoolCodes = "*,!1234"
+					c.StudentsAllowedSchoolCodes = "*,!" + schoolCode
 				},
 				wantRemotes: "[" + postsRemote + "," + groupsRemote + "]",
 				wantApps:    `["posts","groups"]`,
@@ -185,7 +188,7 @@ func TestHandler_index(t *testing.T) {
 				}
 
 				sess := session.New()
-				sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: "1234"})
+				sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: schoolCode})
 				ctx := middleware.WithSession(t.Context(), sess)
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
