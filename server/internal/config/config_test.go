@@ -13,7 +13,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log/slog"
-	"maps"
 	"math/big"
 	"net/url"
 	"os"
@@ -173,9 +172,9 @@ func TestDefault(t *testing.T) {
 		if got := cfg.RemoteApps.StudentInsightsBackendSigningKey; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
-		for _, a := range cfg.RemoteApps.Allowlists() {
+		for _, a := range cfg.RemoteApps.RemoteApps() {
 			if got := a.Allowlist; got != "" {
-				t.Errorf("want %s: empty; got: %q", a.Setting, got)
+				t.Errorf("want %s: empty; got: %q", a.AllowlistSetting, got)
 			}
 		}
 	})
@@ -1481,10 +1480,10 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects an invalid allowlist with an error naming its setting", func(t *testing.T) {
-		for _, a := range (RemoteAppsConfig{}).Allowlists() {
+		for _, a := range (RemoteAppsConfig{}).RemoteApps() {
 			t.Run(a.App, func(t *testing.T) {
 				t.Chdir(t.TempDir())
-				t.Setenv(a.Setting, "12A4")
+				t.Setenv(a.AllowlistSetting, "12A4")
 				cfg := Default()
 				if err := dotenv.Load(&cfg); err != nil {
 					t.Fatalf("dotenv.Load: %v", err)
@@ -1495,36 +1494,10 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if want := a.Setting + ` must contain only 4-digit school codes; got "12A4"`; !strings.Contains(err.Error(), want) {
+				if want := a.AllowlistSetting + ` must contain only 4-digit school codes; got "12A4"`; !strings.Contains(err.Error(), want) {
 					t.Errorf("want err: containing %q; got: %q", want, err)
 				}
 			})
-		}
-	})
-}
-
-func TestRemoteAppsConfig_Allowlists(t *testing.T) {
-	t.Run("returns every allowlist field under the setting it is read from", func(t *testing.T) {
-		cfg := RemoteAppsConfig{}
-		want := map[string]SchoolAllowlist{}
-		v := reflect.ValueOf(&cfg).Elem()
-		for i := range v.NumField() {
-			if field := v.Type().Field(i); field.Type == reflect.TypeFor[SchoolAllowlist]() {
-				// A distinct value per field shows a row reading the wrong field.
-				allowlist := SchoolAllowlist(fmt.Sprintf("%04d", i))
-				v.Field(i).Set(reflect.ValueOf(allowlist))
-				want[field.Tag.Get("dotenv")] = allowlist
-			}
-		}
-
-		allowlists := cfg.Allowlists()
-
-		got := map[string]SchoolAllowlist{}
-		for _, a := range allowlists {
-			got[a.Setting] = a.Allowlist
-		}
-		if !maps.Equal(want, got) || len(allowlists) != len(want) {
-			t.Errorf("want allowlists by setting: %v; got: %v", want, got)
 		}
 	})
 }

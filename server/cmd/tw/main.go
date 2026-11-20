@@ -53,9 +53,9 @@ func main() {
 
 	level.Set(cfg.LogLevel)
 
-	for _, a := range cfg.RemoteApps.Allowlists() {
+	for _, a := range cfg.RemoteApps.RemoteApps() {
 		if a.Allowlist.IsEmpty() {
-			slog.Warn("remote app has no allowed schools", "app", a.App, "setting", a.Setting)
+			slog.Warn("remote app has no allowed schools", "app", a.App, "setting", a.AllowlistSetting)
 		}
 	}
 

@@ -531,30 +531,11 @@ func (cfg RemoteAppsConfig) validate() error {
 		errs = append(errs, a.validate())
 	}
 
-	for _, a := range cfg.Allowlists() {
-		errs = append(errs, a.Allowlist.validate(a.Setting))
+	for _, a := range cfg.RemoteApps() {
+		errs = append(errs, a.Allowlist.validate(a.AllowlistSetting))
 	}
 
 	return errors.Join(errs...)
-}
-
-// AppAllowlist is the school allowlist of one remote app.
-type AppAllowlist struct {
-	// App is the app's key, such as "posts".
-	App string
-	// Setting is the environment variable the allowlist is read from.
-	Setting   string
-	Allowlist SchoolAllowlist
-}
-
-// Allowlists returns the allowlist of every remote app.
-func (cfg RemoteAppsConfig) Allowlists() []AppAllowlist {
-	return []AppAllowlist{
-		{App: "posts", Setting: "TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.PostsAllowedSchoolCodes},
-		{App: "groups", Setting: "TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.GroupsAllowedSchoolCodes},
-		{App: "meetings", Setting: "TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.MeetingsAllowedSchoolCodes},
-		{App: "students", Setting: "TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.StudentsAllowedSchoolCodes},
-	}
 }
 
 // IsPostsRegistered reports whether the posts remote app has all of its values set.
