@@ -129,6 +129,17 @@ TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES=*
 
 The host and the remote share a single React instance, so both must be development builds or both production builds. A production host pointed at a remote's dev server fails to render it and shows the route's fallback.
 
+### Adding a remote app
+
+Each app is described once on the server and once in the host, and the rest of the code reads it from there.
+
+1. In `server/internal/config/config.go`:
+   - Add the app's settings to `RemoteAppsConfig`: its manifest URL, backend base URL, backend signing key and allowlist, read from `TW_REMOTE_<APP>_*`.
+   - Add a row to `RemoteApps()` with the app's key, its path under `/api/`, its Module Federation remote name, the audience of the token sent to its backend, its name in configuration errors, and its setting names. Validation, the page, the proxy and the startup warning all read the row. `TestRemoteAppsConfig_RemoteApps` fails until every new setting is in it.
+2. In `apps/host/src/remote-apps.tsx`, add an entry with the same key, the app's path, `remoteView('<remote name>/<module>')`, its sidebar item and, if wanted, a 404 suggestion. Add its sidebar group to `navGroups` if it is a new one.
+3. Register the app in the test helpers that set up every remote: `validConfig` in `server/internal/config/config_test.go`, `registeredRemoteApps` in `server/internal/handler/index_test.go`, and `allowAllRemoteApps` in `server/internal/handler/proxy_test.go`.
+4. Add the settings, commented out, to `.env.example`. Set them in each environment, allowlist included: an unset allowlist allows no school, so the app stays hidden.
+
 ### Common commands
 
 Server:
