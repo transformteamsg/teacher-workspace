@@ -12,8 +12,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/transformteamsg/teacher-workspace/server/internal/edupass"
 )
 
 type Environment string
@@ -493,17 +496,22 @@ type RemoteAppsConfig struct {
 	ProxyTimeout       time.Duration `dotenv:"TW_REMOTE_PROXY_TIMEOUT"`
 	ProxyStreamTimeout time.Duration `dotenv:"TW_REMOTE_PROXY_STREAM_TIMEOUT"`
 
-	PostsManifestURL       *url.URL `dotenv:"TW_REMOTE_POSTS_MANIFEST_URL"`
-	PostsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_POSTS_BACKEND_BASE_URL"`
-	PostsBackendSigningKey string   `dotenv:"TW_REMOTE_POSTS_BACKEND_SIGNING_KEY"`
+	PostsManifestURL        *url.URL        `dotenv:"TW_REMOTE_POSTS_MANIFEST_URL"`
+	PostsBackendBaseURL     *url.URL        `dotenv:"TW_REMOTE_POSTS_BACKEND_BASE_URL"`
+	PostsBackendSigningKey  string          `dotenv:"TW_REMOTE_POSTS_BACKEND_SIGNING_KEY"`
+	PostsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES"`
 
-	GroupsManifestURL       *url.URL `dotenv:"TW_REMOTE_GROUPS_MANIFEST_URL"`
-	GroupsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_GROUPS_BACKEND_BASE_URL"`
-	GroupsBackendSigningKey string   `dotenv:"TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY"`
+	GroupsManifestURL        *url.URL        `dotenv:"TW_REMOTE_GROUPS_MANIFEST_URL"`
+	GroupsBackendBaseURL     *url.URL        `dotenv:"TW_REMOTE_GROUPS_BACKEND_BASE_URL"`
+	GroupsBackendSigningKey  string          `dotenv:"TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY"`
+	GroupsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES"`
 
-	StudentInsightsManifestURL       *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"`
-	StudentInsightsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL"`
-	StudentInsightsBackendSigningKey string   `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY"`
+	MeetingsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES"`
+
+	StudentInsightsManifestURL       *url.URL        `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"`
+	StudentInsightsBackendBaseURL    *url.URL        `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL"`
+	StudentInsightsBackendSigningKey string          `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY"`
+	StudentsAllowedSchoolCodes       SchoolAllowlist `dotenv:"TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES"`
 }
 
 func (cfg RemoteAppsConfig) validate() error {
@@ -630,7 +638,30 @@ func (cfg RemoteAppsConfig) validate() error {
 		}
 	}
 
+	for _, a := range cfg.Allowlists() {
+		errs = append(errs, a.Allowlist.validate(a.Setting))
+	}
+
 	return errors.Join(errs...)
+}
+
+// AppAllowlist is the school allowlist of one remote app.
+type AppAllowlist struct {
+	// App is the app's key, such as "posts".
+	App string
+	// Setting is the environment variable the allowlist is read from.
+	Setting   string
+	Allowlist SchoolAllowlist
+}
+
+// Allowlists returns the allowlist of every remote app.
+func (cfg RemoteAppsConfig) Allowlists() []AppAllowlist {
+	return []AppAllowlist{
+		{App: "posts", Setting: "TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.PostsAllowedSchoolCodes},
+		{App: "groups", Setting: "TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.GroupsAllowedSchoolCodes},
+		{App: "meetings", Setting: "TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.MeetingsAllowedSchoolCodes},
+		{App: "students", Setting: "TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.StudentsAllowedSchoolCodes},
+	}
 }
 
 // IsPostsRegistered reports whether the posts remote app has all of its values set.
@@ -647,6 +678,68 @@ func (cfg RemoteAppsConfig) IsGroupsRegistered() bool {
 // has all of its values set.
 func (cfg RemoteAppsConfig) IsStudentInsightsRegistered() bool {
 	return cfg.StudentInsightsManifestURL != nil && cfg.StudentInsightsBackendBaseURL != nil && cfg.StudentInsightsBackendSigningKey != ""
+}
+
+// SchoolAllowlist is the schools allowed to use a remote app.
+type SchoolAllowlist string
+
+// Allows reports whether the school with schoolCode may use the app.
+//
+// The list takes one of two forms, with spaces around each item ignored:
+//   - "0001,0002" allows only the listed schools.
+//   - "*" allows every school, and "*,!0001,!0002" every school except those excluded.
+//
+// Unset, empty or blank allows no school, and schoolCode must be non-empty.
+// Codes are compared as strings, so "0718" and "718" are different schools.
+func (l SchoolAllowlist) Allows(schoolCode string) bool {
+	items := strings.Split(string(l), ",")
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+
+	if items[0] == "*" {
+		return !slices.Contains(items[1:], "!"+schoolCode)
+	}
+	return slices.Contains(items, schoolCode)
+}
+
+// IsEmpty reports whether the list is blank, and so allows no school.
+func (l SchoolAllowlist) IsEmpty() bool {
+	return strings.TrimSpace(string(l)) == ""
+}
+
+// validate returns an error naming setting and the first invalid item, or nil if the list is a valid form of [SchoolAllowlist.Allows]. Repeated codes are accepted.
+func (l SchoolAllowlist) validate(setting string) error {
+	if l.IsEmpty() {
+		return nil
+	}
+
+	items := strings.Split(string(l), ",")
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+
+	allowsEverySchool := items[0] == "*"
+	if allowsEverySchool {
+		items = items[1:]
+	}
+
+	for _, item := range items {
+		code, excludesSchool := strings.CutPrefix(item, "!")
+		switch {
+		case item == "":
+			return fmt.Errorf("%s must not contain an empty item; got %q", setting, l)
+		case item == "*":
+			return fmt.Errorf("%s must have * only as its first item; got %q", setting, l)
+		case excludesSchool && !allowsEverySchool:
+			return fmt.Errorf("%s must start with * to exclude a code; got %q", setting, item)
+		case !excludesSchool && allowsEverySchool:
+			return fmt.Errorf("%s must list only excluded codes after *; got %q", setting, item)
+		case !edupass.IsLocationCode(code):
+			return fmt.Errorf("%s must contain only 4-digit school codes; got %q", setting, item)
+		}
+	}
+	return nil
 }
 
 // must is a helper function to panic if an error is not nil.
