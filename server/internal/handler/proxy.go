@@ -147,7 +147,7 @@ func (h *Handler) proxy() http.Handler {
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		signedToken, err := token.SignedString([]byte(b.signingKey))
 		if err != nil {
-			logger.Error("failed to sign JWT", "app", name, "err", err)
+			logger.Error("failed to sign JWT", "app", b.app, "err", err)
 			httputil.RenderJSON(w, logger, http.StatusInternalServerError, &httputil.ErrorResponse{
 				Message: http.StatusText(http.StatusInternalServerError),
 			})
