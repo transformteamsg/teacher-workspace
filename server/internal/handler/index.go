@@ -46,23 +46,14 @@ func (h *Handler) index() http.Handler {
 // It offers each app that is registered and whose allowlist allows the school.
 // The app keys must match AppKey in apps/host/src/stores/preloaded-state.ts, or the host hides the app.
 func (h *Handler) allowedApps(schoolCode string) ([]Remote, []string) {
-	cfg := h.cfg.RemoteApps
 	remotes := []Remote{}
 	apps := []string{}
 
-	if cfg.IsPostsRegistered() && cfg.PostsAllowedSchoolCodes.Allows(schoolCode) {
-		remotes = append(remotes, Remote{Name: "pg", Entry: cfg.PostsManifestURL.String()})
-		apps = append(apps, "posts")
-	}
-	// Groups shares the Posts manifest, which exposes both modules, so it
-	// registers under the same remote name.
-	if cfg.IsGroupsRegistered() && cfg.GroupsAllowedSchoolCodes.Allows(schoolCode) {
-		remotes = append(remotes, Remote{Name: "pg", Entry: cfg.GroupsManifestURL.String()})
-		apps = append(apps, "groups")
-	}
-	if cfg.IsStudentInsightsRegistered() && cfg.StudentsAllowedSchoolCodes.Allows(schoolCode) {
-		remotes = append(remotes, Remote{Name: "student_insights", Entry: cfg.StudentInsightsManifestURL.String()})
-		apps = append(apps, "students")
+	for _, a := range h.cfg.RemoteApps.RemoteApps() {
+		if a.IsRegistered() && a.Allowlist.Allows(schoolCode) {
+			remotes = append(remotes, Remote{Name: a.RemoteName, Entry: a.ManifestURL.String()})
+			apps = append(apps, a.App)
+		}
 	}
 
 	return remotes, apps
