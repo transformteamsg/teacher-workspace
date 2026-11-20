@@ -527,115 +527,8 @@ func (cfg RemoteAppsConfig) validate() error {
 		errs = append(errs, fmt.Errorf("TW_REMOTE_PROXY_STREAM_TIMEOUT must be > 0; got %v", cfg.ProxyStreamTimeout))
 	}
 
-	if cfg.PostsManifestURL != nil || cfg.PostsBackendBaseURL != nil || cfg.PostsBackendSigningKey != "" {
-		if cfg.PostsManifestURL == nil {
-			errs = append(errs, errors.New("TW_REMOTE_POSTS_MANIFEST_URL is required to register the posts remote"))
-		} else {
-			if cfg.PostsManifestURL.Scheme != "http" && cfg.PostsManifestURL.Scheme != "https" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_POSTS_MANIFEST_URL must use scheme http or https; got %q", cfg.PostsManifestURL))
-			}
-			if cfg.PostsManifestURL.Host == "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_POSTS_MANIFEST_URL must include host[:port]; got %q", cfg.PostsManifestURL))
-			}
-		}
-		if cfg.PostsBackendBaseURL == nil {
-			errs = append(errs, errors.New("TW_REMOTE_POSTS_BACKEND_BASE_URL is required to register the posts remote"))
-		} else {
-			if cfg.PostsBackendBaseURL.Scheme != "http" && cfg.PostsBackendBaseURL.Scheme != "https" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_POSTS_BACKEND_BASE_URL must use scheme http or https; got %q", cfg.PostsBackendBaseURL))
-			}
-			if cfg.PostsBackendBaseURL.Host == "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_POSTS_BACKEND_BASE_URL must include host[:port]; got %q", cfg.PostsBackendBaseURL))
-			}
-			if cfg.PostsBackendBaseURL.RawQuery != "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_POSTS_BACKEND_BASE_URL must not include a query; got %q", cfg.PostsBackendBaseURL))
-			}
-			if cfg.PostsBackendBaseURL.Fragment != "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_POSTS_BACKEND_BASE_URL must not include a fragment; got %q", cfg.PostsBackendBaseURL))
-			}
-		}
-		if cfg.PostsBackendSigningKey == "" {
-			errs = append(errs, errors.New("TW_REMOTE_POSTS_BACKEND_SIGNING_KEY is required to register the posts remote"))
-		} else {
-			// RFC 7518, section 3.2 requires a key at least as big as hash output (HS256).
-			if keyLength := len(cfg.PostsBackendSigningKey); keyLength < sha256.Size {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_POSTS_BACKEND_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, keyLength))
-			}
-		}
-	}
-
-	if cfg.GroupsManifestURL != nil || cfg.GroupsBackendBaseURL != nil || cfg.GroupsBackendSigningKey != "" {
-		if cfg.GroupsManifestURL == nil {
-			errs = append(errs, errors.New("TW_REMOTE_GROUPS_MANIFEST_URL is required to register the groups remote"))
-		} else {
-			if cfg.GroupsManifestURL.Scheme != "http" && cfg.GroupsManifestURL.Scheme != "https" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_MANIFEST_URL must use scheme http or https; got %q", cfg.GroupsManifestURL))
-			}
-			if cfg.GroupsManifestURL.Host == "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_MANIFEST_URL must include host[:port]; got %q", cfg.GroupsManifestURL))
-			}
-		}
-		if cfg.GroupsBackendBaseURL == nil {
-			errs = append(errs, errors.New("TW_REMOTE_GROUPS_BACKEND_BASE_URL is required to register the groups remote"))
-		} else {
-			if cfg.GroupsBackendBaseURL.Scheme != "http" && cfg.GroupsBackendBaseURL.Scheme != "https" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must use scheme http or https; got %q", cfg.GroupsBackendBaseURL))
-			}
-			if cfg.GroupsBackendBaseURL.Host == "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must include host[:port]; got %q", cfg.GroupsBackendBaseURL))
-			}
-			if cfg.GroupsBackendBaseURL.RawQuery != "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a query; got %q", cfg.GroupsBackendBaseURL))
-			}
-			if cfg.GroupsBackendBaseURL.Fragment != "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a fragment; got %q", cfg.GroupsBackendBaseURL))
-			}
-		}
-		if cfg.GroupsBackendSigningKey == "" {
-			errs = append(errs, errors.New("TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY is required to register the groups remote"))
-		} else {
-			// RFC 7518, section 3.2 requires a key at least as big as hash output (HS256).
-			if keyLength := len(cfg.GroupsBackendSigningKey); keyLength < sha256.Size {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, keyLength))
-			}
-		}
-	}
-
-	if cfg.StudentInsightsManifestURL != nil || cfg.StudentInsightsBackendBaseURL != nil || cfg.StudentInsightsBackendSigningKey != "" {
-		if cfg.StudentInsightsManifestURL == nil {
-			errs = append(errs, errors.New("TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL is required to register the student insights remote"))
-		} else {
-			if cfg.StudentInsightsManifestURL.Scheme != "http" && cfg.StudentInsightsManifestURL.Scheme != "https" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL must use scheme http or https; got %q", cfg.StudentInsightsManifestURL))
-			}
-			if cfg.StudentInsightsManifestURL.Host == "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL must include host[:port]; got %q", cfg.StudentInsightsManifestURL))
-			}
-		}
-		if cfg.StudentInsightsBackendBaseURL == nil {
-			errs = append(errs, errors.New("TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL is required to register the student insights remote"))
-		} else {
-			if cfg.StudentInsightsBackendBaseURL.Scheme != "http" && cfg.StudentInsightsBackendBaseURL.Scheme != "https" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must use scheme http or https; got %q", cfg.StudentInsightsBackendBaseURL))
-			}
-			if cfg.StudentInsightsBackendBaseURL.Host == "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must include host[:port]; got %q", cfg.StudentInsightsBackendBaseURL))
-			}
-			if cfg.StudentInsightsBackendBaseURL.RawQuery != "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must not include a query; got %q", cfg.StudentInsightsBackendBaseURL))
-			}
-			if cfg.StudentInsightsBackendBaseURL.Fragment != "" {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must not include a fragment; got %q", cfg.StudentInsightsBackendBaseURL))
-			}
-		}
-		if cfg.StudentInsightsBackendSigningKey == "" {
-			errs = append(errs, errors.New("TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY is required to register the student insights remote"))
-		} else {
-			// RFC 7518, section 3.2 requires a key at least as big as hash output (HS256).
-			if keyLength := len(cfg.StudentInsightsBackendSigningKey); keyLength < sha256.Size {
-				errs = append(errs, fmt.Errorf("TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, keyLength))
-			}
-		}
+	for _, a := range cfg.RemoteApps() {
+		errs = append(errs, a.validate())
 	}
 
 	for _, a := range cfg.Allowlists() {
@@ -707,6 +600,53 @@ type RemoteApp struct {
 // IsRegistered reports whether the app has all of its registration values set.
 func (a RemoteApp) IsRegistered() bool {
 	return a.ManifestURL != nil && a.BackendBaseURL != nil && a.BackendSigningKey != ""
+}
+
+// validate returns an error describing every invalid registration value, or nil if the app has none of them set or all of them valid.
+func (a RemoteApp) validate() error {
+	if a.ManifestURL == nil && a.BackendBaseURL == nil && a.BackendSigningKey == "" {
+		return nil
+	}
+
+	var errs []error
+	manifestSetting := a.SettingPrefix + "_MANIFEST_URL"
+	backendSetting := a.SettingPrefix + "_BACKEND_BASE_URL"
+	keySetting := a.SettingPrefix + "_BACKEND_SIGNING_KEY"
+
+	if a.ManifestURL == nil {
+		errs = append(errs, fmt.Errorf("%s is required to register the %s remote", manifestSetting, a.Label))
+	} else {
+		if a.ManifestURL.Scheme != "http" && a.ManifestURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("%s must use scheme http or https; got %q", manifestSetting, a.ManifestURL))
+		}
+		if a.ManifestURL.Host == "" {
+			errs = append(errs, fmt.Errorf("%s must include host[:port]; got %q", manifestSetting, a.ManifestURL))
+		}
+	}
+	if a.BackendBaseURL == nil {
+		errs = append(errs, fmt.Errorf("%s is required to register the %s remote", backendSetting, a.Label))
+	} else {
+		if a.BackendBaseURL.Scheme != "http" && a.BackendBaseURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("%s must use scheme http or https; got %q", backendSetting, a.BackendBaseURL))
+		}
+		if a.BackendBaseURL.Host == "" {
+			errs = append(errs, fmt.Errorf("%s must include host[:port]; got %q", backendSetting, a.BackendBaseURL))
+		}
+		if a.BackendBaseURL.RawQuery != "" {
+			errs = append(errs, fmt.Errorf("%s must not include a query; got %q", backendSetting, a.BackendBaseURL))
+		}
+		if a.BackendBaseURL.Fragment != "" {
+			errs = append(errs, fmt.Errorf("%s must not include a fragment; got %q", backendSetting, a.BackendBaseURL))
+		}
+	}
+	if a.BackendSigningKey == "" {
+		errs = append(errs, fmt.Errorf("%s is required to register the %s remote", keySetting, a.Label))
+	} else if keyLength := len(a.BackendSigningKey); keyLength < sha256.Size {
+		// RFC 7518, section 3.2 requires a key at least as big as hash output (HS256).
+		errs = append(errs, fmt.Errorf("%s must be at least %d bytes; got %d", keySetting, sha256.Size, keyLength))
+	}
+
+	return errors.Join(errs...)
 }
 
 // RemoteApps returns every remote app, registered or not.
