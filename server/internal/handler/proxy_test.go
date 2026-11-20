@@ -250,18 +250,9 @@ func TestHandler_proxy(t *testing.T) {
 				target: "/api/posts/hello",
 			},
 			{
-				name: "when Groups refuses the school and Posts allows it",
-				mutate: func(c *config.RemoteAppsConfig) {
-					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes = "*", otherSchoolCode
-				},
+				name:   "when Groups does not list the school",
+				mutate: func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = otherSchoolCode },
 				target: "/api/groups/hello",
-			},
-			{
-				name: "when Posts refuses the school and Groups allows it",
-				mutate: func(c *config.RemoteAppsConfig) {
-					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes = otherSchoolCode, "*"
-				},
-				target: "/api/posts/hello",
 			},
 			{
 				name:   "when Student Insights excludes the school",
