@@ -538,22 +538,6 @@ func (cfg RemoteAppsConfig) validate() error {
 	return errors.Join(errs...)
 }
 
-// IsPostsRegistered reports whether the posts remote app has all of its values set.
-func (cfg RemoteAppsConfig) IsPostsRegistered() bool {
-	return cfg.PostsManifestURL != nil && cfg.PostsBackendBaseURL != nil && cfg.PostsBackendSigningKey != ""
-}
-
-// IsGroupsRegistered reports whether the groups remote app has all of its values set.
-func (cfg RemoteAppsConfig) IsGroupsRegistered() bool {
-	return cfg.GroupsManifestURL != nil && cfg.GroupsBackendBaseURL != nil && cfg.GroupsBackendSigningKey != ""
-}
-
-// IsStudentInsightsRegistered reports whether the student insights remote app
-// has all of its values set.
-func (cfg RemoteAppsConfig) IsStudentInsightsRegistered() bool {
-	return cfg.StudentInsightsManifestURL != nil && cfg.StudentInsightsBackendBaseURL != nil && cfg.StudentInsightsBackendSigningKey != ""
-}
-
 // RemoteApp is one remote app's settings, with the names each part of the workspace knows it by.
 // An app with none of its registration values set, such as Meetings, has only an allowlist.
 type RemoteApp struct {
