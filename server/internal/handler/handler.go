@@ -154,13 +154,22 @@ type Remote struct {
 	Entry string `json:"entry"`
 }
 
-// User is the signed-in user as the page shows it.
+// User is the signed-in user as the page receives it.
 type User struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 
 	// Role is the resolved role's display label, such as "Teacher".
 	Role string `json:"role"`
+
+	// RoleCode is the resolved role's Edupass base role code, such as
+	// "ROLE_TEACHER".
+	RoleCode string `json:"roleCode"`
+
+	// Attributes contains the user's Edupass attribute codes, such as
+	// "ATTR_PG_ADMIN". It must be non-nil, even when empty, since the page
+	// rejects a null list.
+	Attributes []string `json:"attributes"`
 }
 
 // renderIndexTemplate writes a 200 HTML response whose body is the index
