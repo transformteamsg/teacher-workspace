@@ -240,12 +240,12 @@ func TestHandler_index(t *testing.T) {
 			{
 				name:       "with their school's name",
 				schoolCode: "3015",
-				want:       `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher","school":"Whitley Secondary School"}`,
+				want:       `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher","roleCode":"ROLE_TEACHER","attributes":["ATTR_PG_ADMIN","ATTR_CCE"],"school":"Whitley Secondary School"}`,
 			},
 			{
 				name:       "without a school name when their school has no known name",
 				schoolCode: "1001",
-				want:       `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher"}`,
+				want:       `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher","roleCode":"ROLE_TEACHER","attributes":["ATTR_PG_ADMIN","ATTR_CCE"]}`,
 			},
 		}
 
@@ -264,7 +264,7 @@ func TestHandler_index(t *testing.T) {
 					Email:      "tan_mei_ling@schools.gov.sg",
 					Role:       "ROLE_TEACHER",
 					SchoolCode: test.schoolCode,
-					Attributes: []string{"ATTR_PG_USER"},
+					Attributes: []string{"ATTR_PG_ADMIN", "ATTR_CCE"},
 				})
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 				ctx = middleware.WithSession(ctx, sess)
@@ -287,6 +287,64 @@ func TestHandler_index(t *testing.T) {
 				}
 				if got := string(state.User); test.want != got {
 					t.Errorf("want state.User: %s; got: %s", test.want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("embeds an empty attributes list in preloaded state", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			attributes []string
+		}{
+			{
+				name:       "when the user has an empty attributes list",
+				attributes: []string{},
+			},
+			{
+				name:       "when the user has a nil attributes list",
+				attributes: nil,
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				h := &Handler{
+					cfg:           &config.Config{Env: config.EnvProduction},
+					indexTemplate: newPreloadedStateTemplate(),
+				}
+
+				sess := session.New()
+				sess.SetUser(session.User{
+					ID:         "a1b2c3",
+					Name:       "Tan Mei Ling",
+					Email:      "tan_mei_ling@schools.gov.sg",
+					Role:       "ROLE_TEACHER",
+					Attributes: test.attributes,
+				})
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+				rec := httptest.NewRecorder()
+
+				h.index().ServeHTTP(rec, req)
+
+				if want, got := http.StatusOK, rec.Code; want != got {
+					t.Fatalf("want status: %d; got: %d", want, got)
+				}
+
+				payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
+				var state struct {
+					User struct {
+						Attributes json.RawMessage `json:"attributes"`
+					} `json:"user"`
+				}
+				if err := json.Unmarshal([]byte(payload), &state); err != nil {
+					t.Fatalf("json.Unmarshal: %v", err)
+				}
+				if want, got := "[]", string(state.User.Attributes); want != got {
+					t.Errorf("want state.User.Attributes: %s; got: %s", want, got)
 				}
 			})
 		}

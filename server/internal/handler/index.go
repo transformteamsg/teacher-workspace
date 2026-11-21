@@ -27,10 +27,18 @@ func (h *Handler) index() http.Handler {
 			Apps:      []string{},
 		}
 		if user, ok := sess.User(); ok {
+			// A nil list is encoded as null, which the page rejects.
+			attributes := user.Attributes
+			if attributes == nil {
+				attributes = []string{}
+			}
+
 			state.User = &User{
-				Name:  user.Name,
-				Email: user.Email,
-				Role:  edupassRoleLabel(user.Role),
+				Name:       user.Name,
+				Email:      user.Email,
+				Role:       edupassRoleLabel(user.Role),
+				RoleCode:   user.Role,
+				Attributes: attributes,
 			}
 			if name, ok := h.schoolNames[user.SchoolCode]; ok {
 				state.User.School = name
