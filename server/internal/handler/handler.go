@@ -33,6 +33,10 @@ type Handler struct {
 	edupassOAuth2Config    *oauth2.Config
 	edupassIDTokenVerifier *oidc.IDTokenVerifier
 
+	// schoolNames contains the name of each school the configured Edupass
+	// grants roles at, by location code.
+	schoolNames map[string]string
+
 	// now is the time source for signed tokens. Nil means [time.Now].
 	now func() time.Time
 }
@@ -61,6 +65,7 @@ func New(cfg *config.Config) (*Handler, error) {
 			),
 			&oidc.Config{ClientID: cfg.Edupass.ClientID},
 		),
+		schoolNames: schoolNamesFor(cfg.Edupass.AppCode),
 	}
 
 	switch cfg.Env {
@@ -140,6 +145,10 @@ type PreloadedState struct {
 	// non-nil, even when empty, since the page rejects a null list.
 	Remotes []Remote `json:"remotes"`
 
+	// Apps contains the keys of the apps the page offers, such as "posts". It
+	// must be non-nil, even when empty, so the page always receives a list.
+	Apps []string `json:"apps"`
+
 	// User is the signed-in user, or nil when the page is served to a user who
 	// is not logged in.
 	User *User `json:"user,omitempty"`
@@ -170,6 +179,10 @@ type User struct {
 	// "ATTR_PG_ADMIN". It must be non-nil, even when empty, since the page
 	// rejects a null list.
 	Attributes []string `json:"attributes"`
+
+	// School is the name of the school the role was granted at, or empty when
+	// the school's code has no known name.
+	School string `json:"school,omitempty"`
 }
 
 // renderIndexTemplate writes a 200 HTML response whose body is the index

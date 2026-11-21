@@ -4,6 +4,8 @@
 export interface PreloadedState {
   csrfToken: string;
   remotes: readonly Remote[];
+  /** The keys of the apps the server allows this session, such as "posts". */
+  apps: readonly string[];
   user?: User;
 }
 
@@ -20,6 +22,8 @@ export interface Remote {
  * is their resolved role's display label, such as "Teacher", and `roleCode`
  * its Edupass code, such as "ROLE_TEACHER". `attributes` holds their Edupass
  * attribute codes, such as "ATTR_PG_ADMIN", and is empty when they have none.
+ * `school` is the name of the school the role was granted at, absent when the
+ * school's code has no known name.
  */
 export interface User {
   name: string;
@@ -27,6 +31,7 @@ export interface User {
   role: string;
   roleCode: string;
   attributes: readonly string[];
+  school?: string;
 }
 
 const INVALID_PRELOADED_STATE = 'Page has no valid preloaded state';
@@ -59,6 +64,8 @@ function isPreloadedState(value: unknown): value is PreloadedState {
     typeof (value as Partial<PreloadedState>).csrfToken === 'string' &&
     Array.isArray((value as Partial<PreloadedState>).remotes) &&
     (value as PreloadedState).remotes.every(isRemote) &&
+    Array.isArray((value as Partial<PreloadedState>).apps) &&
+    (value as PreloadedState).apps.every((app) => typeof app === 'string') &&
     ((value as Partial<PreloadedState>).user === undefined ||
       isUser((value as PreloadedState).user))
   );
@@ -73,7 +80,9 @@ function isUser(value: unknown): value is User {
     typeof (value as Partial<User>).role === 'string' &&
     typeof (value as Partial<User>).roleCode === 'string' &&
     Array.isArray((value as Partial<User>).attributes) &&
-    (value as User).attributes.every((attribute) => typeof attribute === 'string')
+    (value as User).attributes.every((attribute) => typeof attribute === 'string') &&
+    ((value as Partial<User>).school === undefined ||
+      typeof (value as Partial<User>).school === 'string')
   );
 }
 
@@ -87,3 +96,14 @@ function isRemote(value: unknown): value is Remote {
 }
 
 export const preloadedState: Readonly<PreloadedState> = readPreloadedState();
+
+/**
+ * An app the server may allow. The keys must match the ones `allowedApps` sends in
+ * `server/internal/handler/index.go`, or the host hides the app.
+ */
+export type AppKey = 'posts' | 'groups' | 'meetings' | 'students';
+
+/** Reports whether the server allows this session to use `app`. */
+export function isAppAllowed(app: AppKey): boolean {
+  return preloadedState.apps.includes(app);
+}

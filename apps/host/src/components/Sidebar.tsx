@@ -18,23 +18,30 @@ import {
   useSidebar,
 } from '~/components/ui/sidebar';
 import { cn } from '~/helpers/cn';
+import { type AppKey, isAppAllowed } from '~/stores/preloaded-state';
 
 interface NavItem {
   title: string;
   icon: LucideIcon;
   to: string;
+  /** Shown only when the server allows this app. */
+  app?: AppKey;
 }
 
 const mainNavItems: NavItem[] = [{ title: 'Home', icon: Home, to: '/' }];
 
-const studentInsightsItems: NavItem[] = [{ title: 'Profiles', icon: Users, to: '/students' }];
-
-const communicationsItems: NavItem[] = [
-  { title: 'Posts', icon: Mail, to: '/posts' },
-  { title: 'Meetings', icon: CalendarClock, to: '/meetings' },
+const studentInsightsItems: NavItem[] = [
+  { title: 'Profiles', icon: Users, to: '/students', app: 'students' },
 ];
 
-const manageItems: NavItem[] = [{ title: 'Student groups', icon: Layers, to: '/groups' }];
+const communicationsItems: NavItem[] = [
+  { title: 'Posts', icon: Mail, to: '/posts', app: 'posts' },
+  { title: 'Meetings', icon: CalendarClock, to: '/meetings', app: 'meetings' },
+];
+
+const manageItems: NavItem[] = [
+  { title: 'Student groups', icon: Layers, to: '/groups', app: 'groups' },
+];
 
 // Text that exists only in the expanded rail. Collapsing: fade and blur out in
 // 100ms so nothing is caught mid-truncate while the width moves. Expanding:
@@ -71,6 +78,22 @@ function NavMenuItems({ items }: { items: NavItem[] }) {
         <NavMenuItem key={item.title} item={item} />
       ))}
     </SidebarMenu>
+  );
+}
+
+function NavGroup({ label, items }: { label: string; items: NavItem[] }) {
+  const allowedItems = items.filter((item) => item.app === undefined || isAppAllowed(item.app));
+  if (allowedItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <NavMenuItems items={allowedItems} />
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
@@ -113,29 +136,9 @@ export function AppSidebar() {
             <NavMenuItems items={mainNavItems} />
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Student Insights</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <NavMenuItems items={studentInsightsItems} />
-          </SidebarGroupContent>
-        </SidebarGroup>
-        {/* TODO(#306): remove the condition. */}
-        {import.meta.env.PUBLIC_HIDE_PG_FEATURES !== 'true' && (
-          <>
-            <SidebarGroup>
-              <SidebarGroupLabel>Communications</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <NavMenuItems items={communicationsItems} />
-              </SidebarGroupContent>
-            </SidebarGroup>
-            <SidebarGroup>
-              <SidebarGroupLabel>Manage</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <NavMenuItems items={manageItems} />
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </>
-        )}
+        <NavGroup label="Student Insights" items={studentInsightsItems} />
+        <NavGroup label="Communications" items={communicationsItems} />
+        <NavGroup label="Manage" items={manageItems} />
       </SidebarContent>
 
       <SidebarFooter>

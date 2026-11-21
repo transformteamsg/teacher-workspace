@@ -105,20 +105,26 @@ In production the server parses `apps/host/dist/index.html` once at startup and 
 
 ### Running against a local remote
 
-Posts and Groups are served by the `pg` remote, and Student Insights by `student_insights`. Neither is compiled into the host: the server reads their manifest URLs at startup and embeds them in the page. Unset, a remote is not registered and its route renders the unavailable fallback.
+Posts and Groups are served by the `pg` remote, and Student Insights by `student_insights`. Neither is compiled into the host: the server reads their manifest URLs at startup and embeds them in the page. Unset, a remote is not registered and its route shows the 404 page.
 
-Point the host at a remote running locally, where the Parents Gateway dev server defaults to port 3004:
+An app is registered only when its manifest URL, backend base URL and backend signing key are all set, and is offered only to the schools its allowlist allows. An unset allowlist allows no school, and `*` allows every school.
 
-```bash
-TW_REMOTE_POSTS_MANIFEST_URL=http://127.0.0.1:3004/mf-manifest.json go run ./server/cmd/tw
+Point the host at a remote running locally, where the Parents Gateway dev server defaults to port 3004, by setting all four in `.env`:
+
+```dotenv
+TW_REMOTE_POSTS_MANIFEST_URL=http://127.0.0.1:3004/mf-manifest.json
+TW_REMOTE_POSTS_BACKEND_BASE_URL=<the Posts backend's URL>
+TW_REMOTE_POSTS_BACKEND_SIGNING_KEY=<the key the Posts backend verifies, at least 32 bytes>
+TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES=*
 ```
 
-Set both variables to run two remotes at once:
+To run Student Insights as well, add its four settings the same way:
 
-```bash
-TW_REMOTE_POSTS_MANIFEST_URL=http://127.0.0.1:3004/mf-manifest.json \
-  TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL=http://127.0.0.1:3005/mf-manifest.json \
-  go run ./server/cmd/tw
+```dotenv
+TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL=http://127.0.0.1:3005/mf-manifest.json
+TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL=<the Student Insights backend's URL>
+TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY=<the key the Student Insights backend verifies, at least 32 bytes>
+TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES=*
 ```
 
 The host and the remote share a single React instance, so both must be development builds or both production builds. A production host pointed at a remote's dev server fails to render it and shows the route's fallback.

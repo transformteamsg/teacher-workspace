@@ -87,71 +87,109 @@ func TestHandler_index(t *testing.T) {
 		}
 	})
 
-	t.Run("embeds configured remotes in preloaded state", func(t *testing.T) {
+	t.Run("offers only the registered apps the session's school is allowed", func(t *testing.T) {
+		const (
+			postsRemote    = `{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}`
+			groupsRemote   = `{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"}`
+			studentsRemote = `{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}`
+
+			schoolCode      = "1234"
+			otherSchoolCode = "0001"
+		)
+		allowAll := func(c *config.RemoteAppsConfig) {
+			c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes, c.StudentsAllowedSchoolCodes = "*", "*", "*"
+		}
 		tests := []struct {
-			name       string
-			remoteApps config.RemoteAppsConfig
-			want       string
+			name        string
+			mutate      func(*config.RemoteAppsConfig)
+			wantRemotes string
+			wantApps    string
 		}{
 			{
-				name: "all remotes configured",
-				remoteApps: config.RemoteAppsConfig{
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
-					PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
-
-					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.groups.example.com"},
-					GroupsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
-
-					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
-					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
-					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
-				},
-				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"},{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"},{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				name:        "when every app allows every school",
+				mutate:      allowAll,
+				wantRemotes: "[" + postsRemote + "," + groupsRemote + "," + studentsRemote + "]",
+				wantApps:    `["posts","groups","students"]`,
 			},
 			{
-				name: "posts remote only",
-				remoteApps: config.RemoteAppsConfig{
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
-					PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
-				},
-				want: `[{"name":"pg","entry":"https://posts.example.com/mf-manifest.json"}]`,
+				name:        "when only Posts allows the school",
+				mutate:      func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = schoolCode },
+				wantRemotes: "[" + postsRemote + "]",
+				wantApps:    `["posts"]`,
 			},
 			{
-				name: "groups remote only",
-				remoteApps: config.RemoteAppsConfig{
-					GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
-					GroupsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.groups.example.com"},
-					GroupsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
-				},
-				want: `[{"name":"pg","entry":"https://groups.example.com/mf-manifest.json"}]`,
+				name:        "when only Groups allows the school",
+				mutate:      func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = schoolCode },
+				wantRemotes: "[" + groupsRemote + "]",
+				wantApps:    `["groups"]`,
 			},
 			{
-				name: "student insights remote only",
-				remoteApps: config.RemoteAppsConfig{
-					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
-					StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
-					StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
-				},
-				want: `[{"name":"student_insights","entry":"https://student-insights.example.com/mf-manifest.json"}]`,
+				name:        "when only Student Insights allows the school",
+				mutate:      func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = schoolCode },
+				wantRemotes: "[" + studentsRemote + "]",
+				wantApps:    `["students"]`,
 			},
 			{
-				name:       "no remotes configured",
-				remoteApps: config.RemoteAppsConfig{},
-				want:       `[]`,
+				name: "when no list includes the school",
+				mutate: func(c *config.RemoteAppsConfig) {
+					c.PostsAllowedSchoolCodes, c.GroupsAllowedSchoolCodes, c.StudentsAllowedSchoolCodes = otherSchoolCode, otherSchoolCode, otherSchoolCode
+				},
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
+			},
+			{
+				name:        "when every list is unset",
+				mutate:      func(c *config.RemoteAppsConfig) {},
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
+			},
+			{
+				name: "when Student Insights excludes the school",
+				mutate: func(c *config.RemoteAppsConfig) {
+					allowAll(c)
+					c.StudentsAllowedSchoolCodes = "*,!" + schoolCode
+				},
+				wantRemotes: "[" + postsRemote + "," + groupsRemote + "]",
+				wantApps:    `["posts","groups"]`,
+			},
+			{
+				name:        "when only Meetings allows every school",
+				mutate:      func(c *config.RemoteAppsConfig) { c.MeetingsAllowedSchoolCodes = "*" },
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
+			},
+			{
+				name: "when no app is registered",
+				mutate: func(c *config.RemoteAppsConfig) {
+					*c = config.RemoteAppsConfig{}
+					allowAll(c)
+				},
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
+			},
+			{
+				name: "when Student Insights is only partly registered",
+				mutate: func(c *config.RemoteAppsConfig) {
+					c.StudentInsightsBackendBaseURL = nil
+					c.StudentsAllowedSchoolCodes = "*"
+				},
+				wantRemotes: `[]`,
+				wantApps:    `[]`,
 			},
 		}
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
+				remoteApps := registeredRemoteApps()
+				test.mutate(&remoteApps)
 				h := &Handler{
-					cfg:           &config.Config{Env: config.EnvProduction, RemoteApps: test.remoteApps},
+					cfg:           &config.Config{Env: config.EnvProduction, RemoteApps: remoteApps},
 					indexTemplate: newPreloadedStateTemplate(),
 				}
 
-				ctx := middleware.WithSession(t.Context(), session.New())
+				sess := session.New()
+				sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: schoolCode})
+				ctx := middleware.WithSession(t.Context(), sess)
 
 				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
@@ -159,49 +197,98 @@ func TestHandler_index(t *testing.T) {
 				h.index().ServeHTTP(rec, req)
 
 				state := decodePreloadedState(t, rec.Body.String())
-				if want, got := test.want, string(state.Remotes); want != got {
-					t.Errorf("want: %q; got: %q", want, got)
+				if want, got := test.wantRemotes, string(state.Remotes); want != got {
+					t.Errorf("want state.Remotes: %s; got: %s", want, got)
+				}
+				if want, got := test.wantApps, string(state.Apps); want != got {
+					t.Errorf("want state.Apps: %s; got: %s", want, got)
 				}
 			})
 		}
 	})
 
-	t.Run("embeds the user in preloaded state when the session is authenticated", func(t *testing.T) {
+	t.Run("offers no apps when the session has no user", func(t *testing.T) {
+		remoteApps := registeredRemoteApps()
+		remoteApps.PostsAllowedSchoolCodes, remoteApps.GroupsAllowedSchoolCodes, remoteApps.StudentsAllowedSchoolCodes = "*", "*", "*"
 		h := &Handler{
-			cfg:           &config.Config{Env: config.EnvProduction},
+			cfg:           &config.Config{Env: config.EnvProduction, RemoteApps: remoteApps},
 			indexTemplate: newPreloadedStateTemplate(),
 		}
 
-		sess := session.New()
-		sess.SetUser(session.User{
-			ID:         "a1b2c3",
-			Name:       "Tan Mei Ling",
-			Email:      "tan_mei_ling@schools.gov.sg",
-			Role:       "ROLE_TEACHER",
-			Attributes: []string{"ATTR_PG_ADMIN", "ATTR_CCE"},
-		})
-		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
-		ctx = middleware.WithSession(ctx, sess)
+		ctx := middleware.WithSession(t.Context(), session.New())
 
 		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		h.index().ServeHTTP(rec, req)
 
-		if want, got := http.StatusOK, rec.Code; want != got {
-			t.Fatalf("want status: %d; got: %d", want, got)
+		state := decodePreloadedState(t, rec.Body.String())
+		if want, got := `[]`, string(state.Remotes); want != got {
+			t.Errorf("want state.Remotes: %s; got: %s", want, got)
+		}
+		if want, got := `[]`, string(state.Apps); want != got {
+			t.Errorf("want state.Apps: %s; got: %s", want, got)
+		}
+	})
+
+	t.Run("embeds the user in preloaded state when the session is authenticated", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			schoolCode string
+			want       string
+		}{
+			{
+				name:       "with their school's name",
+				schoolCode: "3015",
+				want:       `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher","roleCode":"ROLE_TEACHER","attributes":["ATTR_PG_ADMIN","ATTR_CCE"],"school":"Whitley Secondary School"}`,
+			},
+			{
+				name:       "without a school name when their school has no known name",
+				schoolCode: "1001",
+				want:       `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher","roleCode":"ROLE_TEACHER","attributes":["ATTR_PG_ADMIN","ATTR_CCE"]}`,
+			},
 		}
 
-		payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
-		var state struct {
-			User json.RawMessage `json:"user"`
-		}
-		if err := json.Unmarshal([]byte(payload), &state); err != nil {
-			t.Fatalf("json.Unmarshal: %v", err)
-		}
-		want := `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher","roleCode":"ROLE_TEACHER","attributes":["ATTR_PG_ADMIN","ATTR_CCE"]}`
-		if got := string(state.User); want != got {
-			t.Errorf("want state.User: %s; got: %s", want, got)
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				h := &Handler{
+					cfg:           &config.Config{Env: config.EnvProduction},
+					indexTemplate: newPreloadedStateTemplate(),
+					schoolNames:   map[string]string{"3015": "Whitley Secondary School"},
+				}
+
+				sess := session.New()
+				sess.SetUser(session.User{
+					ID:         "a1b2c3",
+					Name:       "Tan Mei Ling",
+					Email:      "tan_mei_ling@schools.gov.sg",
+					Role:       "ROLE_TEACHER",
+					SchoolCode: test.schoolCode,
+					Attributes: []string{"ATTR_PG_ADMIN", "ATTR_CCE"},
+				})
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+				rec := httptest.NewRecorder()
+
+				h.index().ServeHTTP(rec, req)
+
+				if want, got := http.StatusOK, rec.Code; want != got {
+					t.Fatalf("want status: %d; got: %d", want, got)
+				}
+
+				payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
+				var state struct {
+					User json.RawMessage `json:"user"`
+				}
+				if err := json.Unmarshal([]byte(payload), &state); err != nil {
+					t.Fatalf("json.Unmarshal: %v", err)
+				}
+				if got := string(state.User); test.want != got {
+					t.Errorf("want state.User: %s; got: %s", test.want, got)
+				}
+			})
 		}
 	})
 
@@ -468,4 +555,21 @@ func TestHandler_static(t *testing.T) {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
 	})
+}
+
+// registeredRemoteApps returns a remote apps config with Posts, Groups and Student Insights registered and no allowlist set.
+func registeredRemoteApps() config.RemoteAppsConfig {
+	return config.RemoteAppsConfig{
+		PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+		PostsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.posts.example.com"},
+		PostsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+
+		GroupsManifestURL:       &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+		GroupsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.groups.example.com"},
+		GroupsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+
+		StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
+		StudentInsightsBackendBaseURL:    &url.URL{Scheme: "https", Host: "api.student-insights.example.com"},
+		StudentInsightsBackendSigningKey: "a-string-secret-at-least-256-bits-long",
+	}
 }

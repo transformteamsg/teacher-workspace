@@ -1,6 +1,6 @@
 @import '@fontsource-variable/inter/opsz.css';
 @import 'tailwindcss' prefix(tw);
-@import 'tw-animate-css';
+@import 'tw-animate-css/prefix';
 @import 'shadcn/tailwind.css';
 @import '@radix-ui/colors/slate.css';
 @import '@radix-ui/colors/crimson.css';
@@ -55,6 +55,7 @@
   --radius-card: 14px;
 
   --duration-sidebar: 200ms;
+  --docked-drawer-shift: 250ms;
   --ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
 }
 

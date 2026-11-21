@@ -40,6 +40,7 @@ describe('preloadedState', () => {
         const { preloadedState } = await importStore({
           csrfToken: 'token',
           remotes: [],
+          apps: [],
           user: test.user,
         });
 
@@ -62,7 +63,7 @@ describe('preloadedState', () => {
     for (const test of tests) {
       it(test.name, async () => {
         await assert.rejects(
-          importStore({ csrfToken: 'token', remotes: [], user: test.user }),
+          importStore({ csrfToken: 'token', remotes: [], apps: [], user: test.user }),
           /Page has no valid preloaded state/,
         );
       });

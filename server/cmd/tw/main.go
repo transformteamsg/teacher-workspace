@@ -53,6 +53,12 @@ func main() {
 
 	level.Set(cfg.LogLevel)
 
+	for _, a := range cfg.RemoteApps.Allowlists() {
+		if a.Allowlist.IsEmpty() {
+			slog.Warn("remote app has no allowed schools", "app", a.App, "setting", a.Setting)
+		}
+	}
+
 	var store session.Store
 	switch cfg.Session.StoreProvider {
 	case config.SessionStoreProviderValkey:

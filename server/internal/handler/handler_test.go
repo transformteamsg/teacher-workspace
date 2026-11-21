@@ -75,10 +75,11 @@ func TestHandler_Routes(t *testing.T) {
 					PostLogoutRedirectURL: &url.URL{Scheme: "https", Host: "tw.example.com", Path: "/login"},
 				},
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL:         time.Minute,
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    postsBackendURL,
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					SignedTokenTTL:          time.Minute,
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     postsBackendURL,
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
