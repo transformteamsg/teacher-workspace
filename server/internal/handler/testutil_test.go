@@ -39,12 +39,13 @@ func (p preloadedStateTemplate) Execute(_ context.Context, w io.Writer, data any
 	return p.tmpl.Execute(w, data)
 }
 
-// embeddedPreloadedState is the preloaded state as the page embeds it. Remotes
-// and Apps hold the raw JSON, so a test can tell an empty list from null.
+// embeddedPreloadedState is the preloaded state as the page embeds it. Remotes,
+// Apps and User hold the raw JSON, so a test can tell an empty list from null.
 type embeddedPreloadedState struct {
 	CSRFToken string          `json:"csrfToken"`
 	Remotes   json.RawMessage `json:"remotes"`
 	Apps      json.RawMessage `json:"apps"`
+	User      json.RawMessage `json:"user"`
 }
 
 // decodePreloadedState returns the preloaded state embedded in body, a page

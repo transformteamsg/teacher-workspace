@@ -278,13 +278,7 @@ func TestHandler_index(t *testing.T) {
 					t.Fatalf("want status: %d; got: %d", want, got)
 				}
 
-				payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
-				var state struct {
-					User json.RawMessage `json:"user"`
-				}
-				if err := json.Unmarshal([]byte(payload), &state); err != nil {
-					t.Fatalf("json.Unmarshal: %v", err)
-				}
+				state := decodePreloadedState(t, rec.Body.String())
 				if got := string(state.User); test.want != got {
 					t.Errorf("want state.User: %s; got: %s", test.want, got)
 				}
@@ -334,17 +328,10 @@ func TestHandler_index(t *testing.T) {
 					t.Fatalf("want status: %d; got: %d", want, got)
 				}
 
-				payload := strings.TrimSuffix(strings.TrimPrefix(rec.Body.String(), preloadedStateOpenTag), preloadedStateCloseTag)
-				var state struct {
-					User struct {
-						Attributes json.RawMessage `json:"attributes"`
-					} `json:"user"`
-				}
-				if err := json.Unmarshal([]byte(payload), &state); err != nil {
-					t.Fatalf("json.Unmarshal: %v", err)
-				}
-				if want, got := "[]", string(state.User.Attributes); want != got {
-					t.Errorf("want state.User.Attributes: %s; got: %s", want, got)
+				state := decodePreloadedState(t, rec.Body.String())
+				want := `{"name":"Tan Mei Ling","email":"tan_mei_ling@schools.gov.sg","role":"Teacher","roleCode":"ROLE_TEACHER","attributes":[]}`
+				if got := string(state.User); want != got {
+					t.Errorf("want state.User: %s; got: %s", want, got)
 				}
 			})
 		}
