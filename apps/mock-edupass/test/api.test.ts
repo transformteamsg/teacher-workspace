@@ -728,6 +728,11 @@ describe('POST /token', () => {
       },
       { account: 'staff-5', title: 'pre-prod TWSTG codes', groups: ['0001_TWSTG_ROLE_TEACHER'] },
       {
+        account: 'staff-21',
+        title: 'a role at a school with a known name',
+        groups: ['0701_TW_ROLE_TEACHER'],
+      },
+      {
         account: 'staff-6',
         title: 'roles across multiple schools',
         groups: ['0001_TW_ROLE_TEACHER', '1001_TW_ROLE_HOD'],
@@ -778,22 +783,22 @@ describe('POST /token', () => {
         groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ATTR_CCE', '5678_TW_ATTR_SDE'],
       },
       {
-        account: 'staff-21',
+        account: 'staff-22',
         title: 'a base role and the Parents Gateway user attribute',
         groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_USER'],
       },
       {
-        account: 'staff-22',
+        account: 'staff-23',
         title: 'a base role and both Parents Gateway attributes',
         groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_USER', '0001_TW_ATTR_PG_ADMIN'],
       },
       {
-        account: 'staff-23',
+        account: 'staff-24',
         title: 'a base role and the Parents Gateway user attribute after another attribute',
         groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_CCE', '0001_TW_ATTR_PG_USER'],
       },
       {
-        account: 'staff-24',
+        account: 'staff-25',
         title: 'a vice principal role and no attributes',
         groups: ['0001_TW_ROLE_VICE_PRINCIPAL'],
       },

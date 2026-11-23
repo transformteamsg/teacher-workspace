@@ -133,26 +133,32 @@ export const accounts: Account[] = [
   },
   {
     id: 'staff-21',
-    name: 'Vera Chua',
-    cesEmail: 'vera.chua@example.com',
-    groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_USER'],
+    name: 'Vera Lim',
+    cesEmail: 'vera.lim@example.com',
+    groups: ['0701_TW_ROLE_TEACHER'],
   },
   {
     id: 'staff-22',
     name: 'Wendy Loh',
     cesEmail: 'wendy.loh@example.com',
-    groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_USER', '0001_TW_ATTR_PG_ADMIN'],
+    groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_USER'],
   },
   {
     id: 'staff-23',
     name: 'Xavier Pang',
     cesEmail: 'xavier.pang@example.com',
-    groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_CCE', '0001_TW_ATTR_PG_USER'],
+    groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_USER', '0001_TW_ATTR_PG_ADMIN'],
   },
   {
     id: 'staff-24',
     name: 'Yusuf Rahman',
     cesEmail: 'yusuf.rahman@example.com',
+    groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_CCE', '0001_TW_ATTR_PG_USER'],
+  },
+  {
+    id: 'staff-25',
+    name: 'Zachary Seah',
+    cesEmail: 'zachary.seah@example.com',
     groups: ['0001_TW_ROLE_VICE_PRINCIPAL'],
   },
 ];
