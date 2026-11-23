@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.0.8 (2026-11-23)
+
+Offers each remote app only to the schools its allowlist allows: the host shows a teacher only the apps their school is allowed, and the server refuses and logs proxied requests from schools that are not. The profile menu now shows the teacher's school name, and the login page reloads when the browser restores it from the back/forward cache.
+
+Each registered remote app now needs an allowlist: set `TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES`, `TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES`, `TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES` and `TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES` in each deployed environment before deploying this version. An unset allowlist allows no school, so the app disappears for every teacher, and `*` allows every school ([#333](https://github.com/transformteamsg/teacher-workspace/pull/333)).
+
+Versions stay in the `0.0.x` series while the host shell is pre-release, so this is a patch bump despite the features below.
+
+### Features ✨
+
+- feat(`apps/host`): show remote apps only when the server allows them ([#338](https://github.com/transformteamsg/teacher-workspace/pull/338)) ([34929a2](https://github.com/transformteamsg/teacher-workspace/commit/34929a2))
+- feat(`server/internal/handler`): refuse and log proxied requests from schools not allowed ([#335](https://github.com/transformteamsg/teacher-workspace/pull/335)) ([4e33a1b](https://github.com/transformteamsg/teacher-workspace/commit/4e33a1b))
+- feat(`server/internal/handler`): offer only the apps the session's school is allowed ([#334](https://github.com/transformteamsg/teacher-workspace/pull/334)) ([fd5b278](https://github.com/transformteamsg/teacher-workspace/commit/fd5b278))
+- feat(`server/internal/config`): add per-app allowed school code settings ([#333](https://github.com/transformteamsg/teacher-workspace/pull/333)) ([d0279b4](https://github.com/transformteamsg/teacher-workspace/commit/d0279b4))
+- feat: show the teacher's school name in the profile menu ([#337](https://github.com/transformteamsg/teacher-workspace/pull/337)) ([a91bbb0](https://github.com/transformteamsg/teacher-workspace/commit/a91bbb0))
+
+### Bug Fixes 🐛
+
+- fix(`LoginView`): reload the login page when the browser restores it from the back/forward cache ([#331](https://github.com/transformteamsg/teacher-workspace/pull/331)) ([e2fcf54](https://github.com/transformteamsg/teacher-workspace/commit/e2fcf54))
+- fix(`ci.yml`): check formatting instead of rewriting files in the format job ([#329](https://github.com/transformteamsg/teacher-workspace/pull/329)) ([da78fb9](https://github.com/transformteamsg/teacher-workspace/commit/da78fb9))
+
+### Chores 🧹
+
+- chore(`App.css`): import the prefixed `tw-animate-css` build and declare `--docked-drawer-shift` on `:root` ([#343](https://github.com/transformteamsg/teacher-workspace/pull/343)) ([c2baf94](https://github.com/transformteamsg/teacher-workspace/commit/c2baf94))
+- chore(`.vscode`): open `src` CSS files in Tailwind CSS mode ([#330](https://github.com/transformteamsg/teacher-workspace/pull/330)) ([2fb4985](https://github.com/transformteamsg/teacher-workspace/commit/2fb4985))
+
 ## 0.0.7 (2026-11-16)
 
 Ends the teacher's Edupass session on sign-out, rejects state-changing `/api/` requests that are cross-origin or carry no valid CSRF token, times out requests to remote app backends, and answers a handler panic with a 500. Groups becomes its own remote app, though release images now hide Posts and Student groups until Parents Gateway launches. The TW JWT's `attributes` claim now keeps only the Edupass attributes granted at the teacher's base role location.
