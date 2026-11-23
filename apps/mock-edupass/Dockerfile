@@ -3,7 +3,7 @@
 # ----------------------------------------
 # Dependencies stage
 # ----------------------------------------
-FROM node:24.19.0-trixie AS deps
+FROM node:24.22.1-trixie AS deps
 
 RUN mkdir /app
 WORKDIR /app
@@ -29,7 +29,7 @@ RUN pnpm --filter=@teacher-workspace/mock-edupass install \
 # ----------------------------------------
 # Production stage
 # ----------------------------------------
-FROM node:24.19.0-trixie-slim
+FROM node:24.22.1-trixie-slim
 
 ENV MOCK_EDUPASS_PORT=9000
 
