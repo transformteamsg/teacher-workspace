@@ -59,6 +59,7 @@ Configure your relying party with these values:
 | `staff-18` | Samuel Yeo | samuel.yeo@example.com | `6101_TW_ATTR_CCE` | An attribute at an MK school and no base role | Refused with `no_role`: no base role resolves, so the attribute is discarded too |
 | `staff-19` | Tina Goh | tina.goh@example.com | `1234_TW_ROLE_TEACHER`, `1234_TW_ATTR_CCE`, `1234_TW_ATTR_CCE` | An attribute granted twice at the base role's school; for deduplication testing | Signs in as `ROLE_TEACHER` with `ATTR_CCE` once |
 | `staff-20` | Umar Said | umar.said@example.com | `1234_TW_ROLE_TEACHER`, `1234_TW_ATTR_CCE`, `5678_TW_ATTR_SDE` | An attribute at the base role's school and one at another school; for attribute location testing | Signs in as `ROLE_TEACHER` with `ATTR_CCE` only: the `5678` attribute is discarded |
+| `staff-21` | Vera Lim | vera.lim@example.com | `0701_TW_ROLE_TEACHER` | Single role at a school with a known name (location `0701`); for school name and school allowlist testing | Signs in as `ROLE_TEACHER`, with the school name shown in the profile menu |
 
 ## How It Works
 
