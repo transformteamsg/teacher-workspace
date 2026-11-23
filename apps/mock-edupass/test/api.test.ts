@@ -728,6 +728,11 @@ describe('POST /token', () => {
       },
       { account: 'staff-5', title: 'pre-prod TWSTG codes', groups: ['0001_TWSTG_ROLE_TEACHER'] },
       {
+        account: 'staff-21',
+        title: 'a role at a school with a known name',
+        groups: ['0701_TW_ROLE_TEACHER'],
+      },
+      {
         account: 'staff-6',
         title: 'roles across multiple schools',
         groups: ['0001_TW_ROLE_TEACHER', '1001_TW_ROLE_HOD'],
