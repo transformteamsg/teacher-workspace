@@ -12,8 +12,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/transformteamsg/teacher-workspace/server/internal/edupass"
 )
 
 type Environment string
@@ -56,7 +59,7 @@ func Default() Config {
 		},
 		Session: SessionConfig{
 			Name:             "tw_session",
-			DefaultTTL:       3 * time.Hour,
+			DefaultTTL:       time.Hour,
 			AuthenticatedTTL: 30 * time.Minute,
 			Secure:           true,
 			StoreProvider:    SessionStoreProviderMemory,
@@ -69,13 +72,16 @@ func Default() Config {
 			ClientAuthMethod: OAuth2ClientAuthMethodClientSecretPost,
 		},
 		RemoteApps: RemoteAppsConfig{
-			SignedTokenTTL: 1 * time.Minute,
+			SignedTokenTTL:     1 * time.Minute,
+			ProxyTimeout:       25 * time.Second,
+			ProxyStreamTimeout: 5 * time.Minute,
 		},
 	}
 }
 
 // Validate returns an error describing every invalid field, or nil if the
-// configuration is valid.
+// configuration is valid. Constraints between fields are reported only once
+// every field is valid on its own.
 func (cfg *Config) Validate() error {
 	var errs []error
 
@@ -103,13 +109,22 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
-	return errors.Join(append(
+	if err := errors.Join(append(
 		errs,
 		cfg.Server.validate(),
 		cfg.Session.validate(),
 		cfg.RemoteApps.validate(),
 		cfg.Edupass.validate(),
-	)...)
+	)...); err != nil {
+		return err
+	}
+
+	// A proxy timeout must fire while the server can still write a response.
+	if cfg.RemoteApps.ProxyTimeout >= cfg.Server.WriteTimeout {
+		return fmt.Errorf("TW_REMOTE_PROXY_TIMEOUT must be < TW_SERVER_WRITE_TIMEOUT (%v); got %v", cfg.Server.WriteTimeout, cfg.RemoteApps.ProxyTimeout)
+	}
+
+	return nil
 }
 
 // ServerConfig represents the configuration for the HTTP server.
@@ -127,17 +142,17 @@ func (cfg ServerConfig) validate() error {
 	if cfg.Port < 1 || cfg.Port > 65535 {
 		errs = append(errs, fmt.Errorf("TW_SERVER_PORT must be 1-65535; got %d", cfg.Port))
 	}
-	if cfg.ReadHeaderTimeout < 0 {
-		errs = append(errs, fmt.Errorf("TW_SERVER_READ_HEADER_TIMEOUT must be >= 0; got %v", cfg.ReadHeaderTimeout))
+	if cfg.ReadHeaderTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_SERVER_READ_HEADER_TIMEOUT must be > 0; got %v", cfg.ReadHeaderTimeout))
 	}
-	if cfg.ReadTimeout < 0 {
-		errs = append(errs, fmt.Errorf("TW_SERVER_READ_TIMEOUT must be >= 0; got %v", cfg.ReadTimeout))
+	if cfg.ReadTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_SERVER_READ_TIMEOUT must be > 0; got %v", cfg.ReadTimeout))
 	}
-	if cfg.WriteTimeout < 0 {
-		errs = append(errs, fmt.Errorf("TW_SERVER_WRITE_TIMEOUT must be >= 0; got %v", cfg.WriteTimeout))
+	if cfg.WriteTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_SERVER_WRITE_TIMEOUT must be > 0; got %v", cfg.WriteTimeout))
 	}
-	if cfg.IdleTimeout < 0 {
-		errs = append(errs, fmt.Errorf("TW_SERVER_IDLE_TIMEOUT must be >= 0; got %v", cfg.IdleTimeout))
+	if cfg.IdleTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_SERVER_IDLE_TIMEOUT must be > 0; got %v", cfg.IdleTimeout))
 	}
 
 	return errors.Join(errs...)
@@ -175,6 +190,10 @@ func (cfg SessionConfig) validate() error {
 		// http.SetCookie drops a cookie whose name falls outside the token charset
 		// of RFC 6265, section 4.1.1, serializing it to "" instead.
 		errs = append(errs, fmt.Errorf("TW_SESSION_NAME must be a valid cookie name; got %q", cfg.Name))
+	} else if lower := strings.ToLower(cfg.Name); strings.HasPrefix(lower, "__host-") || strings.HasPrefix(lower, "__secure-") {
+		// The server adds __Host- itself when TW_SESSION_SECURE is true, and
+		// browsers drop a prefixed cookie that lacks the Secure attribute.
+		errs = append(errs, fmt.Errorf("TW_SESSION_NAME must not start with __Host- or __Secure-; got %q", cfg.Name))
 	}
 
 	// A sub-second TTL truncates to Max-Age=0, which net/http omits rather than
@@ -254,13 +273,17 @@ type EdupassClientCredentials struct {
 
 // EdupassConfig represents the configuration for the Edupass identity provider.
 type EdupassConfig struct {
-	IssuerURL *url.URL `dotenv:"TW_EDUPASS_ISSUER_URL"`
-	AuthURL   *url.URL `dotenv:"TW_EDUPASS_AUTH_URL"`
-	TokenURL  *url.URL `dotenv:"TW_EDUPASS_TOKEN_URL"`
-	JWKSURL   *url.URL `dotenv:"TW_EDUPASS_JWKS_URL"`
+	IssuerURL     *url.URL `dotenv:"TW_EDUPASS_ISSUER_URL"`
+	AuthURL       *url.URL `dotenv:"TW_EDUPASS_AUTH_URL"`
+	TokenURL      *url.URL `dotenv:"TW_EDUPASS_TOKEN_URL"`
+	JWKSURL       *url.URL `dotenv:"TW_EDUPASS_JWKS_URL"`
+	EndSessionURL *url.URL `dotenv:"TW_EDUPASS_END_SESSION_URL"`
 
 	ClientID    string   `dotenv:"TW_EDUPASS_CLIENT_ID"`
 	RedirectURL *url.URL `dotenv:"TW_EDUPASS_REDIRECT_URL"`
+	// PostLogoutRedirectURL is where Edupass returns the browser after sign-out.
+	// It must exactly match a redirect URI registered for the client with Edupass.
+	PostLogoutRedirectURL *url.URL `dotenv:"TW_EDUPASS_POST_LOGOUT_REDIRECT_URL"`
 
 	AppCode EdupassAppCode `dotenv:"TW_EDUPASS_APP_CODE"`
 
@@ -318,6 +341,16 @@ func (cfg *EdupassConfig) validate() error {
 			errs = append(errs, fmt.Errorf("TW_EDUPASS_JWKS_URL must include host[:port]; got %q", cfg.JWKSURL))
 		}
 	}
+	if cfg.EndSessionURL == nil {
+		errs = append(errs, errors.New("TW_EDUPASS_END_SESSION_URL is required"))
+	} else {
+		if cfg.EndSessionURL.Scheme != "http" && cfg.EndSessionURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("TW_EDUPASS_END_SESSION_URL must use scheme http or https; got %q", cfg.EndSessionURL))
+		}
+		if cfg.EndSessionURL.Host == "" {
+			errs = append(errs, fmt.Errorf("TW_EDUPASS_END_SESSION_URL must include host[:port]; got %q", cfg.EndSessionURL))
+		}
+	}
 
 	if cfg.ClientID == "" {
 		errs = append(errs, errors.New("TW_EDUPASS_CLIENT_ID is required"))
@@ -330,6 +363,16 @@ func (cfg *EdupassConfig) validate() error {
 		}
 		if cfg.RedirectURL.Host == "" {
 			errs = append(errs, fmt.Errorf("TW_EDUPASS_REDIRECT_URL must include host[:port]; got %q", cfg.RedirectURL))
+		}
+	}
+	if cfg.PostLogoutRedirectURL == nil {
+		errs = append(errs, errors.New("TW_EDUPASS_POST_LOGOUT_REDIRECT_URL is required"))
+	} else {
+		if cfg.PostLogoutRedirectURL.Scheme != "http" && cfg.PostLogoutRedirectURL.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("TW_EDUPASS_POST_LOGOUT_REDIRECT_URL must use scheme http or https; got %q", cfg.PostLogoutRedirectURL))
+		}
+		if cfg.PostLogoutRedirectURL.Host == "" {
+			errs = append(errs, fmt.Errorf("TW_EDUPASS_POST_LOGOUT_REDIRECT_URL must include host[:port]; got %q", cfg.PostLogoutRedirectURL))
 		}
 	}
 
@@ -449,15 +492,26 @@ func (cfg *EdupassConfig) validate() error {
 // RemoteAppsConfig represents the configuration for the remote apps. Each app
 // must have either all of its values set, which registers it, or none.
 type RemoteAppsConfig struct {
-	SignedTokenTTL time.Duration `dotenv:"TW_REMOTE_SIGNED_TOKEN_TTL"`
+	SignedTokenTTL     time.Duration `dotenv:"TW_REMOTE_SIGNED_TOKEN_TTL"`
+	ProxyTimeout       time.Duration `dotenv:"TW_REMOTE_PROXY_TIMEOUT"`
+	ProxyStreamTimeout time.Duration `dotenv:"TW_REMOTE_PROXY_STREAM_TIMEOUT"`
 
-	PostsManifestURL       *url.URL `dotenv:"TW_REMOTE_POSTS_MANIFEST_URL"`
-	PostsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_POSTS_BACKEND_BASE_URL"`
-	PostsBackendSigningKey string   `dotenv:"TW_REMOTE_POSTS_BACKEND_SIGNING_KEY"`
+	PostsManifestURL        *url.URL        `dotenv:"TW_REMOTE_POSTS_MANIFEST_URL"`
+	PostsBackendBaseURL     *url.URL        `dotenv:"TW_REMOTE_POSTS_BACKEND_BASE_URL"`
+	PostsBackendSigningKey  string          `dotenv:"TW_REMOTE_POSTS_BACKEND_SIGNING_KEY"`
+	PostsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES"`
 
-	StudentInsightsManifestURL       *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"`
-	StudentInsightsBackendBaseURL    *url.URL `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL"`
-	StudentInsightsBackendSigningKey string   `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY"`
+	GroupsManifestURL        *url.URL        `dotenv:"TW_REMOTE_GROUPS_MANIFEST_URL"`
+	GroupsBackendBaseURL     *url.URL        `dotenv:"TW_REMOTE_GROUPS_BACKEND_BASE_URL"`
+	GroupsBackendSigningKey  string          `dotenv:"TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY"`
+	GroupsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES"`
+
+	MeetingsAllowedSchoolCodes SchoolAllowlist `dotenv:"TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES"`
+
+	StudentInsightsManifestURL       *url.URL        `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"`
+	StudentInsightsBackendBaseURL    *url.URL        `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL"`
+	StudentInsightsBackendSigningKey string          `dotenv:"TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY"`
+	StudentsAllowedSchoolCodes       SchoolAllowlist `dotenv:"TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES"`
 }
 
 func (cfg RemoteAppsConfig) validate() error {
@@ -465,6 +519,12 @@ func (cfg RemoteAppsConfig) validate() error {
 
 	if cfg.SignedTokenTTL < time.Second {
 		errs = append(errs, fmt.Errorf("TW_REMOTE_SIGNED_TOKEN_TTL must be at least 1s; got %v", cfg.SignedTokenTTL))
+	}
+	if cfg.ProxyTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_REMOTE_PROXY_TIMEOUT must be > 0; got %v", cfg.ProxyTimeout))
+	}
+	if cfg.ProxyStreamTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("TW_REMOTE_PROXY_STREAM_TIMEOUT must be > 0; got %v", cfg.ProxyStreamTimeout))
 	}
 
 	if cfg.PostsManifestURL != nil || cfg.PostsBackendBaseURL != nil || cfg.PostsBackendSigningKey != "" {
@@ -500,6 +560,43 @@ func (cfg RemoteAppsConfig) validate() error {
 			// RFC 7518, section 3.2 requires a key at least as big as hash output (HS256).
 			if keyLength := len(cfg.PostsBackendSigningKey); keyLength < sha256.Size {
 				errs = append(errs, fmt.Errorf("TW_REMOTE_POSTS_BACKEND_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, keyLength))
+			}
+		}
+	}
+
+	if cfg.GroupsManifestURL != nil || cfg.GroupsBackendBaseURL != nil || cfg.GroupsBackendSigningKey != "" {
+		if cfg.GroupsManifestURL == nil {
+			errs = append(errs, errors.New("TW_REMOTE_GROUPS_MANIFEST_URL is required to register the groups remote"))
+		} else {
+			if cfg.GroupsManifestURL.Scheme != "http" && cfg.GroupsManifestURL.Scheme != "https" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_MANIFEST_URL must use scheme http or https; got %q", cfg.GroupsManifestURL))
+			}
+			if cfg.GroupsManifestURL.Host == "" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_MANIFEST_URL must include host[:port]; got %q", cfg.GroupsManifestURL))
+			}
+		}
+		if cfg.GroupsBackendBaseURL == nil {
+			errs = append(errs, errors.New("TW_REMOTE_GROUPS_BACKEND_BASE_URL is required to register the groups remote"))
+		} else {
+			if cfg.GroupsBackendBaseURL.Scheme != "http" && cfg.GroupsBackendBaseURL.Scheme != "https" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must use scheme http or https; got %q", cfg.GroupsBackendBaseURL))
+			}
+			if cfg.GroupsBackendBaseURL.Host == "" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must include host[:port]; got %q", cfg.GroupsBackendBaseURL))
+			}
+			if cfg.GroupsBackendBaseURL.RawQuery != "" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a query; got %q", cfg.GroupsBackendBaseURL))
+			}
+			if cfg.GroupsBackendBaseURL.Fragment != "" {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a fragment; got %q", cfg.GroupsBackendBaseURL))
+			}
+		}
+		if cfg.GroupsBackendSigningKey == "" {
+			errs = append(errs, errors.New("TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY is required to register the groups remote"))
+		} else {
+			// RFC 7518, section 3.2 requires a key at least as big as hash output (HS256).
+			if keyLength := len(cfg.GroupsBackendSigningKey); keyLength < sha256.Size {
+				errs = append(errs, fmt.Errorf("TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY must be at least %d bytes; got %d", sha256.Size, keyLength))
 			}
 		}
 	}
@@ -541,7 +638,30 @@ func (cfg RemoteAppsConfig) validate() error {
 		}
 	}
 
+	for _, a := range cfg.Allowlists() {
+		errs = append(errs, a.Allowlist.validate(a.Setting))
+	}
+
 	return errors.Join(errs...)
+}
+
+// AppAllowlist is the school allowlist of one remote app.
+type AppAllowlist struct {
+	// App is the app's key, such as "posts".
+	App string
+	// Setting is the environment variable the allowlist is read from.
+	Setting   string
+	Allowlist SchoolAllowlist
+}
+
+// Allowlists returns the allowlist of every remote app.
+func (cfg RemoteAppsConfig) Allowlists() []AppAllowlist {
+	return []AppAllowlist{
+		{App: "posts", Setting: "TW_REMOTE_POSTS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.PostsAllowedSchoolCodes},
+		{App: "groups", Setting: "TW_REMOTE_GROUPS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.GroupsAllowedSchoolCodes},
+		{App: "meetings", Setting: "TW_REMOTE_MEETINGS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.MeetingsAllowedSchoolCodes},
+		{App: "students", Setting: "TW_REMOTE_STUDENTS_ALLOWED_SCHOOL_CODES", Allowlist: cfg.StudentsAllowedSchoolCodes},
+	}
 }
 
 // IsPostsRegistered reports whether the posts remote app has all of its values set.
@@ -549,10 +669,77 @@ func (cfg RemoteAppsConfig) IsPostsRegistered() bool {
 	return cfg.PostsManifestURL != nil && cfg.PostsBackendBaseURL != nil && cfg.PostsBackendSigningKey != ""
 }
 
+// IsGroupsRegistered reports whether the groups remote app has all of its values set.
+func (cfg RemoteAppsConfig) IsGroupsRegistered() bool {
+	return cfg.GroupsManifestURL != nil && cfg.GroupsBackendBaseURL != nil && cfg.GroupsBackendSigningKey != ""
+}
+
 // IsStudentInsightsRegistered reports whether the student insights remote app
 // has all of its values set.
 func (cfg RemoteAppsConfig) IsStudentInsightsRegistered() bool {
 	return cfg.StudentInsightsManifestURL != nil && cfg.StudentInsightsBackendBaseURL != nil && cfg.StudentInsightsBackendSigningKey != ""
+}
+
+// SchoolAllowlist is the schools allowed to use a remote app.
+type SchoolAllowlist string
+
+// Allows reports whether the school with schoolCode may use the app.
+//
+// The list takes one of two forms, with spaces around each item ignored:
+//   - "0001,0002" allows only the listed schools.
+//   - "*" allows every school, and "*,!0001,!0002" every school except those excluded.
+//
+// Unset, empty or blank allows no school, and schoolCode must be non-empty.
+// Codes are compared as strings, so "0718" and "718" are different schools.
+func (l SchoolAllowlist) Allows(schoolCode string) bool {
+	items := strings.Split(string(l), ",")
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+
+	if items[0] == "*" {
+		return !slices.Contains(items[1:], "!"+schoolCode)
+	}
+	return slices.Contains(items, schoolCode)
+}
+
+// IsEmpty reports whether the list is blank, and so allows no school.
+func (l SchoolAllowlist) IsEmpty() bool {
+	return strings.TrimSpace(string(l)) == ""
+}
+
+// validate returns an error naming setting and the first invalid item, or nil if the list is a valid form of [SchoolAllowlist.Allows]. Repeated codes are accepted.
+func (l SchoolAllowlist) validate(setting string) error {
+	if l.IsEmpty() {
+		return nil
+	}
+
+	items := strings.Split(string(l), ",")
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+
+	allowsEverySchool := items[0] == "*"
+	if allowsEverySchool {
+		items = items[1:]
+	}
+
+	for _, item := range items {
+		code, excludesSchool := strings.CutPrefix(item, "!")
+		switch {
+		case item == "":
+			return fmt.Errorf("%s must not contain an empty item; got %q", setting, l)
+		case item == "*":
+			return fmt.Errorf("%s must have * only as its first item; got %q", setting, l)
+		case excludesSchool && !allowsEverySchool:
+			return fmt.Errorf("%s must start with * to exclude a code; got %q", setting, item)
+		case !excludesSchool && allowsEverySchool:
+			return fmt.Errorf("%s must list only excluded codes after *; got %q", setting, item)
+		case !edupass.IsLocationCode(code):
+			return fmt.Errorf("%s must contain only 4-digit school codes; got %q", setting, item)
+		}
+	}
+	return nil
 }
 
 // must is a helper function to panic if an error is not nil.

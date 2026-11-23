@@ -1,5 +1,3 @@
-'use client';
-
 import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip';
 
 import { cn } from '~/helpers/cn';
@@ -9,7 +7,11 @@ function TooltipProvider({ delay = 0, ...props }: TooltipPrimitive.Provider.Prop
 }
 
 function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
+  return (
+    <TooltipProvider>
+      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+    </TooltipProvider>
+  );
 }
 
 function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
@@ -27,18 +29,21 @@ function TooltipContent({
 }: TooltipPrimitive.Popup.Props &
   Pick<TooltipPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset'>) {
   return (
-    <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Portal
+      container={typeof document === 'undefined' ? undefined : document.body}
+    >
       <TooltipPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
+        positionMethod="fixed"
         className="tw:isolate tw:z-50"
       >
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           className={cn(
-            'tw:z-50 tw:inline-flex tw:w-fit tw:max-w-xs tw:origin-(--transform-origin) tw:items-center tw:gap-1.5 tw:rounded-md tw:bg-foreground tw:px-3 tw:py-1.5 tw:text-xs tw:text-background tw:has-data-[slot=kbd]:pr-1.5 tw:data-closed:animate-out tw:data-closed:fade-out-0 tw:data-closed:zoom-out-95 tw:data-open:animate-in tw:data-open:fade-in-0 tw:data-open:zoom-in-95 tw:data-[side=bottom]:slide-in-from-top-2 tw:data-[side=inline-end]:slide-in-from-left-2 tw:data-[side=inline-start]:slide-in-from-right-2 tw:data-[side=left]:slide-in-from-right-2 tw:data-[side=right]:slide-in-from-left-2 tw:data-[side=top]:slide-in-from-bottom-2 tw:**:data-[slot=kbd]:relative tw:**:data-[slot=kbd]:isolate tw:**:data-[slot=kbd]:z-50 tw:**:data-[slot=kbd]:rounded-sm tw:data-[state=delayed-open]:animate-in tw:data-[state=delayed-open]:fade-in-0 tw:data-[state=delayed-open]:zoom-in-95',
+            'tw:z-50 tw:w-fit tw:max-w-[20rem] tw:origin-(--transform-origin) tw:rounded-lg tw:bg-foreground tw:px-3 tw:py-1.5 tw:text-xs tw:text-background tw:transition-[opacity,scale,translate] tw:duration-150 tw:ease-out tw:data-ending-style:scale-95 tw:data-ending-style:opacity-0 tw:data-ending-style:duration-100 tw:data-instant:transition-none tw:data-starting-style:scale-95 tw:data-starting-style:opacity-0 tw:data-[side=bottom]:data-starting-style:-translate-y-1 tw:data-[side=left]:data-starting-style:translate-x-1 tw:data-[side=right]:data-starting-style:-translate-x-1 tw:data-[side=top]:data-starting-style:translate-y-1 tw:**:data-[slot=kbd]:rounded-4xl tw:motion-reduce:transition-none',
             className,
           )}
           {...props}

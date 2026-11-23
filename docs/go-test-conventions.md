@@ -37,6 +37,7 @@ Test a unit the way its callers use it. Such tests survive refactoring and fail 
 - Prefer `t.Setenv`, `t.TempDir`, and `t.Chdir` to manual save/restore. They restore the previous state automatically, including on failure.
 - Register `t.Cleanup` immediately after the state is mutated, not further down the test body.
 - A failing setup call is not an assertion: `t.Fatalf("os.WriteFile: %v", err)`, naming the operation, never a `want`/`got` message. Use `t.Fatal`, not `t.Error`: the case can't run.
+- A setup call that succeeds but doesn't produce the starting state the scenario needs has failed too. Check it right after the call when a broken call would let the subtest pass by accident, and report it the same way.
 - Arrange the starting state so a broken unit can't pass by accident: seed any state the test claims is kept, so an overwrite or delete shows, and use values that differ from the defaults (a handler status of 201, not the recorder's default 200).
 
 ## Assertions
@@ -50,7 +51,7 @@ Test a unit the way its callers use it. Such tests survive refactoring and fail 
   - Before using a value: `if user == nil { t.Fatal("want user: non-nil; got: nil") }`
   - Before indexing: `if len(items) == 0 { t.Fatal("want items: non-empty; got: empty") }`. Use an exact count (`len(items) != 1`) only in the subtest whose behaviour it is, so only that subtest fails when the count changes.
   - Before comparing a looked-up value (`value, ok := m[k]`): check `ok` in its own `if`, then compare the value. In a handler or callback, skipping this lets a nil dereference panic and stop the whole parent test.
-  - Before checking the outcome, confirm the scenario happened, for example that a rotated token changed: `if oldToken == newToken { t.Fatalf("want token: != %q; got: %q", oldToken, newToken) }`
+  - Before checking the outcome, confirm the unit acted on the scenario, for example that a lookup returned the stored record rather than a default: `if want, got := saved.ID, found.ID; want != got { t.Fatalf("want found.ID: %q; got: %q", want, got) }`
 - When you add or change an assertion, temporarily break the code it targets and confirm it fails.
 - Use `want`/`got` style, with `want` on the left (`!=` for equality, `==` for change from baseline). Failure messages read `want <subject>: <expected>; got: <actual>`, so a failure is clear without opening the test. The subject is the checked expression as written (`user.IsActive()`, `cookie.MaxAge`), or a short name for it when the expression is mostly plumbing (`Set-Cookie` for `rec.Result().Header.Values("Set-Cookie")`). Errors use `err` as their subject, and lookups name what was looked up before `ok` (`cookies["theme"] ok`).
 - Call the unit under test in its own statement and assign what it returns to variables named for what they hold (`chained := Chain(h)`), so the action stands apart from the assertions that check it. Don't call it inside an assertion's `if` initialiser: `if got := Chain(h); h != got` hides the action inside the check.

@@ -6,12 +6,21 @@ import { ErrorBoundary } from '~/components/ErrorBoundary';
 import { Toaster } from '~/components/ui/toast';
 import { TooltipProvider } from '~/components/ui/tooltip';
 import { NotFoundView } from '~/containers/NotFoundView';
+import { type AppKey, isAppAllowed } from '~/stores/preloaded-state';
 
 const LoginView = React.lazy(() => import('~/containers/LoginView'));
 const RootLayout = React.lazy(() => import('~/containers/RootLayout'));
 const HomeView = React.lazy(() => import('~/containers/HomeView'));
-const StudentsView = React.lazy(() => import('~/containers/StudentsView'));
 const RemoteLoadFallbackView = React.lazy(() => import('~/containers/RemoteLoadFallbackView'));
+
+const RemoteStudentInsightsView = React.lazy(async () => {
+  const module = await loadRemote<{ default: React.ComponentType }>('student_insights/App');
+  if (!module) {
+    throw new Error('Failed to load remote module');
+  }
+
+  return module;
+});
 
 const RemotePostsView = React.lazy(async () => {
   const module = await loadRemote<{ default: React.ComponentType }>('pg/Posts');
@@ -31,6 +40,29 @@ const RemoteGroupsView = React.lazy(async () => {
   return module;
 });
 
+// A refused app's route falls through to the 404 page, so its remote never loads.
+function remoteRoute(app: AppKey, path: string, View: React.ComponentType) {
+  if (!isAppAllowed(app)) {
+    return null;
+  }
+
+  return (
+    <Route
+      path={path}
+      element={
+        <ErrorBoundary
+          key={app}
+          fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
+        >
+          <React.Suspense fallback={null}>
+            <View />
+          </React.Suspense>
+        </ErrorBoundary>
+      }
+    />
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -41,33 +73,11 @@ export default function App() {
           <Route path="/login" element={<LoginView />} />
           <Route element={<RootLayout />}>
             <Route path="/" element={<HomeView />} />
-            <Route path="/students/*" element={<StudentsView />} />
-            <Route
-              path="/posts/*"
-              element={
-                <ErrorBoundary
-                  fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
-                >
-                  <React.Suspense fallback={null}>
-                    <RemotePostsView />
-                  </React.Suspense>
-                </ErrorBoundary>
-              }
-            />
-            <Route
-              path="/groups/*"
-              element={
-                <ErrorBoundary
-                  fallback={<RemoteLoadFallbackView onRetry={() => window.location.reload()} />}
-                >
-                  <React.Suspense fallback={null}>
-                    <RemoteGroupsView />
-                  </React.Suspense>
-                </ErrorBoundary>
-              }
-            />
-            <Route path="*" element={<NotFoundView />} />
+            {remoteRoute('students', '/students/*', RemoteStudentInsightsView)}
+            {remoteRoute('posts', '/posts/*', RemotePostsView)}
+            {remoteRoute('groups', '/groups/*', RemoteGroupsView)}
           </Route>
+          <Route path="*" element={<NotFoundView />} />
         </Routes>
       </TooltipProvider>
     </BrowserRouter>

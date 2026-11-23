@@ -7,6 +7,7 @@ package memstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -23,7 +24,9 @@ func WithClock(now func() time.Time) Option {
 	}
 }
 
-// Store is an in-memory session.Store.
+// Store is an in-memory session.Store. An expired entry is freed the next time
+// a method is called with its ID, so the entry of an ID that is never used
+// again stays in memory.
 type Store struct {
 	mu      sync.Mutex
 	entries map[string]entry
@@ -49,52 +52,93 @@ func New(opts ...Option) *Store {
 	return s
 }
 
-// Prepare implements [session.Store.Prepare].
-func (s *Store) Prepare(ctx context.Context, id string) ([]byte, error) {
+// Get implements [session.Store.Get].
+func (s *Store) Get(ctx context.Context, id string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("memstore: prepare session: %w", err)
+		return nil, fmt.Errorf("memstore: get: %w", err)
+	}
+	if id == "" {
+		return nil, nil
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	e, ok := s.entries[id]
+	e, ok := s.lookup(id)
 	if !ok {
-		return nil, nil
-	}
-
-	if !e.expiresAt.After(s.now()) {
-		delete(s.entries, id)
 		return nil, nil
 	}
 
 	return bytes.Clone(e.data), nil
 }
 
-// Commit implements [session.Store.Commit].
-func (s *Store) Commit(ctx context.Context, id string, data []byte, ttl time.Duration) error {
+// Create implements [session.Store.Create].
+func (s *Store) Create(ctx context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("memstore: commit session: %w", err)
+		return false, fmt.Errorf("memstore: create: %w", err)
 	}
 	if id == "" {
-		return fmt.Errorf("memstore: id must be non-empty")
+		return false, errors.New("memstore: create: id must be non-empty")
+	}
+	if len(data) == 0 {
+		return false, errors.New("memstore: create: data must be non-empty")
 	}
 	if ttl <= 0 {
-		return fmt.Errorf("memstore: ttl must be positive, got %v", ttl)
+		return false, fmt.Errorf("memstore: create: ttl must be positive; got %v", ttl)
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.entries[id] = entry{data: bytes.Clone(data), expiresAt: s.now().Add(ttl)}
+	if _, ok := s.lookup(id); ok {
+		return false, nil
+	}
 
-	return nil
+	s.entries[id] = entry{
+		data:      bytes.Clone(data),
+		expiresAt: s.now().Add(ttl),
+	}
+
+	return true, nil
 }
 
-// Drop implements [session.Store.Drop].
-func (s *Store) Drop(ctx context.Context, id string) error {
+// Update implements [session.Store.Update].
+func (s *Store) Update(ctx context.Context, id string, data []byte, ttl time.Duration) (bool, error) {
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("memstore: drop session: %w", err)
+		return false, fmt.Errorf("memstore: update: %w", err)
+	}
+	if id == "" {
+		return false, errors.New("memstore: update: id must be non-empty")
+	}
+	if len(data) == 0 {
+		return false, errors.New("memstore: update: data must be non-empty")
+	}
+	if ttl <= 0 {
+		return false, fmt.Errorf("memstore: update: ttl must be positive; got %v", ttl)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.lookup(id); !ok {
+		return false, nil
+	}
+
+	s.entries[id] = entry{
+		data:      bytes.Clone(data),
+		expiresAt: s.now().Add(ttl),
+	}
+
+	return true, nil
+}
+
+// Delete implements [session.Store.Delete].
+func (s *Store) Delete(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("memstore: delete: %w", err)
+	}
+	if id == "" {
+		return nil
 	}
 
 	s.mu.Lock()
@@ -103,4 +147,20 @@ func (s *Store) Drop(ctx context.Context, id string) error {
 	delete(s.entries, id)
 
 	return nil
+}
+
+// lookup returns the entry under id, and reports whether there is one that has
+// not expired. It frees an expired entry. The caller must hold s.mu.
+func (s *Store) lookup(id string) (entry, bool) {
+	e, ok := s.entries[id]
+	if !ok {
+		return entry{}, false
+	}
+
+	if !e.expiresAt.After(s.now()) {
+		delete(s.entries, id)
+		return entry{}, false
+	}
+
+	return e, true
 }

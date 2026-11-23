@@ -19,14 +19,14 @@ func TestWithClock(t *testing.T) {
 	t.Run("uses the given clock to evaluate TTLs", func(t *testing.T) {
 		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		store := New(WithClock(func() time.Time { return now }))
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
 		now = now.Add(time.Minute)
-		data, err := store.Prepare(t.Context(), "id-1")
+		data, err := store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+			t.Fatalf("store.Get: %v", err)
 		}
 		if data != nil {
 			t.Error("want data: nil; got: non-nil")
@@ -34,14 +34,14 @@ func TestWithClock(t *testing.T) {
 	})
 }
 
-func TestStore_Prepare(t *testing.T) {
-	t.Run("returns (nil, nil) for an ID with no entry", func(t *testing.T) {
+func TestStore_Get(t *testing.T) {
+	t.Run("returns (nil, nil) when the ID has no entry", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
-		data, err := store.Prepare(t.Context(), "missing")
+		data, err := store.Get(t.Context(), "missing")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -51,13 +51,15 @@ func TestStore_Prepare(t *testing.T) {
 		}
 	})
 
-	t.Run("returns (nil, nil) for an empty ID", func(t *testing.T) {
+	t.Run("returns (nil, nil) when the ID is empty", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		// Seeded directly, as Create never writes an empty ID, so it is read only if Get looks up an empty ID.
+		store.entries[""] = entry{
+			data:      []byte("payload"),
+			expiresAt: time.Now().Add(time.Minute),
 		}
 
-		data, err := store.Prepare(t.Context(), "")
+		data, err := store.Get(t.Context(), "")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -67,13 +69,13 @@ func TestStore_Prepare(t *testing.T) {
 		}
 	})
 
-	t.Run("returns the stored bytes", func(t *testing.T) {
+	t.Run("returns the data stored under the ID", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
-		data, err := store.Prepare(t.Context(), "id-1")
+		data, err := store.Get(t.Context(), "id-1")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -86,14 +88,14 @@ func TestStore_Prepare(t *testing.T) {
 	t.Run("returns (nil, nil) once the entry has expired", func(t *testing.T) {
 		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		store := New(WithClock(func() time.Time { return now }))
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
 		// An entry is already expired at its expiry instant, not only after it.
 		now = now.Add(time.Minute)
 
-		data, err := store.Prepare(t.Context(), "id-1")
+		data, err := store.Get(t.Context(), "id-1")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -106,13 +108,13 @@ func TestStore_Prepare(t *testing.T) {
 	t.Run("frees the entry once it has expired", func(t *testing.T) {
 		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		store := New(WithClock(func() time.Time { return now }))
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
 		now = now.Add(time.Minute)
 
-		_, err := store.Prepare(t.Context(), "id-1")
+		_, err := store.Get(t.Context(), "id-1")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
@@ -124,11 +126,11 @@ func TestStore_Prepare(t *testing.T) {
 
 	t.Run("returns an independent copy to each caller", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
-		first, err := store.Prepare(t.Context(), "id-1")
+		first, err := store.Get(t.Context(), "id-1")
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
@@ -140,7 +142,7 @@ func TestStore_Prepare(t *testing.T) {
 		// caller.
 		first[0] = 'X'
 
-		second, err := store.Prepare(t.Context(), "id-1")
+		second, err := store.Get(t.Context(), "id-1")
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
@@ -149,50 +151,58 @@ func TestStore_Prepare(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects the call when the context is done", func(t *testing.T) {
+	t.Run("rejects the call when the context is already done", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
-		}
-
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		data, err := store.Prepare(ctx, "id-1")
+		_, err := store.Get(ctx, "id-1")
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)
 		}
-		if data != nil {
-			t.Error("want data: nil; got: non-nil")
+	})
+
+	t.Run("rejects the call when the ID is empty and the context is already done", func(t *testing.T) {
+		store := New()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Get(ctx, "")
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
 		}
 	})
 }
 
-func TestStore_Commit(t *testing.T) {
-	t.Run("stores the data for the TTL", func(t *testing.T) {
+func TestStore_Create(t *testing.T) {
+	t.Run("stores data under the ID for the TTL", func(t *testing.T) {
 		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		store := New(WithClock(func() time.Time { return now }))
 
-		err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute)
+		created, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
+		if !created {
+			t.Error("want created: true; got: false")
+		}
 
 		now = now.Add(time.Minute - time.Nanosecond)
-		beforeExpiry, err := store.Prepare(t.Context(), "id-1")
+		beforeExpiry, err := store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+			t.Fatalf("store.Get: %v", err)
 		}
 		if want, got := "payload", string(beforeExpiry); want != got {
 			t.Errorf("want beforeExpiry: %q; got: %q", want, got)
 		}
 
 		now = now.Add(time.Nanosecond)
-		atExpiry, err := store.Prepare(t.Context(), "id-1")
+		atExpiry, err := store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+			t.Fatalf("store.Get: %v", err)
 		}
 		if atExpiry != nil {
 			t.Error("want atExpiry: nil; got: non-nil")
@@ -203,42 +213,66 @@ func TestStore_Commit(t *testing.T) {
 		store := New()
 		payload := []byte("payload")
 
-		err := store.Commit(t.Context(), "id-1", payload, time.Minute)
+		_, err := store.Create(t.Context(), "id-1", payload, time.Minute)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
 
-		// Committed state is fixed at the call, so this lands nowhere.
+		// Stored state is fixed at the call, so this lands nowhere.
 		payload[0] = 'X'
 
-		data, err := store.Prepare(t.Context(), "id-1")
+		data, err := store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+			t.Fatalf("store.Get: %v", err)
 		}
 		if want, got := "payload", string(data); want != got {
 			t.Errorf("want data: %q; got: %q", want, got)
 		}
 	})
 
-	t.Run("replaces an existing entry", func(t *testing.T) {
-		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		store := New(WithClock(func() time.Time { return now }))
-		if err := store.Commit(t.Context(), "id-1", []byte("old"), time.Second); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+	t.Run("does not replace an existing entry", func(t *testing.T) {
+		store := New()
+		if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
-		err := store.Commit(t.Context(), "id-1", []byte("new"), time.Minute)
+		created, err := store.Create(t.Context(), "id-1", []byte("new"), time.Minute)
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
-
-		// Past the old entry's TTL, so the entry survives only if its TTL was replaced.
-		now = now.Add(time.Second)
-		data, err := store.Prepare(t.Context(), "id-1")
+		if created {
+			t.Error("want created: false; got: true")
+		}
+		data, err := store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+			t.Fatalf("store.Get: %v", err)
+		}
+		if want, got := "old", string(data); want != got {
+			t.Errorf("want data: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("stores data when the ID's entry has expired", func(t *testing.T) {
+		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		store := New(WithClock(func() time.Time { return now }))
+		if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
+		}
+		now = now.Add(time.Minute)
+
+		created, err := store.Create(t.Context(), "id-1", []byte("new"), time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if !created {
+			t.Error("want created: true; got: false")
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
 		}
 		if want, got := "new", string(data); want != got {
 			t.Errorf("want data: %q; got: %q", want, got)
@@ -247,11 +281,8 @@ func TestStore_Commit(t *testing.T) {
 
 	t.Run("rejects an empty ID", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
-		}
 
-		err := store.Commit(t.Context(), "", []byte("new"), time.Minute)
+		_, err := store.Create(t.Context(), "", []byte("payload"), time.Minute)
 
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
@@ -262,30 +293,46 @@ func TestStore_Commit(t *testing.T) {
 		if _, ok := store.entries[""]; ok {
 			t.Error("want store.entries[\"\"] ok: false; got: true")
 		}
-		data, err := store.Prepare(t.Context(), "id-1")
-		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+	})
+
+	t.Run("rejects empty data", func(t *testing.T) {
+		store := New()
+
+		_, err := store.Create(t.Context(), "id-1", []byte{}, time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
 		}
-		if want, got := "old", string(data); want != got {
-			t.Errorf("want data: %q; got: %q", want, got)
+		if want := "data must be non-empty"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if data != nil {
+			t.Error("want data: nil; got: non-nil")
 		}
 	})
 
-	t.Run("rejects a TTL", func(t *testing.T) {
+	t.Run("rejects a TTL that is", func(t *testing.T) {
 		for _, test := range []struct {
 			name string
 			ttl  time.Duration
 		}{
-			{name: "of zero", ttl: 0},
-			{name: "below zero", ttl: -time.Second},
+			{
+				name: "zero",
+				ttl:  0,
+			},
+			{
+				name: "negative",
+				ttl:  -time.Second,
+			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
 				store := New()
-				if err := store.Commit(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
-					t.Fatalf("store.Commit: %v", err)
-				}
 
-				err := store.Commit(t.Context(), "id-1", []byte("new"), test.ttl)
+				_, err := store.Create(t.Context(), "id-1", []byte("payload"), test.ttl)
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
@@ -293,9 +340,264 @@ func TestStore_Commit(t *testing.T) {
 				if want := "ttl must be positive"; !strings.Contains(err.Error(), want) {
 					t.Errorf("want err: containing %q; got: %q", want, err)
 				}
-				data, err := store.Prepare(t.Context(), "id-1")
+				data, err := store.Get(t.Context(), "id-1")
 				if err != nil {
-					t.Fatalf("store.Prepare: %v", err)
+					t.Fatalf("store.Get: %v", err)
+				}
+				if data != nil {
+					t.Error("want data: nil; got: non-nil")
+				}
+			})
+		}
+	})
+
+	t.Run("rejects the call when the context is already done", func(t *testing.T) {
+		store := New()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Create(ctx, "id-1", []byte("payload"), time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if data != nil {
+			t.Error("want data: nil; got: non-nil")
+		}
+	})
+
+	t.Run("rejects the call when the ID is empty and the context is already done", func(t *testing.T) {
+		store := New()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Create(ctx, "", []byte("payload"), time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+		if _, ok := store.entries[""]; ok {
+			t.Error("want store.entries[\"\"] ok: false; got: true")
+		}
+	})
+
+	t.Run("rejects the call when the data is empty and the context is already done", func(t *testing.T) {
+		store := New()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Create(ctx, "id-1", []byte{}, time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if data != nil {
+			t.Error("want data: nil; got: non-nil")
+		}
+	})
+
+	t.Run("rejects the call when the TTL is not positive and the context is already done", func(t *testing.T) {
+		store := New()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Create(ctx, "id-1", []byte("payload"), 0)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if data != nil {
+			t.Error("want data: nil; got: non-nil")
+		}
+	})
+}
+
+func TestStore_Update(t *testing.T) {
+	t.Run("replaces an existing entry for the TTL", func(t *testing.T) {
+		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		store := New(WithClock(func() time.Time { return now }))
+		if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Second); err != nil {
+			t.Fatalf("store.Create: %v", err)
+		}
+
+		updated, err := store.Update(t.Context(), "id-1", []byte("new"), time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if !updated {
+			t.Error("want updated: true; got: false")
+		}
+
+		// Past the old entry's TTL, so the entry survives only if its TTL was replaced.
+		now = now.Add(time.Minute - time.Nanosecond)
+		beforeExpiry, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if want, got := "new", string(beforeExpiry); want != got {
+			t.Errorf("want beforeExpiry: %q; got: %q", want, got)
+		}
+
+		now = now.Add(time.Nanosecond)
+		atExpiry, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if atExpiry != nil {
+			t.Error("want atExpiry: nil; got: non-nil")
+		}
+	})
+
+	t.Run("stores an independent copy of the caller's bytes", func(t *testing.T) {
+		store := New()
+		if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
+		}
+		payload := []byte("new")
+
+		_, err := store.Update(t.Context(), "id-1", payload, time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+
+		// Stored state is fixed at the call, so this lands nowhere.
+		payload[0] = 'X'
+
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if want, got := "new", string(data); want != got {
+			t.Errorf("want data: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not create an entry when the ID has no entry", func(t *testing.T) {
+		store := New()
+
+		updated, err := store.Update(t.Context(), "id-1", []byte("new"), time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if updated {
+			t.Error("want updated: false; got: true")
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if data != nil {
+			t.Error("want data: nil; got: non-nil")
+		}
+	})
+
+	t.Run("does not create an entry when the ID's entry has expired", func(t *testing.T) {
+		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		store := New(WithClock(func() time.Time { return now }))
+		if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
+		}
+		now = now.Add(time.Minute)
+
+		updated, err := store.Update(t.Context(), "id-1", []byte("new"), time.Minute)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if updated {
+			t.Error("want updated: false; got: true")
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if data != nil {
+			t.Error("want data: nil; got: non-nil")
+		}
+	})
+
+	t.Run("rejects an empty ID", func(t *testing.T) {
+		store := New()
+
+		_, err := store.Update(t.Context(), "", []byte("new"), time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := "id must be non-empty"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+	})
+
+	t.Run("rejects empty data", func(t *testing.T) {
+		store := New()
+		if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
+		}
+
+		_, err := store.Update(t.Context(), "id-1", []byte{}, time.Minute)
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := "data must be non-empty"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if want, got := "old", string(data); want != got {
+			t.Errorf("want data: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("rejects a TTL that is", func(t *testing.T) {
+		for _, test := range []struct {
+			name string
+			ttl  time.Duration
+		}{
+			{
+				name: "zero",
+				ttl:  0,
+			},
+			{
+				name: "negative",
+				ttl:  -time.Second,
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				store := New()
+				if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
+					t.Fatalf("store.Create: %v", err)
+				}
+
+				_, err := store.Update(t.Context(), "id-1", []byte("new"), test.ttl)
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if want := "ttl must be positive"; !strings.Contains(err.Error(), want) {
+					t.Errorf("want err: containing %q; got: %q", want, err)
+				}
+				data, err := store.Get(t.Context(), "id-1")
+				if err != nil {
+					t.Fatalf("store.Get: %v", err)
 				}
 				if want, got := "old", string(data); want != got {
 					t.Errorf("want data: %q; got: %q", want, got)
@@ -304,23 +606,81 @@ func TestStore_Commit(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects the call when the context is done", func(t *testing.T) {
+	t.Run("rejects the call when the context is already done", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		err := store.Commit(ctx, "id-1", []byte("new"), time.Minute)
+		_, err := store.Update(ctx, "id-1", []byte("new"), time.Minute)
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)
 		}
-		data, err := store.Prepare(t.Context(), "id-1")
+		data, err := store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+			t.Fatalf("store.Get: %v", err)
+		}
+		if want, got := "old", string(data); want != got {
+			t.Errorf("want data: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("rejects the call when the ID is empty and the context is already done", func(t *testing.T) {
+		store := New()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Update(ctx, "", []byte("new"), time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+	})
+
+	t.Run("rejects the call when the data is empty and the context is already done", func(t *testing.T) {
+		store := New()
+		if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Update(ctx, "id-1", []byte{}, time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
+		}
+		if want, got := "old", string(data); want != got {
+			t.Errorf("want data: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("rejects the call when the TTL is not positive and the context is already done", func(t *testing.T) {
+		store := New()
+		if _, err := store.Create(t.Context(), "id-1", []byte("old"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := store.Update(ctx, "id-1", []byte("new"), 0)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
+		}
+		data, err := store.Get(t.Context(), "id-1")
+		if err != nil {
+			t.Fatalf("store.Get: %v", err)
 		}
 		if want, got := "old", string(data); want != got {
 			t.Errorf("want data: %q; got: %q", want, got)
@@ -328,87 +688,97 @@ func TestStore_Commit(t *testing.T) {
 	})
 }
 
-func TestStore_Drop(t *testing.T) {
-	t.Run("removes a stored entry", func(t *testing.T) {
+func TestStore_Delete(t *testing.T) {
+	t.Run("removes the entry under the ID", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
-		err := store.Drop(t.Context(), "id-1")
+		err := store.Delete(t.Context(), "id-1")
 
 		if err != nil {
 			t.Fatalf("want err: nil; got: %v", err)
 		}
-		data, err := store.Prepare(t.Context(), "id-1")
+		data, err := store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+			t.Fatalf("store.Get: %v", err)
 		}
 		if data != nil {
 			t.Error("want data: nil; got: non-nil")
 		}
 	})
 
-	t.Run("is a no-op for an ID with no entry", func(t *testing.T) {
+	t.Run("is a no-op when the ID has no entry", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
-		err := store.Drop(t.Context(), "missing")
+		err := store.Delete(t.Context(), "missing")
 
 		if err != nil {
 			t.Errorf("want err: nil; got: %v", err)
 		}
-		data, err := store.Prepare(t.Context(), "id-1")
+		data, err := store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+			t.Fatalf("store.Get: %v", err)
 		}
 		if want, got := "payload", string(data); want != got {
 			t.Errorf("want data: %q; got: %q", want, got)
 		}
 	})
 
-	t.Run("is a no-op for an empty ID", func(t *testing.T) {
+	t.Run("is a no-op when the ID is empty", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		// Seeded directly, as Create never writes an empty ID, so it is deleted only if Delete looks up an empty ID.
+		store.entries[""] = entry{
+			data:      []byte("payload"),
+			expiresAt: time.Now().Add(time.Minute),
 		}
 
-		err := store.Drop(t.Context(), "")
+		err := store.Delete(t.Context(), "")
 
 		if err != nil {
 			t.Errorf("want err: nil; got: %v", err)
 		}
-		data, err := store.Prepare(t.Context(), "id-1")
-		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
-		}
-		if want, got := "payload", string(data); want != got {
-			t.Errorf("want data: %q; got: %q", want, got)
+		if _, ok := store.entries[""]; !ok {
+			t.Error("want store.entries[\"\"] ok: true; got: false")
 		}
 	})
 
-	t.Run("rejects the call when the context is done", func(t *testing.T) {
+	t.Run("rejects the call when the context is already done", func(t *testing.T) {
 		store := New()
-		if err := store.Commit(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
-			t.Fatalf("store.Commit: %v", err)
+		if _, err := store.Create(t.Context(), "id-1", []byte("payload"), time.Minute); err != nil {
+			t.Fatalf("store.Create: %v", err)
 		}
 
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		err := store.Drop(ctx, "id-1")
+		err := store.Delete(ctx, "id-1")
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("want err: %v; got: %v", context.Canceled, err)
 		}
-		data, err := store.Prepare(t.Context(), "id-1")
+		data, err := store.Get(t.Context(), "id-1")
 		if err != nil {
-			t.Fatalf("store.Prepare: %v", err)
+			t.Fatalf("store.Get: %v", err)
 		}
 		if want, got := "payload", string(data); want != got {
 			t.Errorf("want data: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("rejects the call when the ID is empty and the context is already done", func(t *testing.T) {
+		store := New()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		err := store.Delete(ctx, "")
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("want err: %v; got: %v", context.Canceled, err)
 		}
 	})
 }
@@ -424,7 +794,7 @@ func TestStore(t *testing.T) {
 		ids := []string{"id-0", "id-1"}
 
 		var wg sync.WaitGroup
-		wg.Add(groups * 3)
+		wg.Add(groups * 4)
 
 		for g := range groups {
 			go func() {
@@ -434,7 +804,23 @@ func TestStore(t *testing.T) {
 					id := ids[(g+i)%len(ids)]
 					data := []byte(id + ":" + strconv.Itoa(g))
 
-					err := store.Commit(t.Context(), id, data, time.Minute)
+					_, err := store.Create(t.Context(), id, data, time.Minute)
+
+					if err != nil {
+						t.Errorf("want err: nil; got: %v", err)
+						return
+					}
+				}
+			}()
+
+			go func() {
+				defer wg.Done()
+
+				for i := range iterations {
+					id := ids[(g+i)%len(ids)]
+					data := []byte(id + ":" + strconv.Itoa(g))
+
+					_, err := store.Update(t.Context(), id, data, time.Minute)
 
 					if err != nil {
 						t.Errorf("want err: nil; got: %v", err)
@@ -449,7 +835,7 @@ func TestStore(t *testing.T) {
 				for i := range iterations {
 					id := ids[(g+i)%len(ids)]
 
-					data, err := store.Prepare(t.Context(), id)
+					data, err := store.Get(t.Context(), id)
 
 					if err != nil {
 						t.Errorf("want err: nil; got: %v", err)
@@ -459,7 +845,7 @@ func TestStore(t *testing.T) {
 						continue
 					}
 					if want, got := id+":", string(data); !strings.HasPrefix(got, want) {
-						t.Errorf("want data: prefix %q; got: %q", want, got)
+						t.Errorf("want data: starting with %q; got: %q", want, got)
 						return
 					}
 				}
@@ -471,7 +857,7 @@ func TestStore(t *testing.T) {
 				for i := range iterations {
 					id := ids[(g+i)%len(ids)]
 
-					err := store.Drop(t.Context(), id)
+					err := store.Delete(t.Context(), id)
 
 					if err != nil {
 						t.Errorf("want err: nil; got: %v", err)

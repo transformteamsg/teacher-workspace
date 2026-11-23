@@ -11,14 +11,19 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/pem"
+	"fmt"
 	"log/slog"
+	"maps"
 	"math/big"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/transformteamsg/teacher-workspace/server/pkg/dotenv"
 )
 
 func TestDefault(t *testing.T) {
@@ -57,7 +62,7 @@ func TestDefault(t *testing.T) {
 		if want, got := "tw_session", cfg.Session.Name; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
-		if want, got := 3*time.Hour, cfg.Session.DefaultTTL; want != got {
+		if want, got := time.Hour, cfg.Session.DefaultTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
 		if want, got := 30*time.Minute, cfg.Session.AuthenticatedTTL; want != got {
@@ -80,6 +85,12 @@ func TestDefault(t *testing.T) {
 		if want, got := time.Minute, cfg.RemoteApps.SignedTokenTTL; want != got {
 			t.Errorf("want: %v; got: %v", want, got)
 		}
+		if want, got := 25*time.Second, cfg.RemoteApps.ProxyTimeout; want != got {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
+		if want, got := 5*time.Minute, cfg.RemoteApps.ProxyStreamTimeout; want != got {
+			t.Errorf("want: %v; got: %v", want, got)
+		}
 	})
 
 	t.Run("leaves deployment-specific values unset", func(t *testing.T) {
@@ -99,6 +110,9 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: nil; got: %q", got)
 		}
 		if got := cfg.Edupass.JWKSURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.Edupass.EndSessionURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
 		if got := cfg.Edupass.ClientID; got != "" {
@@ -128,6 +142,9 @@ func TestDefault(t *testing.T) {
 		if got := cfg.Edupass.RedirectURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
 		}
+		if got := cfg.Edupass.PostLogoutRedirectURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
 
 		if got := cfg.RemoteApps.PostsManifestURL; got != nil {
 			t.Errorf("want: nil; got: %q", got)
@@ -136,6 +153,15 @@ func TestDefault(t *testing.T) {
 			t.Errorf("want: nil; got: %q", got)
 		}
 		if got := cfg.RemoteApps.PostsBackendSigningKey; got != "" {
+			t.Errorf("want: empty; got: %q", got)
+		}
+		if got := cfg.RemoteApps.GroupsManifestURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.RemoteApps.GroupsBackendBaseURL; got != nil {
+			t.Errorf("want: nil; got: %q", got)
+		}
+		if got := cfg.RemoteApps.GroupsBackendSigningKey; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
 		if got := cfg.RemoteApps.StudentInsightsManifestURL; got != nil {
@@ -147,20 +173,27 @@ func TestDefault(t *testing.T) {
 		if got := cfg.RemoteApps.StudentInsightsBackendSigningKey; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
+		for _, a := range cfg.RemoteApps.Allowlists() {
+			if got := a.Allowlist; got != "" {
+				t.Errorf("want %s: empty; got: %q", a.Setting, got)
+			}
+		}
 	})
 }
 
 // validConfig returns Default with the fields that have no default filled in,
-// and both remote apps registered, so it passes Validate.
+// and every remote app registered, so it passes Validate.
 func validConfig() Config {
 	cfg := Default()
 	cfg.Edupass = EdupassConfig{
-		IssuerURL:   &url.URL{Scheme: "http", Host: "localhost:9000"},
-		AuthURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
-		TokenURL:    &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
-		JWKSURL:     &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
-		ClientID:    "teacher-workspace",
-		RedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
+		IssuerURL:             &url.URL{Scheme: "http", Host: "localhost:9000"},
+		AuthURL:               &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"},
+		TokenURL:              &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/token"},
+		JWKSURL:               &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/jwks"},
+		EndSessionURL:         &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/session/end"},
+		ClientID:              "teacher-workspace",
+		RedirectURL:           &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/auth/edupass/callback"},
+		PostLogoutRedirectURL: &url.URL{Scheme: "http", Host: "localhost:3000", Path: "/login"},
 
 		AppCode: EdupassAppCodeTW,
 
@@ -170,6 +203,9 @@ func validConfig() Config {
 	cfg.RemoteApps.PostsManifestURL = &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"}
 	cfg.RemoteApps.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com"}
 	cfg.RemoteApps.PostsBackendSigningKey = "a-string-secret-at-least-256-bits-long"
+	cfg.RemoteApps.GroupsManifestURL = &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"}
+	cfg.RemoteApps.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com"}
+	cfg.RemoteApps.GroupsBackendSigningKey = "a-string-secret-at-least-256-bits-long"
 	cfg.RemoteApps.StudentInsightsManifestURL = &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"}
 	cfg.RemoteApps.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com"}
 	cfg.RemoteApps.StudentInsightsBackendSigningKey = "a-string-secret-at-least-256-bits-long"
@@ -201,8 +237,17 @@ func TestConfig_Validate(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts a proxy timeout below the write timeout", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.RemoteApps.ProxyTimeout = cfg.Server.WriteTimeout - time.Second
+
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*Config)
 			want   string
@@ -250,18 +295,28 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				want: `TW_REMOTE_POSTS_MANIFEST_URL must use scheme http or https; got "ftp://posts.example.com/mf-manifest.json"`,
 			},
+			{
+				name:   "proxy timeout equal to the write timeout",
+				mutate: func(c *Config) { c.RemoteApps.ProxyTimeout = c.Server.WriteTimeout },
+				want:   "TW_REMOTE_PROXY_TIMEOUT must be < TW_SERVER_WRITE_TIMEOUT (30s); got 30s",
+			},
+			{
+				name:   "proxy timeout above the write timeout",
+				mutate: func(c *Config) { c.RemoteApps.ProxyTimeout = c.Server.WriteTimeout + time.Second },
+				want:   "TW_REMOTE_PROXY_TIMEOUT must be < TW_SERVER_WRITE_TIMEOUT (30s); got 31s",
+			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := validConfig()
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.Validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -314,11 +369,28 @@ func TestConfig_Validate(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("reports constraints between fields only once every field is valid", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Server.WriteTimeout = 0
+
+		err := cfg.Validate()
+
+		if err == nil {
+			t.Fatal("want err: non-nil; got: nil")
+		}
+		if want := "TW_SERVER_WRITE_TIMEOUT must be > 0"; !strings.Contains(err.Error(), want) {
+			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+		if unwanted := "TW_REMOTE_PROXY_TIMEOUT"; strings.Contains(err.Error(), unwanted) {
+			t.Errorf("want err: not containing %q; got: %q", unwanted, err)
+		}
+	})
 }
 
 func TestServerConfig_validate(t *testing.T) {
 	t.Run("accepts valid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*ServerConfig)
 		}{
@@ -330,28 +402,10 @@ func TestServerConfig_validate(t *testing.T) {
 				name:   "port at the top of the range",
 				mutate: func(c *ServerConfig) { c.Port = 65535 },
 			},
-			// net/http reads a zero timeout as "no timeout", so it is a valid choice
-			// rather than an unset field.
-			{
-				name:   "zero read header timeout",
-				mutate: func(c *ServerConfig) { c.ReadHeaderTimeout = 0 },
-			},
-			{
-				name:   "zero read timeout",
-				mutate: func(c *ServerConfig) { c.ReadTimeout = 0 },
-			},
-			{
-				name:   "zero write timeout",
-				mutate: func(c *ServerConfig) { c.WriteTimeout = 0 },
-			},
-			{
-				name:   "zero idle timeout",
-				mutate: func(c *ServerConfig) { c.IdleTimeout = 0 },
-			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Server
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -361,7 +415,7 @@ func TestServerConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*ServerConfig)
 			want   string
@@ -377,37 +431,57 @@ func TestServerConfig_validate(t *testing.T) {
 				want:   "TW_SERVER_PORT must be 1-65535; got 65536",
 			},
 			{
+				name:   "zero read header timeout",
+				mutate: func(c *ServerConfig) { c.ReadHeaderTimeout = 0 },
+				want:   "TW_SERVER_READ_HEADER_TIMEOUT must be > 0; got 0s",
+			},
+			{
 				name:   "negative read header timeout",
 				mutate: func(c *ServerConfig) { c.ReadHeaderTimeout = -time.Second },
-				want:   "TW_SERVER_READ_HEADER_TIMEOUT must be >= 0; got -1s",
+				want:   "TW_SERVER_READ_HEADER_TIMEOUT must be > 0; got -1s",
+			},
+			{
+				name:   "zero read timeout",
+				mutate: func(c *ServerConfig) { c.ReadTimeout = 0 },
+				want:   "TW_SERVER_READ_TIMEOUT must be > 0; got 0s",
 			},
 			{
 				name:   "negative read timeout",
 				mutate: func(c *ServerConfig) { c.ReadTimeout = -time.Second },
-				want:   "TW_SERVER_READ_TIMEOUT must be >= 0; got -1s",
+				want:   "TW_SERVER_READ_TIMEOUT must be > 0; got -1s",
+			},
+			{
+				name:   "zero write timeout",
+				mutate: func(c *ServerConfig) { c.WriteTimeout = 0 },
+				want:   "TW_SERVER_WRITE_TIMEOUT must be > 0; got 0s",
 			},
 			{
 				name:   "negative write timeout",
 				mutate: func(c *ServerConfig) { c.WriteTimeout = -time.Second },
-				want:   "TW_SERVER_WRITE_TIMEOUT must be >= 0; got -1s",
+				want:   "TW_SERVER_WRITE_TIMEOUT must be > 0; got -1s",
+			},
+			{
+				name:   "zero idle timeout",
+				mutate: func(c *ServerConfig) { c.IdleTimeout = 0 },
+				want:   "TW_SERVER_IDLE_TIMEOUT must be > 0; got 0s",
 			},
 			{
 				name:   "negative idle timeout",
 				mutate: func(c *ServerConfig) { c.IdleTimeout = -time.Second },
-				want:   "TW_SERVER_IDLE_TIMEOUT must be >= 0; got -1s",
+				want:   "TW_SERVER_IDLE_TIMEOUT must be > 0; got -1s",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Server
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -416,7 +490,7 @@ func TestServerConfig_validate(t *testing.T) {
 
 func TestSessionConfig_validate(t *testing.T) {
 	t.Run("accepts valid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*SessionConfig)
 		}{
@@ -429,9 +503,9 @@ func TestSessionConfig_validate(t *testing.T) {
 				mutate: func(c *SessionConfig) { c.AuthenticatedTTL = time.Second },
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Session
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -441,7 +515,7 @@ func TestSessionConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*SessionConfig)
 			want   string
@@ -465,6 +539,21 @@ func TestSessionConfig_validate(t *testing.T) {
 				name:   "name with a semicolon",
 				mutate: func(c *SessionConfig) { c.Name = "tw;session" },
 				want:   `TW_SESSION_NAME must be a valid cookie name; got "tw;session"`,
+			},
+			{
+				name:   "name with the __Host- prefix",
+				mutate: func(c *SessionConfig) { c.Name = "__Host-tw_session" },
+				want:   `TW_SESSION_NAME must not start with __Host- or __Secure-; got "__Host-tw_session"`,
+			},
+			{
+				name:   "name with the __Secure- prefix",
+				mutate: func(c *SessionConfig) { c.Name = "__Secure-tw_session" },
+				want:   `TW_SESSION_NAME must not start with __Host- or __Secure-; got "__Secure-tw_session"`,
+			},
+			{
+				name:   "name with a prefix in another case",
+				mutate: func(c *SessionConfig) { c.Name = "__host-tw_session" },
+				want:   `TW_SESSION_NAME must not start with __Host- or __Secure-; got "__host-tw_session"`,
 			},
 			{
 				name:   "zero default TTL",
@@ -510,17 +599,17 @@ func TestSessionConfig_validate(t *testing.T) {
 				want: "TW_SESSION_VALKEY_URL is required",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Session
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -577,7 +666,7 @@ func TestSessionValkeyConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*SessionValkeyConfig)
 			want   string
@@ -613,7 +702,7 @@ func TestSessionValkeyConfig_validate(t *testing.T) {
 				want:   "TW_SESSION_VALKEY_PREFIX is required",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := Default().Session.Valkey
 				cfg.URL = &url.URL{
 					Scheme:   "valkey",
@@ -621,15 +710,15 @@ func TestSessionValkeyConfig_validate(t *testing.T) {
 					Path:     "/0",
 					RawQuery: "tls=true",
 				}
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -663,6 +752,8 @@ func TestEdupassConfig_validate(t *testing.T) {
 				cfg.TokenURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/token"}
 				cfg.JWKSURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/jwks"}
 				cfg.RedirectURL = &url.URL{Scheme: scheme, Host: "localhost:3000", Path: "/auth/edupass/callback"}
+				cfg.EndSessionURL = &url.URL{Scheme: scheme, Host: "localhost:9000", Path: "/session/end"}
+				cfg.PostLogoutRedirectURL = &url.URL{Scheme: scheme, Host: "localhost:3000", Path: "/login"}
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -685,7 +776,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*EdupassConfig)
 			want   string
@@ -770,18 +861,48 @@ func TestEdupassConfig_validate(t *testing.T) {
 				mutate: func(c *EdupassConfig) { c.RedirectURL = &url.URL{Scheme: "http"} },
 				want:   "TW_EDUPASS_REDIRECT_URL must include host",
 			},
+			{
+				name:   "missing end-session URL",
+				mutate: func(c *EdupassConfig) { c.EndSessionURL = nil },
+				want:   "TW_EDUPASS_END_SESSION_URL is required",
+			},
+			{
+				name:   "end-session URL with a non-HTTP scheme",
+				mutate: func(c *EdupassConfig) { c.EndSessionURL = &url.URL{Scheme: "ftp", Host: "localhost:9000"} },
+				want:   "TW_EDUPASS_END_SESSION_URL must use scheme http or https",
+			},
+			{
+				name:   "end-session URL without a host",
+				mutate: func(c *EdupassConfig) { c.EndSessionURL = &url.URL{Scheme: "http"} },
+				want:   "TW_EDUPASS_END_SESSION_URL must include host",
+			},
+			{
+				name:   "missing post-logout redirect URL",
+				mutate: func(c *EdupassConfig) { c.PostLogoutRedirectURL = nil },
+				want:   "TW_EDUPASS_POST_LOGOUT_REDIRECT_URL is required",
+			},
+			{
+				name:   "post-logout redirect URL with a non-HTTP scheme",
+				mutate: func(c *EdupassConfig) { c.PostLogoutRedirectURL = &url.URL{Scheme: "ftp", Host: "localhost:3000"} },
+				want:   "TW_EDUPASS_POST_LOGOUT_REDIRECT_URL must use scheme http or https",
+			},
+			{
+				name:   "post-logout redirect URL without a host",
+				mutate: func(c *EdupassConfig) { c.PostLogoutRedirectURL = &url.URL{Scheme: "http"} },
+				want:   "TW_EDUPASS_POST_LOGOUT_REDIRECT_URL must include host",
+			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := validConfig().Edupass
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -858,7 +979,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 				t.Fatalf("os.WriteFile: %v", err)
 			}
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name             string
 				clientSecret     string
 				clientSecretFile string
@@ -869,14 +990,14 @@ func TestEdupassConfig_validate(t *testing.T) {
 				{name: "from a file ending in LF", clientSecretFile: clientSecretFileWithLFPath, want: "test-secret"},
 				{name: "from a file ending in CRLF", clientSecretFile: clientSecretFileWithCRLFPath, want: "test-secret"},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
-					cfg.ClientSecret, cfg.ClientSecretFile = tt.clientSecret, tt.clientSecretFile
+					cfg.ClientSecret, cfg.ClientSecretFile = test.clientSecret, test.clientSecretFile
 
 					if err := cfg.validate(); err != nil {
 						t.Fatalf("want err: nil; got: %v", err)
 					}
-					if want, got := tt.want, cfg.ClientCredentials.Secret; want != got {
+					if want, got := test.want, cfg.ClientCredentials.Secret; want != got {
 						t.Errorf("want: %q; got: %q", want, got)
 					}
 				})
@@ -890,7 +1011,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 				t.Fatalf("os.WriteFile: %v", err)
 			}
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name             string
 				clientSecretFile string
 				want             string
@@ -898,17 +1019,17 @@ func TestEdupassConfig_validate(t *testing.T) {
 				{name: "unreadable file", clientSecretFile: missingFilePath, want: "TW_EDUPASS_CLIENT_SECRET_FILE: open " + missingFilePath + ": no such file or directory"},
 				{name: "empty file", clientSecretFile: emptyClientSecretFilePath, want: "TW_EDUPASS_CLIENT_SECRET_FILE: "},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
-					cfg.ClientSecret, cfg.ClientSecretFile = "", tt.clientSecretFile
+					cfg.ClientSecret, cfg.ClientSecretFile = "", test.clientSecretFile
 
 					err := cfg.validate()
 
 					if err == nil {
 						t.Fatal("want err: non-nil; got: nil")
 					}
-					if !strings.HasPrefix(err.Error(), tt.want) {
-						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
+					if !strings.HasPrefix(err.Error(), test.want) {
+						t.Errorf("want err: starting with %q; got: %q", test.want, err)
 					}
 				})
 			}
@@ -1024,7 +1145,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 			}
 			clientCertificateThumbprint := sha256.Sum256(clientCertificateDER)
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name                      string
 				clientPrivateKey          string
 				clientPrivateKeyFile      string
@@ -1045,12 +1166,12 @@ func TestEdupassConfig_validate(t *testing.T) {
 					wantCertificateThumbprint: base64.RawURLEncoding.EncodeToString(clientCertificateThumbprint[:]),
 				},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
 					cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 					cfg.ClientSecret = ""
-					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = tt.clientPrivateKey, tt.clientPrivateKeyFile
-					cfg.ClientCertificate, cfg.ClientCertificateFile = tt.clientCertificate, tt.clientCertificateFile
+					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = test.clientPrivateKey, test.clientPrivateKeyFile
+					cfg.ClientCertificate, cfg.ClientCertificateFile = test.clientCertificate, test.clientCertificateFile
 
 					if err := cfg.validate(); err != nil {
 						t.Fatalf("want err: nil; got: %v", err)
@@ -1058,7 +1179,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 					if got := clientPrivateKey.Equal(cfg.ClientCredentials.Key); !got {
 						t.Error("want: true; got: false")
 					}
-					if want, got := tt.wantCertificateThumbprint, cfg.ClientCredentials.CertificateThumbprint; want != got {
+					if want, got := test.wantCertificateThumbprint, cfg.ClientCredentials.CertificateThumbprint; want != got {
 						t.Errorf("want: %q; got: %q", want, got)
 					}
 				})
@@ -1103,7 +1224,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 				t.Fatalf("os.WriteFile: %v", err)
 			}
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name                 string
 				clientPrivateKey     string
 				clientPrivateKeyFile string
@@ -1117,11 +1238,11 @@ func TestEdupassConfig_validate(t *testing.T) {
 				{name: "not RSA", clientPrivateKey: ecdsaPrivateKeyPEM, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY: not RSA, got *ecdsa.PrivateKey"},
 				{name: "under 2048 bits", clientPrivateKey: rsa1024PrivateKeyPEM, want: "TW_EDUPASS_CLIENT_PRIVATE_KEY: 1024 bits, want at least 2048"},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
 					cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 					cfg.ClientSecret = ""
-					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = tt.clientPrivateKey, tt.clientPrivateKeyFile
+					cfg.ClientPrivateKey, cfg.ClientPrivateKeyFile = test.clientPrivateKey, test.clientPrivateKeyFile
 					cfg.ClientCertificate = clientCertificatePEM
 
 					err := cfg.validate()
@@ -1129,8 +1250,8 @@ func TestEdupassConfig_validate(t *testing.T) {
 					if err == nil {
 						t.Fatal("want err: non-nil; got: nil")
 					}
-					if !strings.HasPrefix(err.Error(), tt.want) {
-						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
+					if !strings.HasPrefix(err.Error(), test.want) {
+						t.Errorf("want err: starting with %q; got: %q", test.want, err)
 					}
 				})
 			}
@@ -1171,7 +1292,7 @@ func TestEdupassConfig_validate(t *testing.T) {
 				t.Fatalf("os.WriteFile: %v", err)
 			}
 
-			for _, tt := range []struct {
+			for _, test := range []struct {
 				name                  string
 				clientCertificate     string
 				clientCertificateFile string
@@ -1184,20 +1305,20 @@ func TestEdupassConfig_validate(t *testing.T) {
 				{name: "expired", clientCertificate: expiredCertificatePEM, want: "TW_EDUPASS_CLIENT_CERTIFICATE: expired at"},
 				{name: "for another key", clientCertificate: otherCertificatePEM, want: "TW_EDUPASS_CLIENT_CERTIFICATE does not match TW_EDUPASS_CLIENT_PRIVATE_KEY"},
 			} {
-				t.Run(tt.name, func(t *testing.T) {
+				t.Run(test.name, func(t *testing.T) {
 					cfg := validConfig().Edupass
 					cfg.ClientAuthMethod = OAuth2ClientAuthMethodPrivateKeyJWT
 					cfg.ClientSecret = ""
 					cfg.ClientPrivateKey = clientPrivateKeyPEM
-					cfg.ClientCertificate, cfg.ClientCertificateFile = tt.clientCertificate, tt.clientCertificateFile
+					cfg.ClientCertificate, cfg.ClientCertificateFile = test.clientCertificate, test.clientCertificateFile
 
 					err := cfg.validate()
 
 					if err == nil {
 						t.Fatal("want err: non-nil; got: nil")
 					}
-					if !strings.HasPrefix(err.Error(), tt.want) {
-						t.Errorf("want err: starting with %q; got: %q", tt.want, err)
+					if !strings.HasPrefix(err.Error(), test.want) {
+						t.Errorf("want err: starting with %q; got: %q", test.want, err)
 					}
 				})
 			}
@@ -1242,6 +1363,8 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				cfg := validConfig().RemoteApps
 				cfg.PostsManifestURL = &url.URL{Scheme: scheme, Host: "posts.example.com", Path: "/mf-manifest.json"}
 				cfg.PostsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.posts.example.com"}
+				cfg.GroupsManifestURL = &url.URL{Scheme: scheme, Host: "groups.example.com", Path: "/mf-manifest.json"}
+				cfg.GroupsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.groups.example.com"}
 				cfg.StudentInsightsManifestURL = &url.URL{Scheme: scheme, Host: "student-insights.example.com", Path: "/mf-manifest.json"}
 				cfg.StudentInsightsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.student-insights.example.com"}
 
@@ -1253,7 +1376,7 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 	})
 
 	t.Run("accepts valid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*RemoteAppsConfig)
 		}{
@@ -1261,6 +1384,12 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				name: "posts backend base URL with a path",
 				mutate: func(c *RemoteAppsConfig) {
 					c.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com", Path: "/v1"}
+				},
+			},
+			{
+				name: "groups backend base URL with a path",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com", Path: "/v1"}
 				},
 			},
 			{
@@ -1274,6 +1403,10 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = strings.Repeat("k", 32) },
 			},
 			{
+				name:   "groups backend signing key of exactly 32 bytes",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = strings.Repeat("k", 32) },
+			},
+			{
 				name:   "student insights backend signing key of exactly 32 bytes",
 				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendSigningKey = strings.Repeat("k", 32) },
 			},
@@ -1282,9 +1415,9 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				mutate: func(c *RemoteAppsConfig) { c.SignedTokenTTL = time.Second },
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := validConfig().RemoteApps
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				if err := cfg.validate(); err != nil {
 					t.Errorf("want err: nil; got: %v", err)
@@ -1294,7 +1427,7 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
-		for _, tt := range []struct {
+		for _, test := range []struct {
 			name   string
 			mutate func(*RemoteAppsConfig)
 			want   string
@@ -1313,6 +1446,26 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				name:   "sub-second signed token TTL",
 				mutate: func(c *RemoteAppsConfig) { c.SignedTokenTTL = 500 * time.Millisecond },
 				want:   "TW_REMOTE_SIGNED_TOKEN_TTL must be at least 1s; got 500ms",
+			},
+			{
+				name:   "zero proxy timeout",
+				mutate: func(c *RemoteAppsConfig) { c.ProxyTimeout = 0 },
+				want:   "TW_REMOTE_PROXY_TIMEOUT must be > 0; got 0s",
+			},
+			{
+				name:   "negative proxy timeout",
+				mutate: func(c *RemoteAppsConfig) { c.ProxyTimeout = -time.Second },
+				want:   "TW_REMOTE_PROXY_TIMEOUT must be > 0; got -1s",
+			},
+			{
+				name:   "zero proxy stream timeout",
+				mutate: func(c *RemoteAppsConfig) { c.ProxyStreamTimeout = 0 },
+				want:   "TW_REMOTE_PROXY_STREAM_TIMEOUT must be > 0; got 0s",
+			},
+			{
+				name:   "negative proxy stream timeout",
+				mutate: func(c *RemoteAppsConfig) { c.ProxyStreamTimeout = -time.Second },
+				want:   "TW_REMOTE_PROXY_STREAM_TIMEOUT must be > 0; got -1s",
 			},
 			{
 				name:   "missing posts manifest URL",
@@ -1371,6 +1524,64 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				name:   "short posts backend signing key",
 				mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = strings.Repeat("k", 31) },
 				want:   "TW_REMOTE_POSTS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
+			},
+			{
+				name:   "missing groups manifest URL",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsManifestURL = nil },
+				want:   "TW_REMOTE_GROUPS_MANIFEST_URL is required to register the groups remote",
+			},
+			{
+				name: "groups manifest URL with a non-HTTP scheme",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsManifestURL = &url.URL{Scheme: "ftp", Host: "groups.example.com", Path: "/mf-manifest.json"}
+				},
+				want: `TW_REMOTE_GROUPS_MANIFEST_URL must use scheme http or https; got "ftp://groups.example.com/mf-manifest.json"`,
+			},
+			{
+				name:   "groups manifest URL without a host",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"} },
+				want:   `TW_REMOTE_GROUPS_MANIFEST_URL must include host[:port]; got "https:///mf-manifest.json"`,
+			},
+			{
+				name:   "missing groups backend base URL",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendBaseURL = nil },
+				want:   "TW_REMOTE_GROUPS_BACKEND_BASE_URL is required to register the groups remote",
+			},
+			{
+				name: "groups backend base URL with a non-HTTP scheme",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsBackendBaseURL = &url.URL{Scheme: "ftp", Host: "api.groups.example.com"}
+				},
+				want: `TW_REMOTE_GROUPS_BACKEND_BASE_URL must use scheme http or https; got "ftp://api.groups.example.com"`,
+			},
+			{
+				name:   "groups backend base URL without a host",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendBaseURL = &url.URL{Scheme: "http"} },
+				want:   `TW_REMOTE_GROUPS_BACKEND_BASE_URL must include host[:port]; got "http:"`,
+			},
+			{
+				name: "groups backend base URL with a query",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com", RawQuery: "key=abc"}
+				},
+				want: `TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a query; got "https://api.groups.example.com?key=abc"`,
+			},
+			{
+				name: "groups backend base URL with a fragment",
+				mutate: func(c *RemoteAppsConfig) {
+					c.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com", Fragment: "frag"}
+				},
+				want: `TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a fragment; got "https://api.groups.example.com#frag"`,
+			},
+			{
+				name:   "empty groups backend signing key",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = "" },
+				want:   "TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY is required to register the groups remote",
+			},
+			{
+				name:   "short groups backend signing key",
+				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = strings.Repeat("k", 31) },
+				want:   "TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
 			},
 			{
 				name:   "missing student insights manifest URL",
@@ -1433,17 +1644,17 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				want:   "TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
 			},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				cfg := validConfig().RemoteApps
-				tt.mutate(&cfg)
+				test.mutate(&cfg)
 
 				err := cfg.validate()
 
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if !strings.Contains(err.Error(), tt.want) {
-					t.Errorf("want err: containing %q; got: %q", tt.want, err)
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
 				}
 			})
 		}
@@ -1465,9 +1676,10 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 		}
 	})
 
-	t.Run("reports both remote apps in one error", func(t *testing.T) {
+	t.Run("reports every remote app in one error", func(t *testing.T) {
 		cfg := validConfig().RemoteApps
 		cfg.PostsManifestURL = &url.URL{Scheme: "ftp", Host: "posts.example.com", Path: "/mf-manifest.json"}
+		cfg.GroupsBackendSigningKey = ""
 		cfg.StudentInsightsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"}
 
 		err := cfg.validate()
@@ -1475,16 +1687,64 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 		if err == nil {
 			t.Fatal("want err: non-nil; got: nil")
 		}
-		for _, want := range []string{"TW_REMOTE_POSTS_MANIFEST_URL", "TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"} {
+		for _, want := range []string{"TW_REMOTE_POSTS_MANIFEST_URL", "TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY", "TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("want err: containing %q; got: %q", want, err)
 			}
 		}
 	})
+
+	t.Run("rejects an invalid allowlist with an error naming its setting", func(t *testing.T) {
+		for _, a := range (RemoteAppsConfig{}).Allowlists() {
+			t.Run(a.App, func(t *testing.T) {
+				t.Chdir(t.TempDir())
+				t.Setenv(a.Setting, "12A4")
+				cfg := Default()
+				if err := dotenv.Load(&cfg); err != nil {
+					t.Fatalf("dotenv.Load: %v", err)
+				}
+
+				err := cfg.RemoteApps.validate()
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if want := a.Setting + ` must contain only 4-digit school codes; got "12A4"`; !strings.Contains(err.Error(), want) {
+					t.Errorf("want err: containing %q; got: %q", want, err)
+				}
+			})
+		}
+	})
+}
+
+func TestRemoteAppsConfig_Allowlists(t *testing.T) {
+	t.Run("returns every allowlist field under the setting it is read from", func(t *testing.T) {
+		cfg := RemoteAppsConfig{}
+		want := map[string]SchoolAllowlist{}
+		v := reflect.ValueOf(&cfg).Elem()
+		for i := range v.NumField() {
+			if field := v.Type().Field(i); field.Type == reflect.TypeFor[SchoolAllowlist]() {
+				// A distinct value per field shows a row reading the wrong field.
+				allowlist := SchoolAllowlist(fmt.Sprintf("%04d", i))
+				v.Field(i).Set(reflect.ValueOf(allowlist))
+				want[field.Tag.Get("dotenv")] = allowlist
+			}
+		}
+
+		allowlists := cfg.Allowlists()
+
+		got := map[string]SchoolAllowlist{}
+		for _, a := range allowlists {
+			got[a.Setting] = a.Allowlist
+		}
+		if !maps.Equal(want, got) || len(allowlists) != len(want) {
+			t.Errorf("want allowlists by setting: %v; got: %v", want, got)
+		}
+	})
 }
 
 func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		name   string
 		mutate func(*RemoteAppsConfig)
 		want   bool
@@ -1519,11 +1779,58 @@ func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
 			want:   false,
 		},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			cfg := validConfig().RemoteApps
-			tt.mutate(&cfg)
+			test.mutate(&cfg)
 
-			if want, got := tt.want, cfg.IsPostsRegistered(); want != got {
+			if want, got := test.want, cfg.IsPostsRegistered(); want != got {
+				t.Errorf("want: %t; got: %t", want, got)
+			}
+		})
+	}
+}
+
+func TestRemoteAppsConfig_IsGroupsRegistered(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*RemoteAppsConfig)
+		want   bool
+	}{
+		{
+			name:   "all values set",
+			mutate: func(c *RemoteAppsConfig) {},
+			want:   true,
+		},
+		{
+			name: "no values set",
+			mutate: func(c *RemoteAppsConfig) {
+				c.GroupsManifestURL = nil
+				c.GroupsBackendBaseURL = nil
+				c.GroupsBackendSigningKey = ""
+			},
+			want: false,
+		},
+		{
+			name:   "missing manifest URL",
+			mutate: func(c *RemoteAppsConfig) { c.GroupsManifestURL = nil },
+			want:   false,
+		},
+		{
+			name:   "missing backend base URL",
+			mutate: func(c *RemoteAppsConfig) { c.GroupsBackendBaseURL = nil },
+			want:   false,
+		},
+		{
+			name:   "empty backend signing key",
+			mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = "" },
+			want:   false,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := validConfig().RemoteApps
+			test.mutate(&cfg)
+
+			if want, got := test.want, cfg.IsGroupsRegistered(); want != got {
 				t.Errorf("want: %t; got: %t", want, got)
 			}
 		})
@@ -1531,7 +1838,7 @@ func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
 }
 
 func TestRemoteAppsConfig_IsStudentInsightsRegistered(t *testing.T) {
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		name   string
 		mutate func(*RemoteAppsConfig)
 		want   bool
@@ -1566,13 +1873,134 @@ func TestRemoteAppsConfig_IsStudentInsightsRegistered(t *testing.T) {
 			want:   false,
 		},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			cfg := validConfig().RemoteApps
-			tt.mutate(&cfg)
+			test.mutate(&cfg)
 
-			if want, got := tt.want, cfg.IsStudentInsightsRegistered(); want != got {
+			if want, got := test.want, cfg.IsStudentInsightsRegistered(); want != got {
 				t.Errorf("want: %t; got: %t", want, got)
 			}
 		})
 	}
+}
+
+func TestSchoolAllowlist_Allows(t *testing.T) {
+	t.Run("reports whether the list allows the school", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			allowlist  SchoolAllowlist
+			schoolCode string
+			want       bool
+		}{
+			{name: "when the school is listed", allowlist: "0001,0002", schoolCode: "0002", want: true},
+			{name: "when the school is not listed", allowlist: "0001,0002", schoolCode: "0003", want: false},
+			{name: "when spaces surround the listed codes", allowlist: " 0001 , 0002 ", schoolCode: "0002", want: true},
+			{name: "when the codes differ only by a leading zero", allowlist: "0718", schoolCode: "718", want: false},
+			{name: "under * alone", allowlist: "*", schoolCode: "0001", want: true},
+			{name: "under * when the school is excluded", allowlist: "*,!0001", schoolCode: "0001", want: false},
+			{name: "under * when the school is not excluded", allowlist: "*,!0001", schoolCode: "0002", want: true},
+			{name: "under * when spaces surround the exclusions", allowlist: " * , !0001 ", schoolCode: "0001", want: false},
+			{name: "when the list is unset", allowlist: "", schoolCode: "0001", want: false},
+			{name: "when the list is blank", allowlist: "   ", schoolCode: "0001", want: false},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				allowed := test.allowlist.Allows(test.schoolCode)
+
+				if test.want != allowed {
+					t.Errorf("want allowlist.Allows(%q): %t; got: %t", test.schoolCode, test.want, allowed)
+				}
+			})
+		}
+	})
+}
+
+func TestSchoolAllowlist_IsEmpty(t *testing.T) {
+	t.Run("reports whether the list allows no school", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			allowlist SchoolAllowlist
+			want      bool
+		}{
+			{name: "when unset", allowlist: "", want: true},
+			{name: "when blank", allowlist: "   ", want: true},
+			{name: "when the list has a code", allowlist: "0001", want: false},
+			{name: "when the list has a code surrounded by spaces", allowlist: " 0001 ", want: false},
+			{name: "when the list is *", allowlist: "*", want: false},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				empty := test.allowlist.IsEmpty()
+
+				if test.want != empty {
+					t.Errorf("want allowlist.IsEmpty(): %t; got: %t", test.want, empty)
+				}
+			})
+		}
+	})
+}
+
+func TestSchoolAllowlist_validate(t *testing.T) {
+	t.Run("accepts a valid list", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			allowlist SchoolAllowlist
+		}{
+			{name: "when unset", allowlist: ""},
+			{name: "when blank", allowlist: "   "},
+			{name: "with one code", allowlist: "0001"},
+			{name: "with several codes", allowlist: "0001,0002"},
+			{name: "with spaces around codes", allowlist: " 0001 , 0002 "},
+			{name: "with a repeated code", allowlist: "0001,0001"},
+			{name: "with a leading zero", allowlist: "0718"},
+			{name: "with * alone", allowlist: "*"},
+			{name: "with * and exclusions", allowlist: "*,!0001,!0002"},
+			{name: "with a repeated exclusion", allowlist: "*,!0001,!0001"},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				err := test.allowlist.validate("TW_SETTING")
+
+				if err != nil {
+					t.Errorf("want err: nil; got: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("rejects an invalid list with an error naming the setting and the item", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			allowlist SchoolAllowlist
+			want      string
+		}{
+			{name: "with a letter in a code", allowlist: "12A4", want: `TW_SETTING must contain only 4-digit school codes; got "12A4"`},
+			{name: "with a 3-digit code", allowlist: "123", want: `TW_SETTING must contain only 4-digit school codes; got "123"`},
+			{name: "with a code missing its leading zero", allowlist: "718", want: `TW_SETTING must contain only 4-digit school codes; got "718"`},
+			{name: "with a 5-digit code", allowlist: "12345", want: `TW_SETTING must contain only 4-digit school codes; got "12345"`},
+			{name: "with a word", allowlist: "all", want: `TW_SETTING must contain only 4-digit school codes; got "all"`},
+			{name: "with an empty item between codes", allowlist: "0001,,0002", want: `TW_SETTING must not contain an empty item; got "0001,,0002"`},
+			{name: "with a trailing comma", allowlist: "0001,", want: `TW_SETTING must not contain an empty item; got "0001,"`},
+			{name: "with a leading comma", allowlist: ",0001", want: `TW_SETTING must not contain an empty item; got ",0001"`},
+			{name: "with an exclusion alone", allowlist: "!0001", want: `TW_SETTING must start with * to exclude a code; got "!0001"`},
+			{name: "with an exclusion after a code", allowlist: "0001,!0002", want: `TW_SETTING must start with * to exclude a code; got "!0002"`},
+			{name: "with a code after *", allowlist: "*,0001", want: `TW_SETTING must list only excluded codes after *; got "0001"`},
+			{name: "with * after a code", allowlist: "0001,*", want: `TW_SETTING must have * only as its first item; got "0001,*"`},
+			{name: "with * twice", allowlist: "*,*", want: `TW_SETTING must have * only as its first item; got "*,*"`},
+			{name: "with an invalid excluded code", allowlist: "*,!12A4", want: `TW_SETTING must contain only 4-digit school codes; got "!12A4"`},
+			{name: "with an exclusion missing its code", allowlist: "*,!", want: `TW_SETTING must contain only 4-digit school codes; got "!"`},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				err := test.allowlist.validate("TW_SETTING")
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if got := err.Error(); test.want != got {
+					t.Errorf("want err: %q; got: %q", test.want, got)
+				}
+			})
+		}
+	})
 }

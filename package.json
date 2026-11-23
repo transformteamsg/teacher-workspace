@@ -1,6 +1,6 @@
 {
   "name": "teacher-workspace",
-  "version": "0.0.2",
+  "version": "0.0.8",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,16 +8,16 @@
     "build": "pnpm --filter @teacher-workspace/host build",
     "preview": "pnpm --filter @teacher-workspace/host preview",
     "lint": "oxlint",
-    "format": "oxfmt \"**/*.{js,jsx,ts,tsx,md,html,css,json,jsonc,yaml,toml}\"",
+    "format": "oxfmt \"**/*.{js,jsx,ts,tsx,md,html,css,json,jsonc,yaml,yml,toml}\"",
     "prepare": "lefthook install"
   },
   "devDependencies": {
-    "lefthook": "^2.1.9",
-    "oxfmt": "0.54.0",
-    "oxlint": "1.69.0"
+    "lefthook": "^2.2.1",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0"
   },
   "engines": {
-    "node": "24.19.0",
+    "node": "24.22.1",
     "pnpm": "11.22.0"
   }
 }

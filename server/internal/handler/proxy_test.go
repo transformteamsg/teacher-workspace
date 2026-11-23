@@ -1,22 +1,28 @@
 package handler
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/transformteamsg/teacher-workspace/server/internal/config"
+	"github.com/transformteamsg/teacher-workspace/server/internal/httputil"
 	"github.com/transformteamsg/teacher-workspace/server/internal/middleware"
 	"github.com/transformteamsg/teacher-workspace/server/internal/session"
 )
@@ -42,6 +48,9 @@ func TestHandler_proxy(t *testing.T) {
 		postsBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, "posts:"+r.URL.RequestURI())
 		}))
+		groupsBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, "groups:"+r.URL.RequestURI())
+		}))
 		studentInsightsBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, "student-insights:"+r.URL.RequestURI())
 		}))
@@ -49,15 +58,24 @@ func TestHandler_proxy(t *testing.T) {
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    postsBackendURL,
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     postsBackendURL,
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
+
+					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:     groupsBackendURL,
+					GroupsBackendSigningKey:  "groups-string-secret-at-least-256-bits-long",
+					GroupsAllowedSchoolCodes: "*",
 
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    studentInsightsBackendURL,
 					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+					StudentsAllowedSchoolCodes:       "*",
 				},
 			},
 		}
@@ -71,6 +89,11 @@ func TestHandler_proxy(t *testing.T) {
 				name:   "posts",
 				target: "/api/posts/hello",
 				want:   "posts:/hello",
+			},
+			{
+				name:   "groups",
+				target: "/api/groups/hello",
+				want:   "groups:/hello",
 			},
 			{
 				name:   "student insights",
@@ -97,7 +120,13 @@ func TestHandler_proxy(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				sess := session.New()
-				sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
+				sess.SetUser(session.User{
+					ID:         "staff-1",
+					Email:      "teacher@example.com",
+					Role:       "ROLE_TEACHER",
+					SchoolCode: "1234",
+					Attributes: []string{},
+				})
 
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 				ctx = middleware.WithSession(ctx, sess)
@@ -126,11 +155,14 @@ func TestHandler_proxy(t *testing.T) {
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    postsBackendURL,
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     postsBackendURL,
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -160,7 +192,13 @@ func TestHandler_proxy(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				sess := session.New()
-				sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
+				sess.SetUser(session.User{
+					ID:         "staff-1",
+					Email:      "teacher@example.com",
+					Role:       "ROLE_TEACHER",
+					SchoolCode: "1234",
+					Attributes: []string{},
+				})
 
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 				ctx = middleware.WithSession(ctx, sess)
@@ -191,18 +229,102 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
+	t.Run("answers a refused school like an unknown app, without calling the remote backend", func(t *testing.T) {
+		const (
+			schoolCode      = "1234"
+			otherSchoolCode = "0001"
+		)
+		tests := []struct {
+			name   string
+			mutate func(*config.RemoteAppsConfig)
+			target string
+		}{
+			{
+				name:   "when Posts does not list the school",
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = otherSchoolCode },
+				target: "/api/posts/hello",
+			},
+			{
+				name:   "when Posts allows no school",
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = "" },
+				target: "/api/posts/hello",
+			},
+			{
+				name:   "when Groups does not list the school",
+				mutate: func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = otherSchoolCode },
+				target: "/api/groups/hello",
+			},
+			{
+				name:   "when Student Insights excludes the school",
+				mutate: func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "*,!" + schoolCode },
+				target: "/api/student-insights/hello",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				var calls atomic.Int32
+				remoteApps := allowAllRemoteApps(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+					calls.Add(1)
+				}))
+				test.mutate(&remoteApps)
+				h := &Handler{cfg: &config.Config{RemoteApps: remoteApps}}
+
+				serve := func(target string) *httptest.ResponseRecorder {
+					sess := session.New()
+					sess.SetUser(session.User{
+						ID:         "staff-2",
+						Email:      "teacher@example.com",
+						Role:       "ROLE_TEACHER",
+						SchoolCode: schoolCode,
+						Attributes: []string{},
+					})
+					ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+					ctx = middleware.WithSession(ctx, sess)
+
+					req := httptest.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+					rec := httptest.NewRecorder()
+					h.proxy().ServeHTTP(rec, req)
+					return rec
+				}
+				unknown := serve("/api/does-not-exist/hello")
+				if unknown.Code != http.StatusNotFound {
+					t.Fatalf("serve unknown app: status %d", unknown.Code)
+				}
+
+				refused := serve(test.target)
+
+				if want, got := unknown.Code, refused.Code; want != got {
+					t.Errorf("want rec.Code: %d; got: %d", want, got)
+				}
+				if want, got := unknown.Body.String(), refused.Body.String(); want != got {
+					t.Errorf("want body: %q; got: %q", want, got)
+				}
+				if want, got := unknown.Header().Get("Content-Type"), refused.Header().Get("Content-Type"); want != got {
+					t.Errorf("want Content-Type: %q; got: %q", want, got)
+				}
+				if got := calls.Load(); got != 0 {
+					t.Errorf("want remote backend calls: 0; got: %d", got)
+				}
+			})
+		}
+	})
+
 	t.Run("responds with 500", func(t *testing.T) {
 		var calls int
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
 					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
 					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 						calls++
 					})),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -225,7 +347,25 @@ func TestHandler_proxy(t *testing.T) {
 				name: "when the user has no Edupass ID",
 				withCtx: func(ctx context.Context) context.Context {
 					sess := session.New()
-					sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
+					sess.SetUser(session.User{
+						Email:      "teacher@example.com",
+						Role:       "ROLE_TEACHER",
+						SchoolCode: "1234",
+						Attributes: []string{"ATTR_CCE"},
+					})
+					return middleware.WithSession(ctx, sess)
+				},
+			},
+			{
+				name: "when the user has no email",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{
+						ID:         "staff-1",
+						Role:       "ROLE_TEACHER",
+						SchoolCode: "1234",
+						Attributes: []string{"ATTR_CCE"},
+					})
 					return middleware.WithSession(ctx, sess)
 				},
 			},
@@ -233,7 +373,25 @@ func TestHandler_proxy(t *testing.T) {
 				name: "when the user has no role",
 				withCtx: func(ctx context.Context) context.Context {
 					sess := session.New()
-					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}})
+					sess.SetUser(session.User{
+						ID:         "staff-1",
+						Email:      "teacher@example.com",
+						SchoolCode: "1234",
+						Attributes: []string{"ATTR_CCE"},
+					})
+					return middleware.WithSession(ctx, sess)
+				},
+			},
+			{
+				name: "when the user has no school code",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{
+						ID:         "staff-1",
+						Email:      "teacher@example.com",
+						Role:       "ROLE_TEACHER",
+						Attributes: []string{"ATTR_CCE"},
+					})
 					return middleware.WithSession(ctx, sess)
 				},
 			},
@@ -241,7 +399,12 @@ func TestHandler_proxy(t *testing.T) {
 				name: "when the user has no attributes",
 				withCtx: func(ctx context.Context) context.Context {
 					sess := session.New()
-					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"})
+					sess.SetUser(session.User{
+						ID:         "staff-1",
+						Email:      "teacher@example.com",
+						Role:       "ROLE_TEACHER",
+						SchoolCode: "1234",
+					})
 					return middleware.WithSession(ctx, sess)
 				},
 			},
@@ -279,24 +442,114 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
+	t.Run("logs a warning when a school is refused", func(t *testing.T) {
+		const (
+			schoolCode      = "1234"
+			otherSchoolCode = "0001"
+		)
+		tests := []struct {
+			name   string
+			mutate func(*config.RemoteAppsConfig)
+			target string
+			want   logRecord
+		}{
+			{
+				name:   "for Posts",
+				mutate: func(c *config.RemoteAppsConfig) { c.PostsAllowedSchoolCodes = otherSchoolCode },
+				target: "/api/posts/hello",
+				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "posts", EdupassID: "staff-2", SchoolCode: schoolCode},
+			},
+			{
+				name:   "for Groups",
+				mutate: func(c *config.RemoteAppsConfig) { c.GroupsAllowedSchoolCodes = otherSchoolCode },
+				target: "/api/groups/hello",
+				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "groups", EdupassID: "staff-2", SchoolCode: schoolCode},
+			},
+			{
+				name:   "for Student Insights",
+				mutate: func(c *config.RemoteAppsConfig) { c.StudentsAllowedSchoolCodes = "*,!" + schoolCode },
+				target: "/api/student-insights/hello",
+				want:   logRecord{Level: slog.LevelWarn.String(), Msg: "school not allowed to use remote app", App: "students", EdupassID: "staff-2", SchoolCode: schoolCode},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				remoteApps := allowAllRemoteApps(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusTeapot)
+				}))
+				test.mutate(&remoteApps)
+				h := &Handler{cfg: &config.Config{RemoteApps: remoteApps}}
+
+				var logs bytes.Buffer
+				sess := session.New()
+				sess.SetUser(session.User{ID: "staff-2", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: schoolCode, Attributes: []string{}})
+				ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+				ctx = middleware.WithSession(ctx, sess)
+
+				req := httptest.NewRequestWithContext(ctx, http.MethodGet, test.target, nil)
+				rec := httptest.NewRecorder()
+
+				h.proxy().ServeHTTP(rec, req)
+
+				if want, got := http.StatusNotFound, rec.Code; want != got {
+					t.Fatalf("want rec.Code: %d; got: %d", want, got)
+				}
+				records := decodeLogRecords(t, &logs)
+				if want, got := 1, len(records); want != got {
+					t.Fatalf("want len(records): %d; got: %d", want, got)
+				}
+				if want, got := test.want, records[0]; !reflect.DeepEqual(want, got) {
+					t.Errorf("want records[0]: %+v; got: %+v", want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("logs nothing when the school is allowed", func(t *testing.T) {
+		h := &Handler{cfg: &config.Config{RemoteApps: allowAllRemoteApps(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}))}}
+
+		var logs bytes.Buffer
+		sess := session.New()
+		sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", SchoolCode: "1234", Attributes: []string{}})
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+		ctx = middleware.WithSession(ctx, sess)
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/posts/hello", nil)
+		rec := httptest.NewRecorder()
+
+		h.proxy().ServeHTTP(rec, req)
+
+		if want, got := http.StatusTeapot, rec.Code; want != got {
+			t.Fatalf("want rec.Code: %d; got: %d", want, got)
+		}
+		if got := logs.String(); got != "" {
+			t.Errorf("want logs: empty; got: %q", got)
+		}
+	})
+
 	t.Run("logs an error", func(t *testing.T) {
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    newRemoteBackend(t, http.NotFoundHandler()),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     newRemoteBackend(t, http.NotFoundHandler()),
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
 
 		tests := []struct {
-			name        string
-			withCtx     func(context.Context) context.Context
-			wantMsg     string
-			wantMissing []string
+			name    string
+			withCtx func(context.Context) context.Context
+			wantMsg string
 		}{
 			{
 				name:    "when the request has no session",
@@ -314,52 +567,71 @@ func TestHandler_proxy(t *testing.T) {
 				name: "when the user has no Edupass ID",
 				withCtx: func(ctx context.Context) context.Context {
 					sess := session.New()
-					sess.SetUser(session.User{Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{"ATTR_CCE"}})
+					sess.SetUser(session.User{
+						Email:      "teacher@example.com",
+						Role:       "ROLE_TEACHER",
+						SchoolCode: "1234",
+						Attributes: []string{"ATTR_CCE"},
+					})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"edupass_id"},
+				wantMsg: "incomplete user found in session",
+			},
+			{
+				name: "when the user has no email",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{
+						ID:         "staff-1",
+						Role:       "ROLE_TEACHER",
+						SchoolCode: "1234",
+						Attributes: []string{"ATTR_CCE"},
+					})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg: "incomplete user found in session",
 			},
 			{
 				name: "when the user has no role",
 				withCtx: func(ctx context.Context) context.Context {
 					sess := session.New()
-					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{"ATTR_CCE"}})
+					sess.SetUser(session.User{
+						ID:         "staff-1",
+						Email:      "teacher@example.com",
+						SchoolCode: "1234",
+						Attributes: []string{"ATTR_CCE"},
+					})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"role"},
+				wantMsg: "incomplete user found in session",
+			},
+			{
+				name: "when the user has no school code",
+				withCtx: func(ctx context.Context) context.Context {
+					sess := session.New()
+					sess.SetUser(session.User{
+						ID:         "staff-1",
+						Email:      "teacher@example.com",
+						Role:       "ROLE_TEACHER",
+						Attributes: []string{"ATTR_CCE"},
+					})
+					return middleware.WithSession(ctx, sess)
+				},
+				wantMsg: "incomplete user found in session",
 			},
 			{
 				name: "when the user has no attributes",
 				withCtx: func(ctx context.Context) context.Context {
 					sess := session.New()
-					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER"})
+					sess.SetUser(session.User{
+						ID:         "staff-1",
+						Email:      "teacher@example.com",
+						Role:       "ROLE_TEACHER",
+						SchoolCode: "1234",
+					})
 					return middleware.WithSession(ctx, sess)
 				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"attributes"},
-			},
-			{
-				name: "when the user has no Edupass ID, role or attributes",
-				withCtx: func(ctx context.Context) context.Context {
-					sess := session.New()
-					sess.SetUser(session.User{Email: "teacher@example.com"})
-					return middleware.WithSession(ctx, sess)
-				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"edupass_id", "role", "attributes"},
-			},
-			{
-				// An empty list still counts as having attributes.
-				name: "when the user has no role and an empty attributes list",
-				withCtx: func(ctx context.Context) context.Context {
-					sess := session.New()
-					sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Attributes: []string{}})
-					return middleware.WithSession(ctx, sess)
-				},
-				wantMsg:     "missing claims found in user",
-				wantMissing: []string{"role"},
+				wantMsg: "incomplete user found in session",
 			},
 		}
 
@@ -384,9 +656,6 @@ func TestHandler_proxy(t *testing.T) {
 				if want, got := test.wantMsg, records[0].Msg; want != got {
 					t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 				}
-				if want, got := test.wantMissing, records[0].Missing; !reflect.DeepEqual(want, got) {
-					t.Errorf("want records[0].Missing: %q; got: %q", want, got)
-				}
 			})
 		}
 	})
@@ -404,15 +673,24 @@ func TestHandler_proxy(t *testing.T) {
 			now: func() time.Time { return now },
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: ttl,
+					SignedTokenTTL:     ttl,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
-					PostsManifestURL:       &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
-					PostsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
-					PostsBackendSigningKey: "posts-string-secret-at-least-256-bits-long",
+					PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+					PostsBackendBaseURL:     newRemoteBackend(t, echoAuthorization),
+					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+					PostsAllowedSchoolCodes: "*",
+
+					GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+					GroupsBackendBaseURL:     newRemoteBackend(t, echoAuthorization),
+					GroupsBackendSigningKey:  "groups-string-secret-at-least-256-bits-long",
+					GroupsAllowedSchoolCodes: "*",
 
 					StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
 					StudentInsightsBackendBaseURL:    newRemoteBackend(t, echoAuthorization),
 					StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+					StudentsAllowedSchoolCodes:       "*",
 				},
 			},
 		}
@@ -430,6 +708,12 @@ func TestHandler_proxy(t *testing.T) {
 				wantAudience: jwt.ClaimStrings{"pg"},
 			},
 			{
+				name:         "groups",
+				target:       "/api/groups/hello",
+				signingKey:   "groups-string-secret-at-least-256-bits-long",
+				wantAudience: jwt.ClaimStrings{"pg"},
+			},
+			{
 				name:         "student insights",
 				target:       "/api/student-insights/hello",
 				signingKey:   "student-insights-string-secret-at-least-256-bits-long",
@@ -440,7 +724,13 @@ func TestHandler_proxy(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				sess := session.New()
-				sess.SetUser(session.User{ID: "staff-1", Email: "teacher@example.com", Role: "ROLE_TEACHER", Attributes: []string{}})
+				sess.SetUser(session.User{
+					ID:         "staff-1",
+					Email:      "teacher@example.com",
+					Role:       "ROLE_TEACHER",
+					SchoolCode: "1234",
+					Attributes: []string{},
+				})
 
 				ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
 				ctx = middleware.WithSession(ctx, sess)
@@ -484,18 +774,21 @@ func TestHandler_proxy(t *testing.T) {
 		}
 	})
 
-	t.Run("carries the signed-in user's stored Edupass ID, role and attributes in the JWT", func(t *testing.T) {
+	t.Run("carries the signed-in user's stored Edupass ID, email, role, school code and attributes in the JWT", func(t *testing.T) {
 		const signingKey = "posts-string-secret-at-least-256-bits-long"
 		h := &Handler{
 			cfg: &config.Config{
 				RemoteApps: config.RemoteAppsConfig{
-					SignedTokenTTL: time.Minute,
+					SignedTokenTTL:     time.Minute,
+					ProxyTimeout:       5 * time.Minute,
+					ProxyStreamTimeout: 5 * time.Minute,
 
 					PostsManifestURL: &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
 					PostsBackendBaseURL: newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						_, _ = io.WriteString(w, r.Header.Get("Authorization"))
 					})),
-					PostsBackendSigningKey: signingKey,
+					PostsBackendSigningKey:  signingKey,
+					PostsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -521,8 +814,9 @@ func TestHandler_proxy(t *testing.T) {
 				sess := session.New()
 				sess.SetUser(session.User{
 					ID:         "staff-1",
-					Email:      "teacher@example.com",
+					Email:      "john_tan@schools.gov.sg",
 					Role:       "ROLE_TEACHER",
+					SchoolCode: "1234",
 					Attributes: test.attributes,
 				})
 
@@ -546,8 +840,10 @@ func TestHandler_proxy(t *testing.T) {
 				var claims struct {
 					jwt.RegisteredClaims
 
+					Email         string   `json:"email"`
 					Role          string   `json:"role"`
 					EffectiveRole string   `json:"effective_role"`
+					SchoolCode    string   `json:"school_code"`
 					Attributes    []string `json:"attributes"`
 				}
 				if _, err := jwt.ParseWithClaims(token, &claims,
@@ -562,11 +858,17 @@ func TestHandler_proxy(t *testing.T) {
 				if want, got := "staff-1", claims.Subject; want != got {
 					t.Errorf("want claims.Subject: %q; got: %q", want, got)
 				}
+				if want, got := "john_tan@schools.gov.sg", claims.Email; want != got {
+					t.Errorf("want claims.Email: %q; got: %q", want, got)
+				}
 				if want, got := "ROLE_TEACHER", claims.Role; want != got {
 					t.Errorf("want claims.Role: %q; got: %q", want, got)
 				}
 				if want, got := "ROLE_TEACHER", claims.EffectiveRole; want != got {
 					t.Errorf("want claims.EffectiveRole: %q; got: %q", want, got)
+				}
+				if want, got := "1234", claims.SchoolCode; want != got {
+					t.Errorf("want claims.SchoolCode: %q; got: %q", want, got)
 				}
 				// %#v tells [] from nil, which would encode as null.
 				if want, got := test.attributes, claims.Attributes; !reflect.DeepEqual(want, got) {
@@ -591,7 +893,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/search?q=hello&page=2", strings.NewReader(`{"title":"Hello"}`))
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := http.StatusOK, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
@@ -610,7 +912,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/hello", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := "/v1/hello", rec.Body.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
@@ -628,7 +930,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer forged")
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := "Bearer test-token", rec.Body.String(); want != got {
 			t.Errorf("want: %q; got: %q", want, got)
@@ -644,13 +946,32 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req.AddCookie(&http.Cookie{Name: "session-name", Value: "session-value"})
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := http.StatusOK, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
 		}
 		if got := rec.Body.String(); got != "" {
 			t.Errorf("want: empty; got: %q", got)
+		}
+	})
+
+	t.Run("strips the CSRF token from the forwarded request", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, strings.Join(r.Header.Values("X-CSRF-Token"), ","))
+		}))
+
+		req := httptest.NewRequest(http.MethodPost, "/hello", nil)
+		req.Header.Set("X-CSRF-Token", "csrf-token")
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
+
+		if want, got := http.StatusOK, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+		if got := rec.Body.String(); got != "" {
+			t.Errorf("want X-CSRF-Token: empty; got: %q", got)
 		}
 	})
 
@@ -664,7 +985,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/hello", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if got := rec.Header().Values("Set-Cookie"); len(got) != 0 {
 			t.Errorf("want: empty; got: %q", got)
@@ -692,7 +1013,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/hello", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if want, got := http.StatusBadGateway, rec.Code; want != got {
 			t.Errorf("want: %d; got: %d", want, got)
@@ -753,7 +1074,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello?token=secret", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if got := buf.String(); strings.Contains(got, "secret") {
 			t.Errorf("want: not containing %q; got: %q", "secret", got)
@@ -784,7 +1105,7 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello", nil)
 		rec := httptest.NewRecorder()
 
-		newRemoteBackendProxy(remoteBackendURL).ServeHTTP(rec, req)
+		newRemoteBackendProxy(remoteBackendURL, 5*time.Minute, 5*time.Minute).ServeHTTP(rec, req)
 
 		if got := rec.Body.String(); got != "" {
 			t.Errorf("want: empty; got: %q", got)
@@ -793,4 +1114,279 @@ func TestNewRemoteBackendProxy(t *testing.T) {
 			t.Errorf("want: empty; got: %q", got)
 		}
 	})
+
+	t.Run("responds with 504 when the remote backend sends no response headers within the timeout", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-r.Context().Done():
+			case <-time.After(5 * time.Second):
+			}
+		}))
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello", nil)
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL, 100*time.Millisecond, 5*time.Minute).ServeHTTP(rec, req)
+
+		if want, got := http.StatusGatewayTimeout, rec.Code; want != got {
+			t.Errorf("want rec.Code: %d; got: %d", want, got)
+		}
+
+		var body struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if want, got := http.StatusText(http.StatusGatewayTimeout), body.Message; want != got {
+			t.Errorf("want body.Message: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("cuts off a response body still being sent when the timeout passes", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, "first part")
+			_ = http.NewResponseController(w).Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			_, _ = io.WriteString(w, ", second part")
+		}))
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/hello", nil)
+		rec := httptest.NewRecorder()
+
+		newRemoteBackendProxy(remoteBackendURL, 100*time.Millisecond, 5*time.Minute).ServeHTTP(rec, req)
+
+		if want, got := "first part", rec.Body.String(); want != got {
+			t.Errorf("want rec.Body: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps an event stream open past the timeout and the server's write timeout", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", httputil.MIMETextEventStreamCharsetUTF8)
+			_, _ = io.WriteString(w, "data: first\n\n")
+			_ = http.NewResponseController(w).Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(time.Second):
+			}
+			_, _ = io.WriteString(w, "data: second\n\n")
+		}))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 5*time.Minute), 500*time.Millisecond)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyServer.URL+"/events", nil)
+		if err != nil {
+			t.Fatalf("http.NewRequestWithContext: %v", err)
+		}
+		resp, err := proxyServer.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Client.Do: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		body, err := io.ReadAll(resp.Body)
+
+		if err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+		if want, got := "data: first\n\ndata: second\n\n", string(body); want != got {
+			t.Errorf("want body: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("closes an event stream once the stream timeout passes", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", httputil.MIMETextEventStreamCharsetUTF8)
+			_, _ = io.WriteString(w, "data: first\n\n")
+			_ = http.NewResponseController(w).Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			_, _ = io.WriteString(w, "data: second\n\n")
+		}))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 750*time.Millisecond), 500*time.Millisecond)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyServer.URL+"/events", nil)
+		if err != nil {
+			t.Fatalf("http.NewRequestWithContext: %v", err)
+		}
+		resp, err := proxyServer.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Client.Do: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		// A stream cut off mid-response ends with an error, which is expected.
+		body, _ := io.ReadAll(resp.Body)
+
+		if want, got := "data: first\n\n", string(body); want != got {
+			t.Errorf("want body: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("cuts off an event stream whose status is not 200 when the timeout passes", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", httputil.MIMETextEventStreamCharsetUTF8)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, "data: first\n\n")
+			_ = http.NewResponseController(w).Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(time.Second):
+			}
+			_, _ = io.WriteString(w, "data: second\n\n")
+		}))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 5*time.Minute), 500*time.Millisecond)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyServer.URL+"/events", nil)
+		if err != nil {
+			t.Fatalf("http.NewRequestWithContext: %v", err)
+		}
+		resp, err := proxyServer.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Client.Do: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if want, got := http.StatusCreated, resp.StatusCode; want != got {
+			t.Fatalf("want resp.StatusCode: %d; got: %d", want, got)
+		}
+		// A stream cut off mid-response ends with an error, which is expected.
+		body, _ := io.ReadAll(resp.Body)
+
+		if want, got := "data: first\n\n", string(body); want != got {
+			t.Errorf("want body: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("keeps an upgraded connection open past the timeout and the server's write timeout", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, echoUpgradeHandler(t))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 5*time.Minute), 500*time.Millisecond)
+		conn, reader := dialUpgrade(t, proxyServer.Listener.Addr().String())
+
+		time.Sleep(time.Second)
+		if _, err := io.WriteString(conn, "ping"); err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		echoed := make([]byte, len("ping"))
+		_, err := io.ReadFull(reader, echoed)
+
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		if want, got := "ping", string(echoed); want != got {
+			t.Errorf("want echoed: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("closes an upgraded connection once the stream timeout passes", func(t *testing.T) {
+		remoteBackendURL := newRemoteBackend(t, echoUpgradeHandler(t))
+		proxyServer := newProxyServer(t, newRemoteBackendProxy(remoteBackendURL, 250*time.Millisecond, 750*time.Millisecond), 500*time.Millisecond)
+		_, reader := dialUpgrade(t, proxyServer.Listener.Addr().String())
+
+		_, err := io.Copy(io.Discard, reader)
+
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Error("want connection: closed; got: open")
+		}
+	})
+}
+
+// newProxyServer starts a server with the given write timeout that serves
+// proxy with a logger that discards its output, and returns the server.
+func newProxyServer(t *testing.T, proxy http.Handler, writeTimeout time.Duration) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := middleware.WithLogger(r.Context(), slog.New(slog.DiscardHandler))
+		proxy.ServeHTTP(w, r.WithContext(ctx))
+	}))
+	server.Config.WriteTimeout = writeTimeout
+	server.Start()
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+// echoUpgradeHandler switches the connection to the "echo" protocol, then
+// writes back everything it reads until the connection closes.
+func echoUpgradeHandler(t *testing.T) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, rw, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			t.Errorf("Hijack: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		_, _ = rw.WriteString("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: echo\r\n\r\n")
+		if err := rw.Flush(); err != nil {
+			return
+		}
+		_, _ = io.Copy(conn, rw)
+	})
+}
+
+// dialUpgrade connects to the server at addr and switches the connection to
+// the "echo" protocol. Reads and writes on the connection fail after 5s.
+func dialUpgrade(t *testing.T, addr string) (net.Conn, *bufio.Reader) {
+	t.Helper()
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("net.Dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("conn.SetDeadline: %v", err)
+	}
+
+	if _, err := io.WriteString(conn, "GET /socket HTTP/1.1\r\nHost: example.com\r\nConnection: Upgrade\r\nUpgrade: echo\r\n\r\n"); err != nil {
+		t.Fatalf("io.WriteString: %v", err)
+	}
+	reader := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		t.Fatalf("http.ReadResponse: %v", err)
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("http.ReadResponse: status %d, not %d", resp.StatusCode, http.StatusSwitchingProtocols)
+	}
+
+	return conn, reader
+}
+
+// allowAllRemoteApps returns a remote apps config with Posts, Groups and Student Insights registered, every school
+// allowed, and every backend served by backend.
+func allowAllRemoteApps(t *testing.T, backend http.Handler) config.RemoteAppsConfig {
+	t.Helper()
+
+	backendURL := newRemoteBackend(t, backend)
+	return config.RemoteAppsConfig{
+		SignedTokenTTL:     time.Minute,
+		ProxyTimeout:       5 * time.Minute,
+		ProxyStreamTimeout: 5 * time.Minute,
+
+		PostsManifestURL:        &url.URL{Scheme: "https", Host: "posts.example.com", Path: "/mf-manifest.json"},
+		PostsBackendBaseURL:     backendURL,
+		PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
+		PostsAllowedSchoolCodes: "*",
+
+		GroupsManifestURL:        &url.URL{Scheme: "https", Host: "groups.example.com", Path: "/mf-manifest.json"},
+		GroupsBackendBaseURL:     backendURL,
+		GroupsBackendSigningKey:  "groups-string-secret-at-least-256-bits-long",
+		GroupsAllowedSchoolCodes: "*",
+
+		StudentInsightsManifestURL:       &url.URL{Scheme: "https", Host: "student-insights.example.com", Path: "/mf-manifest.json"},
+		StudentInsightsBackendBaseURL:    backendURL,
+		StudentInsightsBackendSigningKey: "student-insights-string-secret-at-least-256-bits-long",
+		StudentsAllowedSchoolCodes:       "*",
+	}
 }

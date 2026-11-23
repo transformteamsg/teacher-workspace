@@ -52,7 +52,7 @@ export const accounts: Account[] = [
     id: 'staff-7',
     name: 'Jane Doe',
     cesEmail: 'jane.doe@example.com',
-    groups: ['X_TW_ROLE_TEACHER', 'X_XX_ROLE_COUNSELLOR'],
+    groups: ['0001_TW_ROLE_TEACHER', '0001_XX_ROLE_COUNSELLOR'],
   },
   {
     id: 'staff-8',
@@ -70,6 +70,72 @@ export const accounts: Account[] = [
     name: 'Meng Keat',
     cesEmail: 'mk.mixed@example.com',
     groups: ['6101_TW_ROLE_HOD', '1234_TW_ROLE_TEACHER'],
+  },
+  {
+    id: 'staff-11',
+    name: 'Grace Lee',
+    cesEmail: 'grace.lee@example.com',
+    groups: ['0001_TW_ROLE_PRINCIPAL'],
+  },
+  {
+    id: 'staff-12',
+    name: 'Henry Wong',
+    cesEmail: 'henry.wong@example.com',
+    groups: ['1234_TW_ROLE_VICE_PRINCIPAL_ADMINISTRATION'],
+  },
+  {
+    id: 'staff-13',
+    name: 'Nora Teo',
+    cesEmail: 'nora.teo@example.com',
+    groups: ['1234_TW_ATTR_CCE'],
+  },
+  {
+    id: 'staff-14',
+    name: 'Oscar Lee',
+    cesEmail: 'oscar.lee@example.com',
+    groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ROLE_HOD', '5678_TW_ROLE_TEACHER'],
+  },
+  {
+    id: 'staff-15',
+    name: 'Priya Nair',
+    cesEmail: 'priya.nair@example.com',
+    groups: ['6101_TW_ROLE_TEACHER', '1234_TW_ROLE_TEACHER', '1234_TW_ROLE_HOD'],
+  },
+  {
+    id: 'staff-16',
+    name: 'Quentin Ong',
+    cesEmail: 'quentin.ong@example.com',
+    groups: ['6101_XX_ROLE_TEACHER'],
+  },
+  {
+    id: 'staff-17',
+    name: 'Rachel Sim',
+    cesEmail: 'rachel.sim@example.com',
+    groups: ['6101_TW_ROLE_SUPERINTENDENT'],
+  },
+  {
+    id: 'staff-18',
+    name: 'Samuel Yeo',
+    cesEmail: 'samuel.yeo@example.com',
+    groups: ['6101_TW_ATTR_CCE'],
+  },
+  {
+    id: 'staff-19',
+    name: 'Tina Goh',
+    cesEmail: 'tina.goh@example.com',
+    groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ATTR_CCE', '1234_TW_ATTR_CCE'],
+  },
+  {
+    id: 'staff-20',
+    name: 'Umar Said',
+    cesEmail: 'umar.said@example.com',
+    groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ATTR_CCE', '5678_TW_ATTR_SDE'],
+  },
+  {
+    id: 'staff-21',
+    name: 'Vera Lim',
+    cesEmail: 'vera.lim@example.com',
+    groups: ['0701_TW_ROLE_TEACHER'],
   },
 ];
 

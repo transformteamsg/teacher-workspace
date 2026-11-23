@@ -5,7 +5,7 @@
     "browser": true,
     "node": true
   },
-  "plugins": ["typescript", "react", "import"],
+  "plugins": ["typescript", "react", "import", "oxc"],
   "categories": {
     "correctness": "error"
   },

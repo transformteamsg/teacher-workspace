@@ -110,7 +110,7 @@ func TestRequireAuth(t *testing.T) {
 
 		RequireAuth(fallback)(next).ServeHTTP(rec, req)
 
-		records := decodeLogRecords(t, &logs)
+		records := decodeLogRecords[requireAuthLogRecord](t, &logs)
 		if want, got := 1, len(records); want != got {
 			t.Fatalf("want len(records): %d; got: %d", want, got)
 		}
@@ -121,4 +121,10 @@ func TestRequireAuth(t *testing.T) {
 			t.Errorf("want records[0].Msg: %q; got: %q", want, got)
 		}
 	})
+}
+
+// requireAuthLogRecord is one record written by [RequireAuth].
+type requireAuthLogRecord struct {
+	Level string `json:"level"`
+	Msg   string `json:"msg"`
 }

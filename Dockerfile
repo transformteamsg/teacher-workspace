@@ -3,7 +3,7 @@
 # ----------------------------------------
 # TW Host build stage
 # ----------------------------------------
-FROM node:24.19.0-trixie AS tw-host-build
+FROM node:24.22.1-trixie AS tw-host-build
 
 ENV NODE_ENV=production
 
@@ -34,7 +34,7 @@ RUN pnpm --filter=@teacher-workspace/host build
 # ----------------------------------------
 # TW Server build stage
 # ----------------------------------------
-FROM golang:1.27.1-trixie AS tw-server-build
+FROM golang:1.27.3-trixie AS tw-server-build
 
 ENV CGO_ENABLED=1
 

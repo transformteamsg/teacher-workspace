@@ -21,7 +21,7 @@ export default function RemoteLoadFallbackView({ onRetry }: RemoteLoadFallbackVi
       </div>
       <div className="tw:flex tw:gap-3">
         <Button onClick={onRetry}>Try again</Button>
-        <Button variant="outline" nativeButton={false} render={<Link to="/" />}>
+        <Button variant="outline" render={<Link to="/" />}>
           Back to home
         </Button>
       </div>

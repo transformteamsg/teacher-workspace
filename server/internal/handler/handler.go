@@ -33,6 +33,10 @@ type Handler struct {
 	edupassOAuth2Config    *oauth2.Config
 	edupassIDTokenVerifier *oidc.IDTokenVerifier
 
+	// schoolNames contains the name of each school the configured Edupass
+	// grants roles at, by location code.
+	schoolNames map[string]string
+
 	// now is the time source for signed tokens. Nil means [time.Now].
 	now func() time.Time
 }
@@ -61,6 +65,7 @@ func New(cfg *config.Config) (*Handler, error) {
 			),
 			&oidc.Config{ClientID: cfg.Edupass.ClientID},
 		),
+		schoolNames: schoolNamesFor(cfg.Edupass.AppCode),
 	}
 
 	switch cfg.Env {
@@ -99,6 +104,10 @@ func New(cfg *config.Config) (*Handler, error) {
 //   - gets a 401 under /api/
 //   - is otherwise redirected to the login page, carrying the requested URL to
 //     return to
+//
+// A request under /api/ with a method other than GET, HEAD, or OPTIONS gets a
+// 403 unless it is same-origin and carries a CSRF token for the session, as
+// described in [middleware.CSRF].
 func (h *Handler) Routes(store session.Store) http.Handler {
 	sessionOpts := middleware.SessionOptions{
 		Name:             h.cfg.Session.Name,
@@ -109,10 +118,14 @@ func (h *Handler) Routes(store session.Store) http.Handler {
 
 	app := http.NewServeMux()
 	app.HandleFunc("GET /login", h.login)
-	app.HandleFunc("POST /logout", h.logout)
+	app.Handle("POST /logout", h.logout())
 	app.HandleFunc("GET /auth/edupass", h.authEdupass)
 	app.HandleFunc("GET /auth/edupass/callback", h.authEdupassCallback)
-	app.Handle("/api/", middleware.RequireAuth(renderUnauthorized)(h.proxy()))
+	app.Handle("/api/", middleware.Chain(
+		h.proxy(),
+		middleware.RequireAuth(renderUnauthorized),
+		middleware.CSRF(renderForbidden),
+	))
 	app.Handle("/", middleware.RequireAuth(redirectToLogin)(h.index()))
 
 	mux := http.NewServeMux()
@@ -131,6 +144,14 @@ type PreloadedState struct {
 	// Remotes contains those the page registers at startup. It must be
 	// non-nil, even when empty, since the page rejects a null list.
 	Remotes []Remote `json:"remotes"`
+
+	// Apps contains the keys of the apps the page offers, such as "posts". It
+	// must be non-nil, even when empty, so the page always receives a list.
+	Apps []string `json:"apps"`
+
+	// User is the signed-in user, or nil when the page is served to a user who
+	// is not logged in.
+	User *User `json:"user,omitempty"`
 }
 
 // Remote is a reference to a Module Federation remote.
@@ -140,6 +161,19 @@ type Remote struct {
 
 	// Entry is the manifest URL.
 	Entry string `json:"entry"`
+}
+
+// User is the signed-in user as the page shows it.
+type User struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+
+	// Role is the resolved role's display label, such as "Teacher".
+	Role string `json:"role"`
+
+	// School is the name of the school the role was granted at, or empty when
+	// the school's code has no known name.
+	School string `json:"school,omitempty"`
 }
 
 // renderIndexTemplate writes a 200 HTML response whose body is the index
