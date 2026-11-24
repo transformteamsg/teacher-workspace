@@ -568,6 +568,34 @@ describe('/interaction with the account picker on', () => {
     assert.equal(payload.sub, 'staff-21');
   });
 
+  it('When an unknown account is chosen, then it returns 400', async () => {
+    const client = new OidcClient('http://localhost:9876');
+    const authorizeRes = await client.fetch(
+      `http://localhost:9876/authorize?${new URLSearchParams({
+        client_id: 'teacher-workspace',
+        redirect_uri: 'http://localhost:3000/auth/edupass/callback',
+        response_type: 'code',
+        scope: 'openid',
+        code_challenge: generateCodeChallenge(generateCodeVerifier()),
+        code_challenge_method: 'S256',
+        state: 'test-state',
+        nonce: 'test-nonce',
+      }).toString()}`,
+    );
+    const interactionUrl = new URL(
+      authorizeRes.headers.get('location') ?? '',
+      'http://localhost:9876',
+    ).href;
+    assert.match(interactionUrl, /\/interaction\//, 'authorize should start an interaction');
+
+    const chooseRes = await client.fetch(interactionUrl, {
+      method: 'POST',
+      body: new URLSearchParams({ account: 'staff-999' }),
+    });
+
+    assert.equal(chooseRes.status, 400);
+  });
+
   it('When an account is requested, then it signs in without the account picker', async () => {
     const authorizeRes = await new OidcClient('http://localhost:9876').followRedirects(
       `http://localhost:9876/authorize?${new URLSearchParams({

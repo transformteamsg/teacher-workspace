@@ -80,7 +80,11 @@ export function createApp(provider: Provider, options: AppOptions = {}): Express
     const account = accounts.find((a) => a.id === chosenAccount);
 
     if (!account) {
-      throw new Error(`Unknown account '${chosenAccount}'`);
+      res
+        .status(400)
+        .type('text')
+        .send(`Unknown account '${chosenAccount ?? ''}'`);
+      return;
     }
 
     await provider.interactionFinished(
