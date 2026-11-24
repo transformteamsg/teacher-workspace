@@ -330,6 +330,76 @@ describe('GET /authorize', () => {
   });
 });
 
+describe('GET /authorize with a session', () => {
+  describe('account picker off', () => {
+    let server: Server;
+
+    before(async () => {
+      const app = createApp(
+        createProvider({
+          port: 9876,
+          url: 'http://localhost:9876',
+          tw: {
+            id: 'teacher-workspace',
+            redirectUri: 'http://localhost:3000/auth/edupass/callback',
+            auth: { method: 'client_secret_post', clientSecret: 'teacher-workspace-secret' },
+          },
+          accountPicker: false,
+        }),
+      );
+      server = createServer((req, res) => {
+        res.setHeader('Connection', 'close');
+        app(req, res);
+      }).listen(9876);
+      await new Promise<void>((resolve, reject) => {
+        server.once('listening', resolve);
+        server.once('error', reject);
+      });
+    });
+
+    after(async () => {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    it('When the user already has a session, then it does not ask for login again', async () => {
+      const client = new OidcClient('http://localhost:9876');
+      const firstRes = await client.followRedirects(
+        `http://localhost:9876/authorize?${new URLSearchParams({
+          client_id: 'teacher-workspace',
+          redirect_uri: 'http://localhost:3000/auth/edupass/callback',
+          response_type: 'code',
+          scope: 'openid',
+          code_challenge: generateCodeChallenge(generateCodeVerifier()),
+          code_challenge_method: 'S256',
+          state: 'test-state',
+          nonce: 'test-nonce',
+        }).toString()}`,
+      );
+      assert.equal(firstRes.status, 303, 'first sign-in should complete');
+
+      const secondRes = await client.fetch(
+        `http://localhost:9876/authorize?${new URLSearchParams({
+          client_id: 'teacher-workspace',
+          redirect_uri: 'http://localhost:3000/auth/edupass/callback',
+          response_type: 'code',
+          scope: 'openid',
+          code_challenge: generateCodeChallenge(generateCodeVerifier()),
+          code_challenge_method: 'S256',
+          state: 'test-state',
+          nonce: 'test-nonce',
+        }).toString()}`,
+      );
+
+      assert.equal(secondRes.status, 303);
+      const redirect = new URL(secondRes.headers.get('location') ?? '', 'http://localhost:9876');
+      assert.equal(
+        `${redirect.origin}${redirect.pathname}`,
+        'http://localhost:3000/auth/edupass/callback',
+      );
+    });
+  });
+});
+
 describe('POST /token', () => {
   describe('client_secret_post', () => {
     let server: Server;
