@@ -29,7 +29,22 @@ export interface Config {
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const port = Number(env.MOCK_EDUPASS_PORT) || 9000;
 
-  const accountPicker = env.MOCK_EDUPASS_ACCOUNT_PICKER === 'true';
+  let accountPicker: boolean;
+  switch (env.MOCK_EDUPASS_ACCOUNT_PICKER) {
+    case undefined:
+    case '':
+    case 'false':
+      accountPicker = false;
+      break;
+    case 'true':
+      accountPicker = true;
+      break;
+    default:
+      // A typo must not quietly leave the picker off and sign everyone in as the first account.
+      throw new Error(
+        `MOCK_EDUPASS_ACCOUNT_PICKER must be true or false, got ${JSON.stringify(env.MOCK_EDUPASS_ACCOUNT_PICKER)}`,
+      );
+  }
 
   if (!env.MOCK_EDUPASS_URL) {
     throw new Error('MOCK_EDUPASS_URL is required');
