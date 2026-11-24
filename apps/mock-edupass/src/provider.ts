@@ -1,6 +1,6 @@
 import { createHash, generateKeyPairSync } from 'node:crypto';
 
-import Provider, { errors } from 'oidc-provider';
+import Provider, { errors, interactionPolicy } from 'oidc-provider';
 
 import type { Config } from './config.ts';
 
@@ -139,10 +139,31 @@ export const accounts: Account[] = [
   },
 ];
 
+// The account picker has to run on every sign-in: reusing the session would sign
+// the user straight back in as the account they chose last time.
+function loginOnEveryAuthorizationPolicy(): interactionPolicy.Prompt[] {
+  const policy = interactionPolicy.base();
+  policy
+    .get('login')!
+    .checks.add(
+      new interactionPolicy.Check(
+        'account_picker',
+        'An account must be chosen on every sign-in',
+        (ctx) =>
+          ctx.oidc.result?.login
+            ? interactionPolicy.Check.NO_NEED_TO_PROMPT
+            : interactionPolicy.Check.REQUEST_PROMPT,
+      ),
+    );
+  return policy;
+}
+
 /**
  * Returns the mock Edupass provider.
  *
- * @param config - Server URL and the TW client's registration.
+ * @param config - Server URL, the TW client's registration, and whether the
+ *   account picker is on. When it is on, every authorization asks for login,
+ *   even when the user already has a session.
  * @returns the {@link Provider}.
  */
 export function createProvider(config: Config): Provider {
@@ -214,6 +235,7 @@ export function createProvider(config: Config): Provider {
     },
 
     interactions: {
+      ...(config.accountPicker ? { policy: loginOnEveryAuthorizationPolicy() } : {}),
       url: (_ctx, interaction) => `/interaction/${interaction.uid}`,
     },
 
