@@ -3,7 +3,7 @@ import { loadConfig } from './config.ts';
 import { createProvider } from './provider.ts';
 
 const config = loadConfig(process.env);
-const app = createApp(createProvider(config));
+const app = createApp(createProvider(config), { accountPicker: config.accountPicker });
 
 app.listen(config.port, () => {
   // oxlint-disable-next-line no-console
