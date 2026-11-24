@@ -74,6 +74,38 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('account picker', () => {
+    it('defaults to off', () => {
+      const config = loadConfig({
+        MOCK_EDUPASS_URL: 'http://localhost:9000',
+        MOCK_EDUPASS_TW_ID: 'teacher-workspace',
+        MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
+        MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
+        MOCK_EDUPASS_TW_SECRET: 'secret',
+      });
+
+      assert.equal(config.accountPicker, false);
+    });
+
+    for (const [value, want] of [
+      ['true', true],
+      ['false', false],
+    ] as const) {
+      it(`reads MOCK_EDUPASS_ACCOUNT_PICKER=${value}`, () => {
+        const config = loadConfig({
+          MOCK_EDUPASS_URL: 'http://localhost:9000',
+          MOCK_EDUPASS_TW_ID: 'teacher-workspace',
+          MOCK_EDUPASS_TW_REDIRECT_URI: 'http://localhost:3000/auth/edupass/callback',
+          MOCK_EDUPASS_TW_AUTH_METHOD: 'client_secret_post',
+          MOCK_EDUPASS_TW_SECRET: 'secret',
+          MOCK_EDUPASS_ACCOUNT_PICKER: value,
+        });
+
+        assert.equal(config.accountPicker, want);
+      });
+    }
+  });
+
   describe('URL', () => {
     it('throws when MOCK_EDUPASS_URL is unset or empty', () => {
       for (const url of [undefined, '']) {

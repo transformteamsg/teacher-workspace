@@ -15,17 +15,21 @@ export interface Config {
   port: number;
   url: string;
   tw: Client;
+  /** Whether a sign-in that names no account asks the user to choose one, instead of signing in as the first account. */
+  accountPicker?: boolean;
 }
 
 /**
  * Reads the mock-edupass configuration from the environment.
  *
  * @param env - Environment to read, usually `process.env`.
- * @returns Port, URL, and the tw configuration.
+ * @returns Port, URL, the tw configuration, and whether the account picker is on.
  * @throws When a setting is missing, conflicting, unreadable, or invalid.
  */
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const port = Number(env.MOCK_EDUPASS_PORT) || 9000;
+
+  const accountPicker = env.MOCK_EDUPASS_ACCOUNT_PICKER === 'true';
 
   if (!env.MOCK_EDUPASS_URL) {
     throw new Error('MOCK_EDUPASS_URL is required');
@@ -66,6 +70,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
       return {
         port,
         url: env.MOCK_EDUPASS_URL,
+        accountPicker,
         tw: {
           id: env.MOCK_EDUPASS_TW_ID,
           redirectUri: env.MOCK_EDUPASS_TW_REDIRECT_URI,
@@ -127,6 +132,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
       return {
         port,
         url: env.MOCK_EDUPASS_URL,
+        accountPicker,
         tw: {
           id: env.MOCK_EDUPASS_TW_ID,
           redirectUri: env.MOCK_EDUPASS_TW_REDIRECT_URI,
