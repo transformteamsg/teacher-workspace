@@ -465,6 +465,133 @@ describe('GET /authorize with a session', () => {
   });
 });
 
+describe('/interaction with the account picker on', () => {
+  let server: Server;
+
+  before(async () => {
+    const app = createApp(
+      createProvider({
+        port: 9876,
+        url: 'http://localhost:9876',
+        tw: {
+          id: 'teacher-workspace',
+          redirectUri: 'http://localhost:3000/auth/edupass/callback',
+          auth: { method: 'client_secret_post', clientSecret: 'teacher-workspace-secret' },
+        },
+        accountPicker: true,
+      }),
+      { accountPicker: true },
+    );
+    server = createServer((req, res) => {
+      res.setHeader('Connection', 'close');
+      app(req, res);
+    }).listen(9876);
+    await new Promise<void>((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    });
+  });
+
+  after(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('When no account is requested, then it shows the account picker', async () => {
+    const pickerRes = await new OidcClient('http://localhost:9876').followRedirects(
+      `http://localhost:9876/authorize?${new URLSearchParams({
+        client_id: 'teacher-workspace',
+        redirect_uri: 'http://localhost:3000/auth/edupass/callback',
+        response_type: 'code',
+        scope: 'openid',
+        code_challenge: generateCodeChallenge(generateCodeVerifier()),
+        code_challenge_method: 'S256',
+        state: 'test-state',
+        nonce: 'test-nonce',
+      }).toString()}`,
+    );
+
+    assert.equal(pickerRes.status, 200);
+    assert.match(pickerRes.headers.get('content-type') ?? '', /^text\/html/);
+    const body = await pickerRes.text();
+    for (const id of ['staff-1', 'staff-21']) {
+      assert.ok(body.includes(`value="${id}"`), `picker should list ${id}`);
+    }
+  });
+
+  it('When an account is chosen, then the ID token identifies it', async () => {
+    const client = new OidcClient('http://localhost:9876');
+    const codeVerifier = generateCodeVerifier();
+    const authorizeRes = await client.fetch(
+      `http://localhost:9876/authorize?${new URLSearchParams({
+        client_id: 'teacher-workspace',
+        redirect_uri: 'http://localhost:3000/auth/edupass/callback',
+        response_type: 'code',
+        scope: 'openid',
+        code_challenge: generateCodeChallenge(codeVerifier),
+        code_challenge_method: 'S256',
+        state: 'test-state',
+        nonce: 'test-nonce',
+      }).toString()}`,
+    );
+    const interactionUrl = new URL(
+      authorizeRes.headers.get('location') ?? '',
+      'http://localhost:9876',
+    ).href;
+    assert.match(interactionUrl, /\/interaction\//, 'authorize should start an interaction');
+    const pickerRes = await client.fetch(interactionUrl);
+    assert.equal(pickerRes.status, 200, 'the account picker should be shown');
+
+    const callbackRes = await client.followRedirects(interactionUrl, {
+      method: 'POST',
+      body: new URLSearchParams({ account: 'staff-21' }),
+    });
+    const code = new URL(callbackRes.headers.get('location') ?? '').searchParams.get('code');
+    assert.ok(code, 'Expected an authorization code in the redirect');
+
+    const tokenRes = await globalThis.fetch(`http://localhost:9876/token`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: 'http://localhost:3000/auth/edupass/callback',
+        client_id: 'teacher-workspace',
+        code_verifier: codeVerifier,
+        client_secret: 'teacher-workspace-secret',
+      }),
+    });
+    assert.equal(tokenRes.status, 200);
+    const { id_token: idToken } = (await tokenRes.json()) as { id_token: string };
+    const payload = JSON.parse(
+      Buffer.from(idToken.split('.')[1], 'base64url').toString(),
+    ) as Record<string, unknown>;
+
+    assert.equal(payload.sub, 'staff-21');
+  });
+
+  it('When an account is requested, then it signs in without the account picker', async () => {
+    const authorizeRes = await new OidcClient('http://localhost:9876').followRedirects(
+      `http://localhost:9876/authorize?${new URLSearchParams({
+        client_id: 'teacher-workspace',
+        redirect_uri: 'http://localhost:3000/auth/edupass/callback',
+        response_type: 'code',
+        scope: 'openid',
+        code_challenge: generateCodeChallenge(generateCodeVerifier()),
+        code_challenge_method: 'S256',
+        state: 'test-state',
+        nonce: 'test-nonce',
+        account: 'staff-2',
+      }).toString()}`,
+    );
+
+    assert.equal(authorizeRes.status, 303);
+    const redirect = new URL(authorizeRes.headers.get('location') ?? '');
+    assert.equal(
+      `${redirect.origin}${redirect.pathname}`,
+      'http://localhost:3000/auth/edupass/callback',
+    );
+  });
+});
+
 describe('POST /token', () => {
   describe('client_secret_post', () => {
     let server: Server;

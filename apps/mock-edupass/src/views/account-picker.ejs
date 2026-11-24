@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Choose a test account - mock Edupass</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+      label { display: block; padding: 0.5rem 0; }
+      small { display: block; margin-left: 1.5rem; color: #555; }
+      button { margin-top: 1rem; padding: 0.5rem 1.5rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Choose a test account</h1>
+      <%# The form posts back to the interaction URL it was served from. %>
+      <form method="post">
+        <fieldset>
+          <legend>Mock Edupass account</legend>
+          <% for (const account of accounts) { %>
+          <label>
+            <input type="radio" name="account" value="<%= account.id %>" required />
+            <strong><%= account.id %></strong> <%= account.name %>
+            <small><%= account.groups.join(', ') || 'no groups' %></small>
+          </label>
+          <% } %>
+        </fieldset>
+        <button type="submit">Continue</button>
+      </form>
+    </main>
+  </body>
+</html>

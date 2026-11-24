@@ -5,13 +5,19 @@ import type Provider from 'oidc-provider';
 
 import { accounts } from './provider.ts';
 
+export interface AppOptions {
+  /** Whether a sign-in that names no account asks the user to choose one, instead of signing in as the first account. */
+  accountPicker?: boolean;
+}
+
 /**
  * Builds the mock Edupass app.
  *
  * @param provider - Handles the OIDC endpoints.
+ * @param options - Whether the account picker is on. Off by default.
  * @returns the App.
  */
-export function createApp(provider: Provider): Express {
+export function createApp(provider: Provider, options: AppOptions = {}): Express {
   const router = Router();
 
   router.get('/interaction/:uid', async (req, res) => {
@@ -19,6 +25,12 @@ export function createApp(provider: Provider): Express {
 
     if (details.prompt.name === 'login') {
       const requestedAccount = details.params.account as string | undefined;
+
+      if (!requestedAccount && options.accountPicker) {
+        res.render('account-picker', { accounts });
+        return;
+      }
+
       const account = requestedAccount
         ? accounts.find((a) => a.id === requestedAccount)
         : accounts[0];
@@ -55,6 +67,28 @@ export function createApp(provider: Provider): Express {
     }
 
     throw new Error(`Unhandled interaction prompt: ${details.prompt.name}`);
+  });
+
+  router.post('/interaction/:uid', express.urlencoded({ extended: false }), async (req, res) => {
+    const details = await provider.interactionDetails(req, res);
+
+    if (details.prompt.name !== 'login') {
+      throw new Error(`Unhandled interaction prompt: ${details.prompt.name}`);
+    }
+
+    const chosenAccount = (req.body as { account?: string }).account;
+    const account = accounts.find((a) => a.id === chosenAccount);
+
+    if (!account) {
+      throw new Error(`Unknown account '${chosenAccount}'`);
+    }
+
+    await provider.interactionFinished(
+      req,
+      res,
+      { login: { accountId: account.id } },
+      { mergeWithLastSubmission: false },
+    );
   });
 
   const app = express();
