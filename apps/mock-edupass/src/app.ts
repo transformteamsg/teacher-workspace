@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import express, { type Express, Router } from 'express';
 import type Provider from 'oidc-provider';
 
@@ -56,6 +58,11 @@ export function createApp(provider: Provider): Express {
   });
 
   const app = express();
+
+  app.set('views', fileURLToPath(new URL('./views', import.meta.url)));
+  app.set('view engine', 'ejs');
+  // Parse each template once, as Express otherwise does only when NODE_ENV=production.
+  app.set('view cache', true);
 
   app.get('/health', (_req, res) => {
     res.sendStatus(200);
