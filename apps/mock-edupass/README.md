@@ -63,16 +63,19 @@ Configure your relying party with these values:
 
 ## How It Works
 
-There is no login page or consent screen. Authentication and consent complete automatically:
+There is no consent screen, and by default no login page: authentication and consent complete automatically.
 
 - Defaults to `staff-1` unless `?account=<id>` is passed to the authorize endpoint
 - Example: `/authorize?...&account=staff-2` logs in as Alice Tan
+
+With `MOCK_EDUPASS_ACCOUNT_PICKER=true`, a sign-in that passes no `account` shows a "Choose a test account" page listing every fake account, and signs in as the one chosen. It asks on every sign-in, even when the browser still has a mock-edupass session, so it never signs in as an earlier account without asking. A sign-in that passes `account` still skips the page. Turn it on where testers need to switch accounts by signing out and in again, such as a shared dev environment. Leave it off for CI, which relies on signing in automatically.
 
 ## Environment Variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `MOCK_EDUPASS_PORT` | `9000` | Port the server listens on |
+| `MOCK_EDUPASS_ACCOUNT_PICKER` | `false` | `true` to ask for an account on every sign-in that passes no `account` (see [How It Works](#how-it-works)); any value other than `true`, `false` or empty fails at startup |
 | `MOCK_EDUPASS_URL` | None | Required. Public URL of the server, used as the OIDC issuer. Behind a load balancer, this is the public URL, not the container's port |
 | `MOCK_EDUPASS_TW_ID` | None | Required. Client ID registered for the relying party; must match `TW_OIDC_CLIENT_ID` |
 | `MOCK_EDUPASS_TW_REDIRECT_URI` | None | Required. Redirect URI registered for the relying party; must match `TW_OIDC_REDIRECT_URL` |
