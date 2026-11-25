@@ -287,10 +287,9 @@ type EdupassConfig struct {
 
 	AppCode EdupassAppCode `dotenv:"TW_EDUPASS_APP_CODE"`
 
-	// ForwardMockAccount reports whether the account query parameter of a
-	// sign-in is passed on to Edupass with prompt=login outside development, so
-	// mock-edupass signs in as that account. It is for a deployment that signs in
-	// with mock-edupass only.
+	// ForwardMockAccount reports whether a sign-in's account query parameter is
+	// passed on to Edupass with prompt=login outside development. Validation
+	// allows it only when AuthURL is on a mock-edupass host.
 	ForwardMockAccount bool `dotenv:"TW_EDUPASS_FORWARD_MOCK_ACCOUNT"`
 
 	ClientAuthMethod      OAuth2ClientAuthMethod `dotenv:"TW_EDUPASS_CLIENT_AUTH_METHOD"`
@@ -303,6 +302,10 @@ type EdupassConfig struct {
 
 	ClientCredentials EdupassClientCredentials `dotenv:"-"`
 }
+
+// mockEdupassHosts contains the hosts TW_EDUPASS_FORWARD_MOCK_ACCOUNT may
+// forward the account to.
+var mockEdupassHosts = []string{"localhost", "127.0.0.1", "::1", "dev-mock-edupass.edutech.works"}
 
 func (cfg *EdupassConfig) validate() error {
 	var errs []error
@@ -385,6 +388,12 @@ func (cfg *EdupassConfig) validate() error {
 	if cfg.AppCode != EdupassAppCodeTW && cfg.AppCode != EdupassAppCodeTWSTG {
 		errs = append(errs, fmt.Errorf("TW_EDUPASS_APP_CODE must be %q or %q; got %q",
 			EdupassAppCodeTW, EdupassAppCodeTWSTG, cfg.AppCode))
+	}
+
+	// An allowlist rather than a denylist, so a host real Edupass moves to is refused too.
+	if cfg.ForwardMockAccount && cfg.AuthURL != nil && !slices.Contains(mockEdupassHosts, strings.ToLower(cfg.AuthURL.Hostname())) {
+		errs = append(errs, fmt.Errorf("TW_EDUPASS_FORWARD_MOCK_ACCOUNT must be off unless TW_EDUPASS_AUTH_URL is on a mock-edupass host (%s); got %q",
+			strings.Join(mockEdupassHosts, ", "), cfg.AuthURL))
 	}
 
 	switch cfg.ClientAuthMethod {
