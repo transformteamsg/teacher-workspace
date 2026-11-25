@@ -287,6 +287,12 @@ type EdupassConfig struct {
 
 	AppCode EdupassAppCode `dotenv:"TW_EDUPASS_APP_CODE"`
 
+	// ForwardMockAccount reports whether the account query parameter of a
+	// sign-in is passed on to Edupass with prompt=login outside development, so
+	// mock-edupass signs in as that account. It is for a deployment that signs in
+	// with mock-edupass only.
+	ForwardMockAccount bool `dotenv:"TW_EDUPASS_FORWARD_MOCK_ACCOUNT"`
+
 	ClientAuthMethod      OAuth2ClientAuthMethod `dotenv:"TW_EDUPASS_CLIENT_AUTH_METHOD"`
 	ClientSecret          string                 `dotenv:"TW_EDUPASS_CLIENT_SECRET"`
 	ClientSecretFile      string                 `dotenv:"TW_EDUPASS_CLIENT_SECRET_FILE"`

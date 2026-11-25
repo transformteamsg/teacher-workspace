@@ -118,6 +118,9 @@ func TestDefault(t *testing.T) {
 		if got := cfg.Edupass.ClientID; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
+		if cfg.Edupass.ForwardMockAccount {
+			t.Error("want cfg.Edupass.ForwardMockAccount: false; got: true")
+		}
 		if want, got := OAuth2ClientAuthMethodClientSecretPost, cfg.Edupass.ClientAuthMethod; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
