@@ -106,9 +106,9 @@ const logReasonMultipleLocations = "multiple_locations"
 // The return_to query parameter is the path the user lands on after logging in.
 // If it is missing or unsafe (see [safeReturnTo]), the user lands on "/".
 //
-// In the development environment, the account query parameter is passed on to
-// Edupass with prompt=login, so the mock Edupass signs the user in as that
-// account. In production it is ignored.
+// In the development environment, or when TW_EDUPASS_FORWARD_MOCK_ACCOUNT is on,
+// the account query parameter is passed on to Edupass with prompt=login, so the
+// mock Edupass signs the user in as that account. Otherwise it is ignored.
 //
 // It responds with 500 if the request has no session.
 func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
@@ -135,9 +135,9 @@ func (h *Handler) authEdupass(w http.ResponseWriter, r *http.Request) {
 		oauth2.S256ChallengeOption(codeVerifier),
 	}
 
-	// account is a mock Edupass parameter. Send it in development only, so a caller
-	// can't pass their own parameter through to the real Edupass.
-	if h.cfg.Env == config.EnvDevelopment {
+	// account is a mock Edupass parameter that must not reach real Edupass:
+	// validation allows ForwardMockAccount only with a mock-edupass auth URL.
+	if h.cfg.Env == config.EnvDevelopment || h.cfg.Edupass.ForwardMockAccount {
 		if account := r.URL.Query().Get("account"); account != "" {
 			// prompt=login stops the mock Edupass reusing the account from an earlier sign-in.
 			authOpts = append(authOpts,

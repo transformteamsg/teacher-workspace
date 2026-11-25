@@ -431,7 +431,38 @@ func TestHandler_authEdupass(t *testing.T) {
 		}
 	})
 
-	t.Run("does not forward the account to Edupass in production", func(t *testing.T) {
+	t.Run("forwards the account to Edupass with prompt=login in production when mock account forwarding is on", func(t *testing.T) {
+		cfg := newEdupassConfig()
+		cfg.Edupass.ForwardMockAccount = true
+		h, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		// New would load index.html in production, so flip Env after construction: the handler reads h.cfg.Env on each request.
+		cfg.Env = config.EnvProduction
+
+		ctx := middleware.WithLogger(t.Context(), slog.New(slog.DiscardHandler))
+		ctx = middleware.WithSession(ctx, session.New())
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/edupass?account=staff-13", nil)
+		rec := httptest.NewRecorder()
+
+		h.authEdupass(rec, req)
+
+		location, err := rec.Result().Location()
+		if err != nil {
+			t.Fatalf("want err: nil; got: %v", err)
+		}
+		query := location.Query()
+		if want, got := "staff-13", query.Get("account"); want != got {
+			t.Errorf("want account: %q; got: %q", want, got)
+		}
+		if want, got := "login", query.Get("prompt"); want != got {
+			t.Errorf("want prompt: %q; got: %q", want, got)
+		}
+	})
+
+	t.Run("does not forward the account to Edupass in production when mock account forwarding is off", func(t *testing.T) {
 		cfg := newEdupassConfig()
 		h, err := New(cfg)
 		if err != nil {
