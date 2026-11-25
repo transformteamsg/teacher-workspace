@@ -782,6 +782,26 @@ describe('POST /token', () => {
         title: 'a base role and attributes at its school and at another',
         groups: ['1234_TW_ROLE_TEACHER', '1234_TW_ATTR_CCE', '5678_TW_ATTR_SDE'],
       },
+      {
+        account: 'staff-22',
+        title: 'a base role and the Parents Gateway user attribute',
+        groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_USER'],
+      },
+      {
+        account: 'staff-23',
+        title: 'a base role and both Parents Gateway attributes',
+        groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_PG_USER', '0001_TW_ATTR_PG_ADMIN'],
+      },
+      {
+        account: 'staff-24',
+        title: 'a base role and the Parents Gateway user attribute after another attribute',
+        groups: ['0001_TW_ROLE_TEACHER', '0001_TW_ATTR_CCE', '0001_TW_ATTR_PG_USER'],
+      },
+      {
+        account: 'staff-25',
+        title: 'a vice principal role and no attributes',
+        groups: ['0001_TW_ROLE_VICE_PRINCIPAL'],
+      },
     ];
 
     for (const { account, title, groups } of groupsFixtures) {

@@ -60,6 +60,10 @@ Configure your relying party with these values:
 | `staff-19` | Tina Goh | tina.goh@example.com | `1234_TW_ROLE_TEACHER`, `1234_TW_ATTR_CCE`, `1234_TW_ATTR_CCE` | An attribute granted twice at the base role's school; for deduplication testing | Signs in as `ROLE_TEACHER` with `ATTR_CCE` once |
 | `staff-20` | Umar Said | umar.said@example.com | `1234_TW_ROLE_TEACHER`, `1234_TW_ATTR_CCE`, `5678_TW_ATTR_SDE` | An attribute at the base role's school and one at another school; for attribute location testing | Signs in as `ROLE_TEACHER` with `ATTR_CCE` only: the `5678` attribute is discarded |
 | `staff-21` | Vera Lim | vera.lim@example.com | `0701_TW_ROLE_TEACHER` | Single role at a school with a known name (location `0701`); for school name and school allowlist testing | Signs in as `ROLE_TEACHER`, with the school name shown in the profile menu |
+| `staff-22` | Wendy Loh | wendy.loh@example.com | `0001_TW_ROLE_TEACHER`, `0001_TW_ATTR_PG_USER` | The Parents Gateway user attribute without the admin one | Signs in as `ROLE_TEACHER` with `ATTR_PG_USER` |
+| `staff-23` | Xavier Pang | xavier.pang@example.com | `0001_TW_ROLE_TEACHER`, `0001_TW_ATTR_PG_USER`, `0001_TW_ATTR_PG_ADMIN` | Both Parents Gateway attributes, with the admin one second | Signs in as `ROLE_TEACHER` with `ATTR_PG_USER` and `ATTR_PG_ADMIN`, in that order |
+| `staff-24` | Yusuf Rahman | yusuf.rahman@example.com | `0001_TW_ROLE_TEACHER`, `0001_TW_ATTR_CCE`, `0001_TW_ATTR_PG_USER` | The Parents Gateway user attribute after another attribute | Signs in as `ROLE_TEACHER` with `ATTR_CCE` and `ATTR_PG_USER`, in that order |
+| `staff-25` | Zachary Seah | zachary.seah@example.com | `0001_TW_ROLE_VICE_PRINCIPAL` | Single school leader role and no attributes | Signs in as `ROLE_VICE_PRINCIPAL` |
 
 ## How It Works
 
