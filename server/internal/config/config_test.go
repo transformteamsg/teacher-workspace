@@ -118,6 +118,9 @@ func TestDefault(t *testing.T) {
 		if got := cfg.Edupass.ClientID; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
+		if cfg.Edupass.ForwardMockAccount {
+			t.Error("want cfg.Edupass.ForwardMockAccount: false; got: true")
+		}
 		if want, got := OAuth2ClientAuthMethodClientSecretPost, cfg.Edupass.ClientAuthMethod; want != got {
 			t.Errorf("want: %q; got: %q", want, got)
 		}
@@ -933,6 +936,62 @@ func TestEdupassConfig_validate(t *testing.T) {
 		}
 		if want := `TW_EDUPASS_APP_CODE must be "TW" or "TWSTG"; got "TWUAT"`; !strings.Contains(err.Error(), want) {
 			t.Errorf("want err: containing %q; got: %q", want, err)
+		}
+	})
+
+	t.Run("accepts mock account forwarding to a mock-edupass auth URL", func(t *testing.T) {
+		for _, test := range []struct {
+			name    string
+			authURL *url.URL
+		}{
+			{name: "on localhost", authURL: &url.URL{Scheme: "http", Host: "localhost:9000", Path: "/authorize"}},
+			{name: "on 127.0.0.1", authURL: &url.URL{Scheme: "http", Host: "127.0.0.1:9000", Path: "/authorize"}},
+			{name: "on ::1", authURL: &url.URL{Scheme: "http", Host: "[::1]:9000", Path: "/authorize"}},
+			{name: "on the dev mock-edupass", authURL: &url.URL{Scheme: "https", Host: "dev-mock-edupass.edutech.works", Path: "/authorize"}},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				cfg := validConfig().Edupass
+				cfg.ForwardMockAccount = true
+				cfg.AuthURL = test.authURL
+
+				if err := cfg.validate(); err != nil {
+					t.Errorf("want err: nil; got: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("rejects mock account forwarding to any other auth URL", func(t *testing.T) {
+		for _, test := range []struct {
+			name    string
+			authURL *url.URL
+		}{
+			{name: "on the real Edupass", authURL: &url.URL{Scheme: "https", Host: "login.microsoftonline.com", Path: "/tenant-id/oauth2/v2.0/authorize"}},
+			{name: "on a host that only starts with a mock-edupass host", authURL: &url.URL{Scheme: "https", Host: "dev-mock-edupass.edutech.works.example.com", Path: "/authorize"}},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				cfg := validConfig().Edupass
+				cfg.ForwardMockAccount = true
+				cfg.AuthURL = test.authURL
+
+				err := cfg.validate()
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if want := "TW_EDUPASS_FORWARD_MOCK_ACCOUNT must be off unless TW_EDUPASS_AUTH_URL is on a mock-edupass host"; !strings.Contains(err.Error(), want) {
+					t.Errorf("want err: containing %q; got: %q", want, err)
+				}
+			})
+		}
+	})
+
+	t.Run("accepts the real Edupass auth URL when mock account forwarding is off", func(t *testing.T) {
+		cfg := validConfig().Edupass
+		cfg.AuthURL = &url.URL{Scheme: "https", Host: "login.microsoftonline.com", Path: "/tenant-id/oauth2/v2.0/authorize"}
+
+		if err := cfg.validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
 		}
 	})
 
