@@ -103,6 +103,12 @@ TW_ENV=production go run ./server/cmd/tw
 
 In production the server parses `apps/host/dist/index.html` once at startup and refuses to start when it is missing, so rebuild and restart together.
 
+### Signing in as another mock account
+
+mock-edupass signs in as `staff-1` by default. To sign in as another of its fake accounts (listed in [`apps/mock-edupass/README.md`](apps/mock-edupass/README.md#fake-accounts)), sign out, then open `/auth/edupass?account=<id>`, such as <http://localhost:3000/auth/edupass?account=staff-21>.
+
+With `TW_ENV=development`, the server passes `account` on to mock-edupass without further setup. A deployment that runs with `TW_ENV=production` against mock-edupass, such as dev, also needs `TW_EDUPASS_FORWARD_MOCK_ACCOUNT=true`. The server refuses to start with it on unless `TW_EDUPASS_AUTH_URL` is on a mock-edupass host (`localhost`, `127.0.0.1`, `::1` or `dev-mock-edupass.edutech.works`), so it can't be turned on against real Edupass.
+
 ### Running against a local remote
 
 Posts and Groups are served by the `pg` remote, and Student Insights by `student_insights`. Neither is compiled into the host: the server reads their manifest URLs at startup and embeds them in the page. Unset, a remote is not registered and its route shows the 404 page.
