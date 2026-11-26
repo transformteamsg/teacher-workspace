@@ -13,7 +13,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log/slog"
-	"maps"
 	"math/big"
 	"net/url"
 	"os"
@@ -173,9 +172,9 @@ func TestDefault(t *testing.T) {
 		if got := cfg.RemoteApps.StudentInsightsBackendSigningKey; got != "" {
 			t.Errorf("want: empty; got: %q", got)
 		}
-		for _, a := range cfg.RemoteApps.Allowlists() {
+		for _, a := range cfg.RemoteApps.RemoteApps() {
 			if got := a.Allowlist; got != "" {
-				t.Errorf("want %s: empty; got: %q", a.Setting, got)
+				t.Errorf("want %s: empty; got: %q", a.AllowlistSetting, got)
 			}
 		}
 	})
@@ -1357,72 +1356,20 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 		}
 	})
 
-	t.Run("accepts HTTP and HTTPS URLs", func(t *testing.T) {
-		for _, scheme := range []string{"http", "https"} {
-			t.Run(scheme, func(t *testing.T) {
-				cfg := validConfig().RemoteApps
-				cfg.PostsManifestURL = &url.URL{Scheme: scheme, Host: "posts.example.com", Path: "/mf-manifest.json"}
-				cfg.PostsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.posts.example.com"}
-				cfg.GroupsManifestURL = &url.URL{Scheme: scheme, Host: "groups.example.com", Path: "/mf-manifest.json"}
-				cfg.GroupsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.groups.example.com"}
-				cfg.StudentInsightsManifestURL = &url.URL{Scheme: scheme, Host: "student-insights.example.com", Path: "/mf-manifest.json"}
-				cfg.StudentInsightsBackendBaseURL = &url.URL{Scheme: scheme, Host: "api.student-insights.example.com"}
+	t.Run("accepts every remote app registered", func(t *testing.T) {
+		cfg := validConfig().RemoteApps
 
-				if err := cfg.validate(); err != nil {
-					t.Errorf("want err: nil; got: %v", err)
-				}
-			})
+		if err := cfg.validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
 		}
 	})
 
-	t.Run("accepts valid values", func(t *testing.T) {
-		for _, test := range []struct {
-			name   string
-			mutate func(*RemoteAppsConfig)
-		}{
-			{
-				name: "posts backend base URL with a path",
-				mutate: func(c *RemoteAppsConfig) {
-					c.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com", Path: "/v1"}
-				},
-			},
-			{
-				name: "groups backend base URL with a path",
-				mutate: func(c *RemoteAppsConfig) {
-					c.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com", Path: "/v1"}
-				},
-			},
-			{
-				name: "student insights backend base URL with a path",
-				mutate: func(c *RemoteAppsConfig) {
-					c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com", Path: "/v1"}
-				},
-			},
-			{
-				name:   "posts backend signing key of exactly 32 bytes",
-				mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = strings.Repeat("k", 32) },
-			},
-			{
-				name:   "groups backend signing key of exactly 32 bytes",
-				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = strings.Repeat("k", 32) },
-			},
-			{
-				name:   "student insights backend signing key of exactly 32 bytes",
-				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendSigningKey = strings.Repeat("k", 32) },
-			},
-			{
-				name:   "signed token TTL of exactly 1s",
-				mutate: func(c *RemoteAppsConfig) { c.SignedTokenTTL = time.Second },
-			},
-		} {
-			t.Run(test.name, func(t *testing.T) {
-				cfg := validConfig().RemoteApps
-				test.mutate(&cfg)
+	t.Run("accepts a signed token TTL of exactly 1s", func(t *testing.T) {
+		cfg := validConfig().RemoteApps
+		cfg.SignedTokenTTL = time.Second
 
-				if err := cfg.validate(); err != nil {
-					t.Errorf("want err: nil; got: %v", err)
-				}
-			})
+		if err := cfg.validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
 		}
 	})
 
@@ -1467,182 +1414,6 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				mutate: func(c *RemoteAppsConfig) { c.ProxyStreamTimeout = -time.Second },
 				want:   "TW_REMOTE_PROXY_STREAM_TIMEOUT must be > 0; got -1s",
 			},
-			{
-				name:   "missing posts manifest URL",
-				mutate: func(c *RemoteAppsConfig) { c.PostsManifestURL = nil },
-				want:   "TW_REMOTE_POSTS_MANIFEST_URL is required to register the posts remote",
-			},
-			{
-				name: "posts manifest URL with a non-HTTP scheme",
-				mutate: func(c *RemoteAppsConfig) {
-					c.PostsManifestURL = &url.URL{Scheme: "ftp", Host: "posts.example.com", Path: "/mf-manifest.json"}
-				},
-				want: `TW_REMOTE_POSTS_MANIFEST_URL must use scheme http or https; got "ftp://posts.example.com/mf-manifest.json"`,
-			},
-			{
-				name:   "posts manifest URL without a host",
-				mutate: func(c *RemoteAppsConfig) { c.PostsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"} },
-				want:   `TW_REMOTE_POSTS_MANIFEST_URL must include host[:port]; got "https:///mf-manifest.json"`,
-			},
-			{
-				name:   "missing posts backend base URL",
-				mutate: func(c *RemoteAppsConfig) { c.PostsBackendBaseURL = nil },
-				want:   "TW_REMOTE_POSTS_BACKEND_BASE_URL is required to register the posts remote",
-			},
-			{
-				name: "posts backend base URL with a non-HTTP scheme",
-				mutate: func(c *RemoteAppsConfig) {
-					c.PostsBackendBaseURL = &url.URL{Scheme: "ftp", Host: "api.posts.example.com"}
-				},
-				want: `TW_REMOTE_POSTS_BACKEND_BASE_URL must use scheme http or https; got "ftp://api.posts.example.com"`,
-			},
-			{
-				name:   "posts backend base URL without a host",
-				mutate: func(c *RemoteAppsConfig) { c.PostsBackendBaseURL = &url.URL{Scheme: "http"} },
-				want:   `TW_REMOTE_POSTS_BACKEND_BASE_URL must include host[:port]; got "http:"`,
-			},
-			{
-				name: "posts backend base URL with a query",
-				mutate: func(c *RemoteAppsConfig) {
-					c.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com", RawQuery: "key=abc"}
-				},
-				want: `TW_REMOTE_POSTS_BACKEND_BASE_URL must not include a query; got "https://api.posts.example.com?key=abc"`,
-			},
-			{
-				name: "posts backend base URL with a fragment",
-				mutate: func(c *RemoteAppsConfig) {
-					c.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com", Fragment: "frag"}
-				},
-				want: `TW_REMOTE_POSTS_BACKEND_BASE_URL must not include a fragment; got "https://api.posts.example.com#frag"`,
-			},
-			{
-				name:   "empty posts backend signing key",
-				mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = "" },
-				want:   "TW_REMOTE_POSTS_BACKEND_SIGNING_KEY is required to register the posts remote",
-			},
-			{
-				name:   "short posts backend signing key",
-				mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = strings.Repeat("k", 31) },
-				want:   "TW_REMOTE_POSTS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
-			},
-			{
-				name:   "missing groups manifest URL",
-				mutate: func(c *RemoteAppsConfig) { c.GroupsManifestURL = nil },
-				want:   "TW_REMOTE_GROUPS_MANIFEST_URL is required to register the groups remote",
-			},
-			{
-				name: "groups manifest URL with a non-HTTP scheme",
-				mutate: func(c *RemoteAppsConfig) {
-					c.GroupsManifestURL = &url.URL{Scheme: "ftp", Host: "groups.example.com", Path: "/mf-manifest.json"}
-				},
-				want: `TW_REMOTE_GROUPS_MANIFEST_URL must use scheme http or https; got "ftp://groups.example.com/mf-manifest.json"`,
-			},
-			{
-				name:   "groups manifest URL without a host",
-				mutate: func(c *RemoteAppsConfig) { c.GroupsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"} },
-				want:   `TW_REMOTE_GROUPS_MANIFEST_URL must include host[:port]; got "https:///mf-manifest.json"`,
-			},
-			{
-				name:   "missing groups backend base URL",
-				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendBaseURL = nil },
-				want:   "TW_REMOTE_GROUPS_BACKEND_BASE_URL is required to register the groups remote",
-			},
-			{
-				name: "groups backend base URL with a non-HTTP scheme",
-				mutate: func(c *RemoteAppsConfig) {
-					c.GroupsBackendBaseURL = &url.URL{Scheme: "ftp", Host: "api.groups.example.com"}
-				},
-				want: `TW_REMOTE_GROUPS_BACKEND_BASE_URL must use scheme http or https; got "ftp://api.groups.example.com"`,
-			},
-			{
-				name:   "groups backend base URL without a host",
-				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendBaseURL = &url.URL{Scheme: "http"} },
-				want:   `TW_REMOTE_GROUPS_BACKEND_BASE_URL must include host[:port]; got "http:"`,
-			},
-			{
-				name: "groups backend base URL with a query",
-				mutate: func(c *RemoteAppsConfig) {
-					c.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com", RawQuery: "key=abc"}
-				},
-				want: `TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a query; got "https://api.groups.example.com?key=abc"`,
-			},
-			{
-				name: "groups backend base URL with a fragment",
-				mutate: func(c *RemoteAppsConfig) {
-					c.GroupsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.groups.example.com", Fragment: "frag"}
-				},
-				want: `TW_REMOTE_GROUPS_BACKEND_BASE_URL must not include a fragment; got "https://api.groups.example.com#frag"`,
-			},
-			{
-				name:   "empty groups backend signing key",
-				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = "" },
-				want:   "TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY is required to register the groups remote",
-			},
-			{
-				name:   "short groups backend signing key",
-				mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = strings.Repeat("k", 31) },
-				want:   "TW_REMOTE_GROUPS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
-			},
-			{
-				name:   "missing student insights manifest URL",
-				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsManifestURL = nil },
-				want:   "TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL is required to register the student insights remote",
-			},
-			{
-				name: "student insights manifest URL with a non-HTTP scheme",
-				mutate: func(c *RemoteAppsConfig) {
-					c.StudentInsightsManifestURL = &url.URL{Scheme: "ftp", Host: "student-insights.example.com", Path: "/mf-manifest.json"}
-				},
-				want: `TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL must use scheme http or https; got "ftp://student-insights.example.com/mf-manifest.json"`,
-			},
-			{
-				name: "student insights manifest URL without a host",
-				mutate: func(c *RemoteAppsConfig) {
-					c.StudentInsightsManifestURL = &url.URL{Scheme: "https", Path: "/mf-manifest.json"}
-				},
-				want: `TW_REMOTE_STUDENT_INSIGHTS_MANIFEST_URL must include host[:port]; got "https:///mf-manifest.json"`,
-			},
-			{
-				name:   "missing student insights backend base URL",
-				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendBaseURL = nil },
-				want:   "TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL is required to register the student insights remote",
-			},
-			{
-				name: "student insights backend base URL with a non-HTTP scheme",
-				mutate: func(c *RemoteAppsConfig) {
-					c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "ftp", Host: "api.student-insights.example.com"}
-				},
-				want: `TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must use scheme http or https; got "ftp://api.student-insights.example.com"`,
-			},
-			{
-				name:   "student insights backend base URL without a host",
-				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "http"} },
-				want:   `TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must include host[:port]; got "http:"`,
-			},
-			{
-				name: "student insights backend base URL with a query",
-				mutate: func(c *RemoteAppsConfig) {
-					c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com", RawQuery: "key=abc"}
-				},
-				want: `TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must not include a query; got "https://api.student-insights.example.com?key=abc"`,
-			},
-			{
-				name: "student insights backend base URL with a fragment",
-				mutate: func(c *RemoteAppsConfig) {
-					c.StudentInsightsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.student-insights.example.com", Fragment: "frag"}
-				},
-				want: `TW_REMOTE_STUDENT_INSIGHTS_BACKEND_BASE_URL must not include a fragment; got "https://api.student-insights.example.com#frag"`,
-			},
-			{
-				name:   "empty student insights backend signing key",
-				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendSigningKey = "" },
-				want:   "TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY is required to register the student insights remote",
-			},
-			{
-				name:   "short student insights backend signing key",
-				mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendSigningKey = strings.Repeat("k", 31) },
-				want:   "TW_REMOTE_STUDENT_INSIGHTS_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
-			},
 		} {
 			t.Run(test.name, func(t *testing.T) {
 				cfg := validConfig().RemoteApps
@@ -1660,19 +1431,33 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 		}
 	})
 
-	t.Run("requires every value of a remote app once any is set", func(t *testing.T) {
-		cfg := Default().RemoteApps
-		cfg.PostsBackendBaseURL = &url.URL{Scheme: "https", Host: "api.posts.example.com"}
-
-		err := cfg.validate()
-
-		if err == nil {
-			t.Fatal("want err: non-nil; got: nil")
-		}
-		for _, want := range []string{"TW_REMOTE_POSTS_MANIFEST_URL is required", "TW_REMOTE_POSTS_BACKEND_SIGNING_KEY is required"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("want err: containing %q; got: %q", want, err)
+	t.Run("rejects an incomplete remote app with an error naming its settings", func(t *testing.T) {
+		for _, a := range (RemoteAppsConfig{}).RemoteApps() {
+			if a.SettingPrefix == "" {
+				continue
 			}
+			t.Run(a.App, func(t *testing.T) {
+				t.Chdir(t.TempDir())
+				t.Setenv(a.SettingPrefix+"_BACKEND_BASE_URL", "https://api.example.com")
+				cfg := Default()
+				if err := dotenv.Load(&cfg); err != nil {
+					t.Fatalf("dotenv.Load: %v", err)
+				}
+
+				err := cfg.RemoteApps.validate()
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				for _, want := range []string{
+					a.SettingPrefix + "_MANIFEST_URL is required to register the " + a.Label + " remote",
+					a.SettingPrefix + "_BACKEND_SIGNING_KEY is required to register the " + a.Label + " remote",
+				} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("want err: containing %q; got: %q", want, err)
+					}
+				}
+			})
 		}
 	})
 
@@ -1695,10 +1480,10 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 	})
 
 	t.Run("rejects an invalid allowlist with an error naming its setting", func(t *testing.T) {
-		for _, a := range (RemoteAppsConfig{}).Allowlists() {
+		for _, a := range (RemoteAppsConfig{}).RemoteApps() {
 			t.Run(a.App, func(t *testing.T) {
 				t.Chdir(t.TempDir())
-				t.Setenv(a.Setting, "12A4")
+				t.Setenv(a.AllowlistSetting, "12A4")
 				cfg := Default()
 				if err := dotenv.Load(&cfg); err != nil {
 					t.Fatalf("dotenv.Load: %v", err)
@@ -1709,7 +1494,7 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 				if err == nil {
 					t.Fatal("want err: non-nil; got: nil")
 				}
-				if want := a.Setting + ` must contain only 4-digit school codes; got "12A4"`; !strings.Contains(err.Error(), want) {
+				if want := a.AllowlistSetting + ` must contain only 4-digit school codes; got "12A4"`; !strings.Contains(err.Error(), want) {
 					t.Errorf("want err: containing %q; got: %q", want, err)
 				}
 			})
@@ -1717,171 +1502,198 @@ func TestRemoteAppsConfig_validate(t *testing.T) {
 	})
 }
 
-func TestRemoteAppsConfig_Allowlists(t *testing.T) {
-	t.Run("returns every allowlist field under the setting it is read from", func(t *testing.T) {
+func TestRemoteAppsConfig_RemoteApps(t *testing.T) {
+	t.Run("returns every app field under the setting it is read from", func(t *testing.T) {
 		cfg := RemoteAppsConfig{}
-		want := map[string]SchoolAllowlist{}
+		want := map[string]any{}
 		v := reflect.ValueOf(&cfg).Elem()
 		for i := range v.NumField() {
-			if field := v.Type().Field(i); field.Type == reflect.TypeFor[SchoolAllowlist]() {
-				// A distinct value per field shows a row reading the wrong field.
-				allowlist := SchoolAllowlist(fmt.Sprintf("%04d", i))
-				v.Field(i).Set(reflect.ValueOf(allowlist))
-				want[field.Tag.Get("dotenv")] = allowlist
+			// A distinct value per field shows a row reading the wrong field.
+			var value any
+			switch field := v.Type().Field(i); field.Type {
+			case reflect.TypeFor[*url.URL]():
+				value = &url.URL{Scheme: "https", Host: fmt.Sprintf("app-%d.example.com", i)}
+			case reflect.TypeFor[string]():
+				value = fmt.Sprintf("key-%d", i)
+			case reflect.TypeFor[SchoolAllowlist]():
+				value = SchoolAllowlist(fmt.Sprintf("%04d", i))
+			default:
+				continue
 			}
+			v.Field(i).Set(reflect.ValueOf(value))
+			want[v.Type().Field(i).Tag.Get("dotenv")] = value
 		}
 
-		allowlists := cfg.Allowlists()
+		apps := cfg.RemoteApps()
 
-		got := map[string]SchoolAllowlist{}
-		for _, a := range allowlists {
-			got[a.Setting] = a.Allowlist
+		got := map[string]any{}
+		for _, a := range apps {
+			if a.SettingPrefix != "" {
+				got[a.SettingPrefix+"_MANIFEST_URL"] = a.ManifestURL
+				got[a.SettingPrefix+"_BACKEND_BASE_URL"] = a.BackendBaseURL
+				got[a.SettingPrefix+"_BACKEND_SIGNING_KEY"] = a.BackendSigningKey
+			}
+			got[a.AllowlistSetting] = a.Allowlist
 		}
-		if !maps.Equal(want, got) || len(allowlists) != len(want) {
-			t.Errorf("want allowlists by setting: %v; got: %v", want, got)
+		if !reflect.DeepEqual(want, got) {
+			t.Errorf("want app fields by setting: %v; got: %v", want, got)
 		}
 	})
 }
 
-func TestRemoteAppsConfig_IsPostsRegistered(t *testing.T) {
+func TestRemoteApp_IsRegistered(t *testing.T) {
 	for _, test := range []struct {
 		name   string
-		mutate func(*RemoteAppsConfig)
+		mutate func(*RemoteApp)
 		want   bool
 	}{
 		{
 			name:   "all values set",
-			mutate: func(c *RemoteAppsConfig) {},
+			mutate: func(a *RemoteApp) {},
 			want:   true,
 		},
 		{
 			name: "no values set",
-			mutate: func(c *RemoteAppsConfig) {
-				c.PostsManifestURL = nil
-				c.PostsBackendBaseURL = nil
-				c.PostsBackendSigningKey = ""
+			mutate: func(a *RemoteApp) {
+				a.ManifestURL = nil
+				a.BackendBaseURL = nil
+				a.BackendSigningKey = ""
 			},
 			want: false,
 		},
 		{
 			name:   "missing manifest URL",
-			mutate: func(c *RemoteAppsConfig) { c.PostsManifestURL = nil },
+			mutate: func(a *RemoteApp) { a.ManifestURL = nil },
 			want:   false,
 		},
 		{
 			name:   "missing backend base URL",
-			mutate: func(c *RemoteAppsConfig) { c.PostsBackendBaseURL = nil },
+			mutate: func(a *RemoteApp) { a.BackendBaseURL = nil },
 			want:   false,
 		},
 		{
 			name:   "empty backend signing key",
-			mutate: func(c *RemoteAppsConfig) { c.PostsBackendSigningKey = "" },
+			mutate: func(a *RemoteApp) { a.BackendSigningKey = "" },
 			want:   false,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := validConfig().RemoteApps
-			test.mutate(&cfg)
+			app := RemoteApp{
+				ManifestURL:       &url.URL{Scheme: "https", Host: "app.example.com", Path: "/mf-manifest.json"},
+				BackendBaseURL:    &url.URL{Scheme: "https", Host: "api.app.example.com"},
+				BackendSigningKey: "a-string-secret-at-least-256-bits-long",
+			}
+			test.mutate(&app)
 
-			if want, got := test.want, cfg.IsPostsRegistered(); want != got {
-				t.Errorf("want: %t; got: %t", want, got)
+			if want, got := test.want, app.IsRegistered(); want != got {
+				t.Errorf("want app.IsRegistered(): %t; got: %t", want, got)
 			}
 		})
 	}
 }
 
-func TestRemoteAppsConfig_IsGroupsRegistered(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		mutate func(*RemoteAppsConfig)
-		want   bool
-	}{
-		{
-			name:   "all values set",
-			mutate: func(c *RemoteAppsConfig) {},
-			want:   true,
-		},
-		{
-			name: "no values set",
-			mutate: func(c *RemoteAppsConfig) {
-				c.GroupsManifestURL = nil
-				c.GroupsBackendBaseURL = nil
-				c.GroupsBackendSigningKey = ""
+func TestRemoteApp_validate(t *testing.T) {
+	t.Run("accepts no values set", func(t *testing.T) {
+		app := RemoteApp{Label: "example", SettingPrefix: "TW_REMOTE_EXAMPLE"}
+
+		if err := app.validate(); err != nil {
+			t.Errorf("want err: nil; got: %v", err)
+		}
+	})
+
+	t.Run("accepts valid values", func(t *testing.T) {
+		for _, test := range []struct {
+			name   string
+			mutate func(*RemoteApp)
+		}{
+			{name: "HTTP URLs", mutate: func(a *RemoteApp) { a.ManifestURL.Scheme, a.BackendBaseURL.Scheme = "http", "http" }},
+			{name: "HTTPS URLs", mutate: func(a *RemoteApp) { a.ManifestURL.Scheme, a.BackendBaseURL.Scheme = "https", "https" }},
+			{name: "backend base URL with a path", mutate: func(a *RemoteApp) { a.BackendBaseURL.Path = "/v1" }},
+			{name: "backend signing key of exactly 32 bytes", mutate: func(a *RemoteApp) { a.BackendSigningKey = strings.Repeat("k", 32) }},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				app := validRemoteApp()
+				test.mutate(&app)
+
+				if err := app.validate(); err != nil {
+					t.Errorf("want err: nil; got: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("rejects invalid values", func(t *testing.T) {
+		for _, test := range []struct {
+			name   string
+			mutate func(*RemoteApp)
+			want   string
+		}{
+			{
+				name:   "missing manifest URL",
+				mutate: func(a *RemoteApp) { a.ManifestURL = nil },
+				want:   "TW_REMOTE_EXAMPLE_MANIFEST_URL is required to register the example remote",
 			},
-			want: false,
-		},
-		{
-			name:   "missing manifest URL",
-			mutate: func(c *RemoteAppsConfig) { c.GroupsManifestURL = nil },
-			want:   false,
-		},
-		{
-			name:   "missing backend base URL",
-			mutate: func(c *RemoteAppsConfig) { c.GroupsBackendBaseURL = nil },
-			want:   false,
-		},
-		{
-			name:   "empty backend signing key",
-			mutate: func(c *RemoteAppsConfig) { c.GroupsBackendSigningKey = "" },
-			want:   false,
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			cfg := validConfig().RemoteApps
-			test.mutate(&cfg)
-
-			if want, got := test.want, cfg.IsGroupsRegistered(); want != got {
-				t.Errorf("want: %t; got: %t", want, got)
-			}
-		})
-	}
-}
-
-func TestRemoteAppsConfig_IsStudentInsightsRegistered(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		mutate func(*RemoteAppsConfig)
-		want   bool
-	}{
-		{
-			name:   "all values set",
-			mutate: func(c *RemoteAppsConfig) {},
-			want:   true,
-		},
-		{
-			name: "no values set",
-			mutate: func(c *RemoteAppsConfig) {
-				c.StudentInsightsManifestURL = nil
-				c.StudentInsightsBackendBaseURL = nil
-				c.StudentInsightsBackendSigningKey = ""
+			{
+				name:   "manifest URL with a non-HTTP scheme",
+				mutate: func(a *RemoteApp) { a.ManifestURL.Scheme = "ftp" },
+				want:   `TW_REMOTE_EXAMPLE_MANIFEST_URL must use scheme http or https; got "ftp://example.com/mf-manifest.json"`,
 			},
-			want: false,
-		},
-		{
-			name:   "missing manifest URL",
-			mutate: func(c *RemoteAppsConfig) { c.StudentInsightsManifestURL = nil },
-			want:   false,
-		},
-		{
-			name:   "missing backend base URL",
-			mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendBaseURL = nil },
-			want:   false,
-		},
-		{
-			name:   "empty backend signing key",
-			mutate: func(c *RemoteAppsConfig) { c.StudentInsightsBackendSigningKey = "" },
-			want:   false,
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			cfg := validConfig().RemoteApps
-			test.mutate(&cfg)
+			{
+				name:   "manifest URL without a host",
+				mutate: func(a *RemoteApp) { a.ManifestURL.Host = "" },
+				want:   `TW_REMOTE_EXAMPLE_MANIFEST_URL must include host[:port]; got "https:///mf-manifest.json"`,
+			},
+			{
+				name:   "missing backend base URL",
+				mutate: func(a *RemoteApp) { a.BackendBaseURL = nil },
+				want:   "TW_REMOTE_EXAMPLE_BACKEND_BASE_URL is required to register the example remote",
+			},
+			{
+				name:   "backend base URL with a non-HTTP scheme",
+				mutate: func(a *RemoteApp) { a.BackendBaseURL.Scheme = "ftp" },
+				want:   `TW_REMOTE_EXAMPLE_BACKEND_BASE_URL must use scheme http or https; got "ftp://api.example.com"`,
+			},
+			{
+				name:   "backend base URL without a host",
+				mutate: func(a *RemoteApp) { a.BackendBaseURL = &url.URL{Scheme: "http"} },
+				want:   `TW_REMOTE_EXAMPLE_BACKEND_BASE_URL must include host[:port]; got "http:"`,
+			},
+			{
+				name:   "backend base URL with a query",
+				mutate: func(a *RemoteApp) { a.BackendBaseURL.RawQuery = "key=abc" },
+				want:   `TW_REMOTE_EXAMPLE_BACKEND_BASE_URL must not include a query; got "https://api.example.com?key=abc"`,
+			},
+			{
+				name:   "backend base URL with a fragment",
+				mutate: func(a *RemoteApp) { a.BackendBaseURL.Fragment = "frag" },
+				want:   `TW_REMOTE_EXAMPLE_BACKEND_BASE_URL must not include a fragment; got "https://api.example.com#frag"`,
+			},
+			{
+				name:   "empty backend signing key",
+				mutate: func(a *RemoteApp) { a.BackendSigningKey = "" },
+				want:   "TW_REMOTE_EXAMPLE_BACKEND_SIGNING_KEY is required to register the example remote",
+			},
+			{
+				name:   "short backend signing key",
+				mutate: func(a *RemoteApp) { a.BackendSigningKey = strings.Repeat("k", 31) },
+				want:   "TW_REMOTE_EXAMPLE_BACKEND_SIGNING_KEY must be at least 32 bytes; got 31",
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				app := validRemoteApp()
+				test.mutate(&app)
 
-			if want, got := test.want, cfg.IsStudentInsightsRegistered(); want != got {
-				t.Errorf("want: %t; got: %t", want, got)
-			}
-		})
-	}
+				err := app.validate()
+
+				if err == nil {
+					t.Fatal("want err: non-nil; got: nil")
+				}
+				if !strings.Contains(err.Error(), test.want) {
+					t.Errorf("want err: containing %q; got: %q", test.want, err)
+				}
+			})
+		}
+	})
 }
 
 func TestSchoolAllowlist_Allows(t *testing.T) {
@@ -2003,4 +1815,15 @@ func TestSchoolAllowlist_validate(t *testing.T) {
 			})
 		}
 	})
+}
+
+// validRemoteApp returns a remote app with every value set and valid, for tests to break one value of.
+func validRemoteApp() RemoteApp {
+	return RemoteApp{
+		Label:             "example",
+		SettingPrefix:     "TW_REMOTE_EXAMPLE",
+		ManifestURL:       &url.URL{Scheme: "https", Host: "example.com", Path: "/mf-manifest.json"},
+		BackendBaseURL:    &url.URL{Scheme: "https", Host: "api.example.com"},
+		BackendSigningKey: "a-string-secret-at-least-256-bits-long",
+	}
 }

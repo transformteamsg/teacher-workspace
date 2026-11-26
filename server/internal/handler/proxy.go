@@ -29,43 +29,16 @@ type remoteBackend struct {
 func (h *Handler) proxy() http.Handler {
 	remoteBackends := map[string]remoteBackend{}
 
-	if h.cfg.RemoteApps.IsPostsRegistered() {
-		remoteBackends["posts"] = remoteBackend{
-			proxy: newRemoteBackendProxy(
-				h.cfg.RemoteApps.PostsBackendBaseURL,
-				h.cfg.RemoteApps.ProxyTimeout,
-				h.cfg.RemoteApps.ProxyStreamTimeout,
-			),
-			signingKey: h.cfg.RemoteApps.PostsBackendSigningKey,
-			audience:   "pg",
-			app:        "posts",
-			allowlist:  h.cfg.RemoteApps.PostsAllowedSchoolCodes,
+	for _, a := range h.cfg.RemoteApps.RemoteApps() {
+		if !a.IsRegistered() {
+			continue
 		}
-	}
-	if h.cfg.RemoteApps.IsGroupsRegistered() {
-		remoteBackends["groups"] = remoteBackend{
-			proxy: newRemoteBackendProxy(
-				h.cfg.RemoteApps.GroupsBackendBaseURL,
-				h.cfg.RemoteApps.ProxyTimeout,
-				h.cfg.RemoteApps.ProxyStreamTimeout,
-			),
-			signingKey: h.cfg.RemoteApps.GroupsBackendSigningKey,
-			audience:   "pg",
-			app:        "groups",
-			allowlist:  h.cfg.RemoteApps.GroupsAllowedSchoolCodes,
-		}
-	}
-	if h.cfg.RemoteApps.IsStudentInsightsRegistered() {
-		remoteBackends["student-insights"] = remoteBackend{
-			proxy: newRemoteBackendProxy(
-				h.cfg.RemoteApps.StudentInsightsBackendBaseURL,
-				h.cfg.RemoteApps.ProxyTimeout,
-				h.cfg.RemoteApps.ProxyStreamTimeout,
-			),
-			signingKey: h.cfg.RemoteApps.StudentInsightsBackendSigningKey,
-			audience:   "si",
-			app:        "students",
-			allowlist:  h.cfg.RemoteApps.StudentsAllowedSchoolCodes,
+		remoteBackends[a.Path] = remoteBackend{
+			proxy:      newRemoteBackendProxy(a.BackendBaseURL, h.cfg.RemoteApps.ProxyTimeout, h.cfg.RemoteApps.ProxyStreamTimeout),
+			signingKey: a.BackendSigningKey,
+			audience:   a.Audience,
+			app:        a.App,
+			allowlist:  a.Allowlist,
 		}
 	}
 

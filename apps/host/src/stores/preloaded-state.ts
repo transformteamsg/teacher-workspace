@@ -1,3 +1,5 @@
+import type { AppKey } from '~/remote-apps';
+
 /**
  * The state the server embeds in the page, read once at startup.
  */
@@ -96,12 +98,6 @@ function isRemote(value: unknown): value is Remote {
 }
 
 export const preloadedState: Readonly<PreloadedState> = readPreloadedState();
-
-/**
- * An app the server may allow. The keys must match the ones `allowedApps` sends in
- * `server/internal/handler/index.go`, or the host hides the app.
- */
-export type AppKey = 'posts' | 'groups' | 'meetings' | 'students';
 
 /** Reports whether the server allows this session to use `app`. */
 export function isAppAllowed(app: AppKey): boolean {

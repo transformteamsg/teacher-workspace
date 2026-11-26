@@ -2,12 +2,12 @@ import { Link } from 'react-router';
 
 import illustration from '~/assets/images/not-found.png';
 import { Button } from '~/components/ui/button';
-import { type AppKey, isAppAllowed } from '~/stores/preloaded-state';
+import { remoteApps } from '~/remote-apps';
+import { isAppAllowed } from '~/stores/preloaded-state';
 
-const suggestedLinks: { label: string; to: string; app: AppKey }[] = [
-  { label: 'Student Insights', to: '/students', app: 'students' },
-  { label: 'Posts', to: '/posts', app: 'posts' },
-];
+const suggestedLinks = remoteApps.flatMap((app) =>
+  app.suggestion === undefined ? [] : [{ label: app.suggestion, to: app.path, app: app.key }],
+);
 
 export function NotFoundView() {
   const allowedLinks = suggestedLinks.filter((link) => isAppAllowed(link.app));

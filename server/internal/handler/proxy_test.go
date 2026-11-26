@@ -163,6 +163,10 @@ func TestHandler_proxy(t *testing.T) {
 					PostsBackendBaseURL:     postsBackendURL,
 					PostsBackendSigningKey:  "posts-string-secret-at-least-256-bits-long",
 					PostsAllowedSchoolCodes: "*",
+
+					// Groups has only some of its values set, so it is not registered.
+					GroupsBackendBaseURL:     postsBackendURL,
+					GroupsAllowedSchoolCodes: "*",
 				},
 			},
 		}
@@ -178,6 +182,10 @@ func TestHandler_proxy(t *testing.T) {
 			{
 				name:   "unregistered app",
 				target: "/api/student-insights/hello",
+			},
+			{
+				name:   "app with only some of its values set",
+				target: "/api/groups/hello",
 			},
 			{
 				name:   "missing path after app",
